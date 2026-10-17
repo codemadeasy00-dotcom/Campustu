@@ -5,7 +5,7 @@ const { Client } = require('pg');
 require('dotenv').config();
 
 (async () => {
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client(require('../src/dbConfig')());
   await client.connect();
   const { rows } = await client.query(`SELECT to_regclass('public.users') AS t`);
   if (rows[0].t) {

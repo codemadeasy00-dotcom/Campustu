@@ -14,16 +14,19 @@ app.use(helmet());
 app.use(cors({ origin: config.corsOrigins, methods: ['GET', 'POST', 'PATCH', 'DELETE'] }));
 app.use(express.json({ limit: '100kb' }));
 
-// Uploaded photos. nosniff stops browsers from treating a file as something it is not.
+// Uploaded photos served from local disk (only when no S3 bucket is configured).
+// nosniff stops browsers from treating a file as something it is not.
 // cross-origin is needed so the frontend (another origin) can show the images.
-app.use(
-  '/uploads',
-  (_req, res, next) => {
-    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    next();
-  },
-  express.static(storage.root, { maxAge: '7d', immutable: true, index: false, dotfiles: 'deny' })
-);
+if (!storage.useS3) {
+  app.use(
+    '/uploads',
+    (_req, res, next) => {
+      res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+      next();
+    },
+    express.static(storage.root, { maxAge: '7d', immutable: true, index: false, dotfiles: 'deny' })
+  );
+}
 
 // Slow down guessing and email-spamming on the auth endpoints.
 const authLimiter = rateLimit({

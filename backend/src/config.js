@@ -20,6 +20,8 @@ const config = {
   isProd,
   port: int('PORT', 4000),
   databaseUrl: required('DATABASE_URL'),
+  // Cloud databases (Supabase, Neon...) need an encrypted connection: set DATABASE_SSL=true
+  databaseSsl: process.env.DATABASE_SSL === 'true',
   jwtSecret: required('JWT_SECRET'),
   otpSecret: required('OTP_SECRET'),
   corsOrigins: (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean),
@@ -32,6 +34,15 @@ const config = {
     from: process.env.MAIL_FROM || 'CampusKit <no-reply@example.com>',
   },
   uploadDir: process.env.UPLOAD_DIR || './uploads',
+  // If S3_BUCKET is set, photos go to an S3-compatible bucket (needed on hosts with no permanent disk).
+  s3: {
+    bucket: process.env.S3_BUCKET || '',
+    region: process.env.S3_REGION || 'us-east-1',
+    endpoint: process.env.S3_ENDPOINT || undefined,
+    accessKeyId: process.env.S3_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
+    publicBaseUrl: (process.env.S3_PUBLIC_BASE_URL || '').replace(/\/$/, ''),
+  },
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'http://localhost:4000').replace(/\/$/, ''),
   otp: { ttlMinutes: 10, maxAttempts: 5, resendSeconds: 60 },
   jwtExpiresIn: '7d',
@@ -47,6 +58,13 @@ if (isProd) {
     throw new Error('JWT_SECRET and OTP_SECRET must be at least 32 characters in production');
   }
   if (!config.smtp.host) throw new Error('SMTP_HOST is required in production');
+  if (!config.s3.bucket) {
+    throw new Error('S3_BUCKET is required in production: free hosts delete local files on restart');
+  }
+}
+
+if (config.s3.bucket && (!config.s3.accessKeyId || !config.s3.secretAccessKey || !config.s3.publicBaseUrl)) {
+  throw new Error('S3_BUCKET is set, so S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and S3_PUBLIC_BASE_URL are also required');
 }
 
 module.exports = config;

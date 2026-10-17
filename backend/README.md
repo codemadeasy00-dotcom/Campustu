@@ -18,7 +18,10 @@ campuskit/
     scripts/ init-db.js seed-reference.js make-admin.js
 ```
 
-## Run it
+## Putting it online instead of running on your PC
+See `../DEPLOY.md` (free-tier plan: Supabase + Render + Brevo).
+
+## Run it on your own PC (needs PostgreSQL installed)
 1. Create an empty PostgreSQL database and a user for it.
 2. `cd backend && cp .env.example .env`, then fill DATABASE_URL, JWT_SECRET, OTP_SECRET
    (generate each with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`).

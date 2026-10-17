@@ -6,7 +6,7 @@ require('dotenv').config();
 (async () => {
   const email = (process.argv[2] || '').trim().toLowerCase();
   if (!email) throw new Error('Usage: npm run make-admin -- email@example.com');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client(require('../src/dbConfig')());
   await client.connect();
   const r = await client.query(
     `UPDATE users SET role = 'admin' WHERE lower(email) = $1 AND email_verified_at IS NOT NULL RETURNING email`,

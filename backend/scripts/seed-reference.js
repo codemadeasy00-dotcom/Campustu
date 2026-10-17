@@ -10,7 +10,7 @@ const file = process.argv[2] || path.join(__dirname, '..', '..', 'db', 'referenc
 
 (async () => {
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client(require('../src/dbConfig')());
   await client.connect();
   try {
     await client.query('BEGIN');
