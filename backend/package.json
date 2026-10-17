@@ -1,0 +1,30 @@
+{
+  "name": "campuskit-backend",
+  "version": "0.1.0",
+  "description": "CampusKit API",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "db:init": "node scripts/init-db.js",
+    "db:seed": "node scripts/seed-reference.js",
+    "make-admin": "node scripts/make-admin.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.1",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.4.0",
+    "nodemailer": "^10.1.2",
+    "pg": "^8.23.1",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}
