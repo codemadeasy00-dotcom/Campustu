@@ -47,3 +47,10 @@ app.use(notFound);
 app.use(errorHandler);
 
 module.exports = app;
+
+const collegeRoutes = require('./routes/colleges');
+
+// Register API route
+app.use('/api/colleges', collegeRoutes);
+
+app.use('/api/me/college', require('./routes/me-college'));
