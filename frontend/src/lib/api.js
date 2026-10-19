@@ -2,7 +2,8 @@
 // If you already have an authenticated fetch helper, use that and delete this file.
 // The token line is a PLACEHOLDER: read your login token/session the way your passwordless login stores it.
 
-const API = import.meta.env.VITE_API_URL;
+const API_BASE_URL =
+  (import.meta.env && import.meta.env.VITE_API_URL) || 'http://localhost:4000'
 
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem('campustu_token'); // TODO: replace with your real auth storage

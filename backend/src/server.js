@@ -15,3 +15,15 @@ function shutdown() {
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+
+// Inside backend/src/server.js
+
+require('dotenv').config();
+const app = require('./app');
+
+const PORT = process.env.PORT || 4000;
+
+app.listen(PORT, () => {
+  console.log(`CampusKit API listening on port ${PORT} (development)`);
+});

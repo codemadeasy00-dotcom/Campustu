@@ -50,9 +50,10 @@ module.exports = app;
 
 const collegeRoutes = require('./routes/colleges');
 
-// Register API route
-app.use('/api/colleges', collegeRoutes);
-
-app.use('/api/me/college', require('./routes/me-college'));
-// Mount the colleges location & search routes
+// --- ADD THIS LINE FOR LOCATION & SEARCH ---
 app.use('/api/colleges', require('./routes/colleges'));
+
+// Also ensure your me-college route is mounted if you haven't already:
+app.use('/api/me/college', require('./routes/me-college'));
+
+module.exports = app;

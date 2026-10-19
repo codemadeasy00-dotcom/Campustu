@@ -92,7 +92,10 @@ export const metaApi = {
 }
 
 export const collegesApi = {
-  list: (q = '') => request(`/colleges${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  list: (q = '') => request(`/api/colleges${q ? `?q=\${encodeURIComponent(q)}` : ''}`),
+  nearby: (lat, lng, limit = 10) => request(`/api/colleges/nearby?lat=${lat}&lng=${lng}&limit=${limit}`),
+  search: (q) => request(`/api/colleges/search?q=${encodeURIComponent(q)}`),
+  geocode: (q) => request(`/api/colleges/geocode?q=${encodeURIComponent(q)}`),
 }
 
 export const itemsApi = {
