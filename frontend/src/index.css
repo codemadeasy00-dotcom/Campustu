@@ -1,5 +1,34 @@
 @import "tailwindcss";
 
+@theme {
+  --color-brand-50: #eef9f9;
+  --color-brand-100: #d5f0ef;
+  --color-brand-200: #a9ded9;
+  --color-brand-400: #4fa8b3;
+  --color-brand-600: #1f6f85;
+  --color-brand-700: #175a6d;
+  --color-navy: #28509e;
+  --color-cream: #fbf8ef;
+}
+
+/* Teal gingham background, like the design reference. Two see-through stripe layers
+   cross each other, which makes the darker squares. */
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  background-color: var(--color-cream);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(122, 201, 198, 0.34) 0 34px, transparent 34px 80px),
+    repeating-linear-gradient(90deg, rgba(122, 201, 198, 0.34) 0 34px, transparent 34px 80px);
+  background-attachment: fixed;
+  @apply text-slate-900 antialiased;
+}
+
+/* The chunky logo lettering: dark blue letters with a light teal outline. */
+.wordmark {
+  font-family: 'Fredoka', ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-navy);
+  -webkit-text-stroke: 7px #8fd0cc;
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 rgba(23, 90, 109, 0.35);
 }

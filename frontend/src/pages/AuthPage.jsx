@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { authApi, metaApi, errorMessage } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
-import { Alert, Button, Field, inputClass } from '../components/ui.jsx'
+import { Alert, Button, Field, Icons, PillInput, inputClass } from '../components/ui.jsx'
+import CollegePicker from '../components/CollegePicker.jsx'
+import Wordmark from '../components/Wordmark.jsx'
 
 const RESEND_SECONDS = 60
 
@@ -14,9 +16,11 @@ export default function AuthPage({ mode }) {
   const location = useLocation()
   const redirectTo = location.state?.from || '/'
 
-  const [step, setStep] = useState('details') // 'details' -> 'code'
-  const [form, setForm] = useState({ email: '', full_name: '', display_name: '', branch_id: '', admission_year: '' })
+  const [sent, setSent] = useState(false) // has a code been requested yet?
+  const [form, setForm] = useState({ email: '', full_name: '', display_name: '', branch: '', branch_other: '', admission_year: '' })
+  const [college, setCollege] = useState(null)
   const [code, setCode] = useState('')
+  const [showCode, setShowCode] = useState(false)
   const [branches, setBranches] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -40,30 +44,34 @@ export default function AuthPage({ mode }) {
   if (user) return <Navigate to="/" replace />
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
+  const email = form.email.trim().toLowerCase()
+
+  function buildSignupPayload() {
+    const payload = { email, full_name: form.full_name.trim(), display_name: form.display_name.trim() }
+    if (college?.isNew) {
+      payload.new_college = { name: college.name.trim(), city: college.city.trim(), ...(college.state?.trim() ? { state: college.state.trim() } : {}) }
+    } else if (college) {
+      payload.college_id = college.id
+    }
+    if (form.branch === 'other') payload.branch_other = form.branch_other.trim()
+    else if (form.branch) payload.branch_id = Number(form.branch)
+    if (form.admission_year) payload.admission_year = Number(form.admission_year)
+    return payload
+  }
 
   async function sendCode() {
-    const email = form.email.trim().toLowerCase()
-    const payload = isSignup
-      ? {
-          email,
-          full_name: form.full_name.trim(),
-          display_name: form.display_name.trim(),
-          ...(form.branch_id ? { branch_id: Number(form.branch_id) } : {}),
-          ...(form.admission_year ? { admission_year: Number(form.admission_year) } : {}),
-        }
-      : { email }
-    const res = isSignup ? await authApi.signup(payload) : await authApi.login(payload)
+    if (isSignup && !college) throw new Error('Choose your college, or add it if it is not listed')
+    const res = isSignup ? await authApi.signup(buildSignupPayload()) : await authApi.login({ email })
     setNotice(res.message)
     setCooldown(RESEND_SECONDS)
+    setSent(true)
   }
 
-  async function onSubmitDetails(e) {
-    e.preventDefault()
+  async function run(action) {
     setError('')
     setBusy(true)
     try {
-      await sendCode()
-      setStep('code')
+      await action()
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -71,126 +79,139 @@ export default function AuthPage({ mode }) {
     }
   }
 
-  async function onResend() {
-    setError('')
-    setBusy(true)
-    try {
-      await sendCode()
-    } catch (err) {
-      setError(errorMessage(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const onSend = (e) => { e?.preventDefault(); return run(sendCode) }
 
-  async function onVerify(e) {
+  const onVerify = (e) => {
     e.preventDefault()
-    setError('')
-    setBusy(true)
-    try {
-      const { token, user: me } = await authApi.verify({ email: form.email.trim().toLowerCase(), code })
+    return run(async () => {
+      const { token, user: me } = await authApi.verify({ email, code })
       signIn(token, me)
       navigate(redirectTo, { replace: true })
-    } catch (err) {
-      setError(errorMessage(err))
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
+  const resendLabel = cooldown > 0 ? `${cooldown}s` : sent ? 'Resend' : 'Send code'
+  const sendButton = (
+    <button
+      type="button"
+      onClick={onSend}
+      disabled={busy || cooldown > 0 || !email.includes('@')}
+      className="shrink-0 rounded-full bg-brand-100 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-200 disabled:opacity-50"
+    >
+      {busy && !sent ? '…' : resendLabel}
+    </button>
+  )
+
+  const codeField = (
+    <PillInput
+      icon={Icons.keypad}
+      placeholder="Verification Code"
+      inputMode="numeric"
+      autoComplete="one-time-code"
+      maxLength={6}
+      disabled={!sent}
+      type={showCode ? 'text' : 'password'}
+      value={code}
+      onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+      right={
+        <button type="button" onClick={() => setShowCode((v) => !v)} className="text-brand-600" aria-label={showCode ? 'Hide code' : 'Show code'}>
+          {showCode ? Icons.eyeOff : Icons.eye}
+        </button>
+      }
+    />
+  )
+
+  const verifyButton = (
+    <Button type="submit" disabled={busy || !sent || code.length !== 6} className="w-full py-3.5 text-lg">
+      {busy && sent ? 'Checking…' : 'Verify & Continue'}
+    </Button>
+  )
+
   return (
-    <div className="mx-auto max-w-md">
-      <h1 className="text-2xl font-bold">{isSignup ? 'Create your account' : 'Log in'}</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        {isSignup ? 'No password needed: we email you a 6-digit code.' : 'We will email you a 6-digit code.'}
-      </p>
+    <div className="mx-auto max-w-sm py-4">
+      <div className="mb-8 text-center">
+        <Wordmark className="text-5xl" />
+      </div>
 
-      <div className="mt-6 space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
+        {sent && notice && <Alert kind="info">{notice}</Alert>}
 
-        {step === 'details' ? (
-          <form onSubmit={onSubmitDetails} className="space-y-4">
-            <Field label="Email" required>
-              <input type="email" required autoComplete="email" className={inputClass} value={form.email} onChange={set('email')} />
-            </Field>
-
-            {isSignup && (
-              <>
-                <Field label="Full name" required hint="Used only so your ID card can be matched when you meet someone. Never shown to others.">
-                  <input required minLength={2} maxLength={100} autoComplete="name" className={inputClass} value={form.full_name} onChange={set('full_name')} />
-                </Field>
-                <Field label="Display name" required hint="This is what other students see.">
-                  <input required minLength={2} maxLength={40} className={inputClass} value={form.display_name} onChange={set('display_name')} />
-                </Field>
-                <Field label="Branch">
-                  <select className={inputClass} value={form.branch_id} onChange={set('branch_id')}>
-                    <option value="">{branches.length ? 'Select your branch' : 'Not available yet'}</option>
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Year you joined college" hint="We use it to work out your current semester.">
-                  <select className={inputClass} value={form.admission_year} onChange={set('admission_year')}>
-                    <option value="">Select year</option>
-                    {years.map((y) => (
-                      <option key={y} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </>
-            )}
-
-            <Button type="submit" disabled={busy} className="w-full">
-              {busy ? 'Sending code…' : 'Send me a code'}
-            </Button>
+        {!isSignup ? (
+          /* ---- Log in: matches the design: email, code, verify ---- */
+          <form onSubmit={onVerify} className="space-y-5">
+            <PillInput
+              icon={Icons.user}
+              type="email"
+              placeholder="Email"
+              autoComplete="email"
+              required
+              value={form.email}
+              onChange={set('email')}
+              right={sendButton}
+            />
+            {codeField}
+            {verifyButton}
           </form>
         ) : (
-          <form onSubmit={onVerify} className="space-y-4">
-            {notice && <Alert kind="info">{notice}</Alert>}
-            <Field label="6-digit code" required>
-              <input
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="\d{6}"
-                maxLength={6}
-                required
-                autoFocus
-                className={`${inputClass} text-center text-xl tracking-[0.5em]`}
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-              />
+          /* ---- Sign up: details first, then the same code box ---- */
+          <form onSubmit={onVerify} className="space-y-4 rounded-3xl border border-white/70 bg-white/80 p-5 shadow-lg backdrop-blur">
+            <Field label="College" required>
+              <CollegePicker value={college} onChange={setCollege} />
             </Field>
-            <Button type="submit" disabled={busy || code.length !== 6} className="w-full">
-              {busy ? 'Checking…' : 'Verify and continue'}
-            </Button>
-            <div className="flex items-center justify-between text-sm">
-              <button type="button" className="text-slate-500 underline" onClick={() => { setStep('details'); setCode(''); setError('') }}>
-                Use a different email
-              </button>
-              <button type="button" className="text-indigo-700 underline disabled:text-slate-400 disabled:no-underline" disabled={busy || cooldown > 0} onClick={onResend}>
-                {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
-              </button>
-            </div>
+            <Field label="College email" required>
+              <input type="email" required autoComplete="email" className={inputClass} value={form.email} onChange={set('email')} />
+            </Field>
+            <Field label="Full name" required hint="Used only so your ID card can be matched when you meet someone. Never shown to others.">
+              <input required minLength={2} maxLength={100} autoComplete="name" className={inputClass} value={form.full_name} onChange={set('full_name')} />
+            </Field>
+            <Field label="Display name" required hint="This is what other students see.">
+              <input required minLength={2} maxLength={40} className={inputClass} value={form.display_name} onChange={set('display_name')} />
+            </Field>
+            <Field label="Branch">
+              <select className={inputClass} value={form.branch} onChange={set('branch')}>
+                <option value="">Select your branch</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+                <option value="other">Other (type your own)</option>
+              </select>
+            </Field>
+            {form.branch === 'other' && (
+              <input className={inputClass} placeholder="Your branch" required minLength={2} maxLength={60} value={form.branch_other} onChange={set('branch_other')} />
+            )}
+            <Field label="Year you joined college" hint="We use it to work out your current semester.">
+              <select className={inputClass} value={form.admission_year} onChange={set('admission_year')}>
+                <option value="">Select year</option>
+                {years.map((y) => (<option key={y} value={y}>{y}</option>))}
+              </select>
+            </Field>
+
+            {!sent ? (
+              <Button type="button" onClick={onSend} disabled={busy || !email || !form.full_name || !form.display_name} className="w-full">
+                {busy ? 'Sending code…' : 'Send me a code'}
+              </Button>
+            ) : (
+              <div className="space-y-3 border-t border-slate-200 pt-4">
+                {codeField}
+                {verifyButton}
+                <button type="button" onClick={onSend} disabled={busy || cooldown > 0} className="text-xs text-brand-700 underline disabled:text-slate-400 disabled:no-underline">
+                  {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+                </button>
+              </div>
+            )}
           </form>
         )}
       </div>
 
-      <p className="mt-4 text-center text-sm text-slate-600">
+      <p className="mt-6 text-center text-sm text-slate-700">
         {isSignup ? (
-          <>
-            Already have an account? <Link to="/login" className="text-indigo-700 underline">Log in</Link>
-          </>
+          <>Already have an account? <Link to="/login" className="font-semibold text-brand-700 underline">Log in</Link></>
         ) : (
-          <>
-            New here? <Link to="/signup" className="text-indigo-700 underline">Create an account</Link>
-          </>
+          <>Don't have an account? <Link to="/signup" className="font-semibold text-brand-700 underline">Sign Up</Link></>
         )}
       </p>
+      <p className="mt-2 text-center text-xs text-slate-500">No password: we email you a 6-digit code each time.</p>
     </div>
   )
 }

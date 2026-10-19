@@ -91,7 +91,12 @@ export const metaApi = {
   get: () => request('/meta'),
 }
 
+export const collegesApi = {
+  list: (q = '') => request(`/colleges${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+}
+
 export const itemsApi = {
+  list: (limit = 12) => request(`/items?limit=${limit}`),
   create: (formData) => request('/items', { method: 'POST', formData }),
   get: (id) => request(`/items/${encodeURIComponent(id)}`),
   mine: () => request('/items/mine'),

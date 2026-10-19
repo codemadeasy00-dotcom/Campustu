@@ -15,7 +15,7 @@ export default function NewListing() {
   const [loadError, setLoadError] = useState('')
   const [form, setForm] = useState({
     title: '', item_type_id: '', category_id: '', condition: 'good', price: '',
-    description: '', branch_id: '', semester: '', preferred_spot_id: '',
+    description: '', branch_id: '', semester: '', preferred_place: '',
   })
   const [photos, setPhotos] = useState([]) // [{ file, url }]
   const [error, setError] = useState('')
@@ -33,7 +33,6 @@ export default function NewListing() {
 
   const frozen = user.status !== 'active'
   const categories = meta.categories.filter((c) => c.scope !== 'lost_found')
-  const spots = meta.campus_spots.filter((s) => s.safe_for_handover)
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
   function addPhotos(e) {
@@ -84,9 +83,9 @@ export default function NewListing() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="text-2xl font-bold">Sell an item</h1>
+      <h1 className="text-2xl font-bold text-brand-700">Sell an item</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Students pay you directly when you meet. This site never handles money.
+        Visible to students of {user.college?.name || 'your college'}. They pay you directly when you meet; this site never handles money.
       </p>
 
       <div className="mt-4 space-y-3">
@@ -99,7 +98,7 @@ export default function NewListing() {
         )}
       </div>
 
-      <form onSubmit={onSubmit} className="mt-5 space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <form onSubmit={onSubmit} className="mt-5 space-y-4 rounded-3xl border border-white/70 bg-white/85 p-5 shadow-md backdrop-blur">
         {error && <Alert>{error}</Alert>}
 
         <Field label="Title" required>
@@ -161,13 +160,8 @@ export default function NewListing() {
               ))}
             </select>
           </Field>
-          <Field label="Preferred meeting spot">
-            <select className={inputClass} value={form.preferred_spot_id} onChange={set('preferred_spot_id')}>
-              <option value="">Decide in chat</option>
-              {spots.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+          <Field label="Preferred meeting place" hint="A public place on your campus.">
+            <input maxLength={120} className={inputClass} value={form.preferred_place} onChange={set('preferred_place')} placeholder="e.g. main gate" />
           </Field>
         </div>
 
@@ -185,7 +179,7 @@ export default function NewListing() {
               </div>
             ))}
             {photos.length < MAX_PHOTOS && (
-              <label className="flex h-24 w-24 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-center text-xs text-slate-500 hover:border-indigo-400">
+              <label className="flex h-24 w-24 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-center text-xs text-slate-500 hover:border-brand-400">
                 + Add photo
                 <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={addPhotos} />
               </label>

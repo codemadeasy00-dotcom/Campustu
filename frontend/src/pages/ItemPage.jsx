@@ -28,7 +28,6 @@ export default function ItemPage() {
   const itemType = meta.item_types.find((t) => t.id === item.item_type_id)
   const category = meta.categories.find((c) => c.id === item.category_id)
   const branch = meta.branches.find((b) => b.id === item.branch_id)
-  const spot = meta.campus_spots.find((s) => s.id === item.preferred_spot_id)
   const isOwner = user && user.id === item.seller.id
 
   return (
@@ -40,7 +39,7 @@ export default function ItemPage() {
         {item.photos.length > 1 && (
           <div className="mt-3 flex gap-2">
             {item.photos.map((url, i) => (
-              <button key={url} onClick={() => setSelected(i)} className={`h-16 w-16 overflow-hidden rounded-lg border-2 ${i === selected ? 'border-indigo-600' : 'border-transparent'}`}>
+              <button key={url} onClick={() => setSelected(i)} className={`h-16 w-16 overflow-hidden rounded-lg border-2 ${i === selected ? 'border-brand-600' : 'border-transparent'}`}>
                 <img src={url} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
               </button>
             ))}
@@ -51,7 +50,7 @@ export default function ItemPage() {
       <div>
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${STATUS_STYLES[item.status] || ''}`}>{item.status}</span>
         <h1 className="mt-2 text-2xl font-bold">{item.title}</h1>
-        <p className="mt-1 text-3xl font-bold text-indigo-700">{formatPrice(item.price)}</p>
+        <p className="mt-1 text-3xl font-bold text-brand-700">{formatPrice(item.price)}</p>
         <p className="text-xs text-slate-500">Asking price. Pay the seller directly when you meet.</p>
 
         <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
@@ -60,7 +59,7 @@ export default function ItemPage() {
           {category && (<><dt className="text-slate-500">Category</dt><dd>{category.name}</dd></>)}
           {branch && (<><dt className="text-slate-500">Branch</dt><dd>{branch.name}</dd></>)}
           {item.semester && (<><dt className="text-slate-500">Semester</dt><dd>{item.semester}</dd></>)}
-          {spot && (<><dt className="text-slate-500">Meet at</dt><dd>{spot.name}</dd></>)}
+          {item.preferred_place && (<><dt className="text-slate-500">Meet at</dt><dd>{item.preferred_place}</dd></>)}
         </dl>
 
         {item.description && <p className="mt-5 whitespace-pre-line text-sm text-slate-700">{item.description}</p>}
@@ -84,7 +83,7 @@ export default function ItemPage() {
 
         {isOwner && (
           <p className="mt-4 text-sm text-slate-600">
-            This is your listing. <Link to="/my-listings" className="text-indigo-700 underline">See all your listings</Link>
+            This is your listing. <Link to="/my-listings" className="text-brand-700 underline">See all your listings</Link>
           </p>
         )}
       </div>
