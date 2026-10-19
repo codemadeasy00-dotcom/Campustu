@@ -40,6 +40,7 @@ const authLimiter = rateLimit({
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/auth', authLimiter, require('./routes/auth'));
 app.use('/meta', require('./routes/meta'));
+app.use('/colleges', require('./routes/colleges'));
 app.use('/items', require('./routes/items'));
 
 app.use(notFound);

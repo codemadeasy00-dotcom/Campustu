@@ -1,6 +1,40 @@
 {
-  "branches": [],
-  "categories": [],
-  "item_types": [],
-  "campus_spots": []
+  "branches": [
+    { "code": "CSE",   "name": "Computer Science and Engineering" },
+    { "code": "IT",    "name": "Information Technology" },
+    { "code": "AIDS",  "name": "Artificial Intelligence and Data Science" },
+    { "code": "AIML",  "name": "Artificial Intelligence and Machine Learning" },
+    { "code": "ENTC",  "name": "Electronics and Telecommunication / Communication" },
+    { "code": "EE",    "name": "Electrical Engineering" },
+    { "code": "ME",    "name": "Mechanical Engineering" },
+    { "code": "CE",    "name": "Civil Engineering" },
+    { "code": "CHE",   "name": "Chemical Engineering" },
+    { "code": "BT",    "name": "Biotechnology" },
+    { "code": "INST",  "name": "Instrumentation Engineering" },
+    { "code": "PROD",  "name": "Production / Industrial Engineering" },
+    { "code": "AUTO",  "name": "Automobile Engineering" },
+    { "code": "MECH",  "name": "Mechatronics / Robotics" },
+    { "code": "AERO",  "name": "Aerospace Engineering" }
+  ],
+  "categories": [
+    { "slug": "drawing",    "name": "Drawing and engineering graphics", "scope": "marketplace" },
+    { "slug": "calculator", "name": "Calculators",                      "scope": "marketplace" },
+    { "slug": "lab-wear",   "name": "Lab wear",                         "scope": "marketplace" },
+    { "slug": "books",      "name": "Notebooks, graph books and books",  "scope": "marketplace" },
+    { "slug": "stationery", "name": "Stationery",                       "scope": "marketplace" },
+    { "slug": "id-docs",    "name": "ID cards and documents",           "scope": "lost_found" },
+    { "slug": "electronics","name": "Phones, earphones and chargers",   "scope": "lost_found" },
+    { "slug": "bags",       "name": "Bags, bottles and wallets",        "scope": "lost_found" },
+    { "slug": "keys",       "name": "Keys",                             "scope": "lost_found" },
+    { "slug": "other",      "name": "Other",                            "scope": "both" }
+  ],
+  "item_types": [
+    { "category_slug": "drawing",    "name": "Mini drafter" },
+    { "category_slug": "drawing",    "name": "Drawing board" },
+    { "category_slug": "drawing",    "name": "Set squares and instrument box" },
+    { "category_slug": "calculator", "name": "Scientific calculator" },
+    { "category_slug": "lab-wear",   "name": "Lab coat" },
+    { "category_slug": "books",      "name": "Graph book" },
+    { "category_slug": "books",      "name": "Engineering textbook" }
+  ]
 }

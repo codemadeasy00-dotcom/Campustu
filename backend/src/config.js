@@ -9,8 +9,6 @@ const int = (name, fallback) => {
   const v = process.env[name];
   return v === undefined || v === '' ? fallback : Number(v);
 };
-const list = (name) =>
-  (process.env[name] || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
 const env = process.env.NODE_ENV || 'development';
 const isProd = env === 'production';
@@ -25,7 +23,6 @@ const config = {
   jwtSecret: required('JWT_SECRET'),
   otpSecret: required('OTP_SECRET'),
   corsOrigins: (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean),
-  allowedEmailDomains: list('ALLOWED_EMAIL_DOMAINS'),
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: int('SMTP_PORT', 587),

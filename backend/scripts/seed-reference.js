@@ -1,4 +1,4 @@
-// Loads YOUR REAL reference data (branches, categories, item types, campus spots)
+// Loads YOUR REAL reference data (branches, categories, item types). Colleges and their campus places are added by students/admin, not here
 // from db/reference-data.json. Usage:  npm run db:seed   or   node scripts/seed-reference.js other.json
 // Safe to re-run: existing rows are left alone.
 const fs = require('fs');
@@ -29,13 +29,6 @@ const file = process.argv[2] || path.join(__dirname, '..', '..', 'db', 'referenc
       await client.query(
         'INSERT INTO item_types (category_id, name, description) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING',
         [cat.rows[0].id, t.name, t.description || null]
-      );
-    }
-    for (const s of data.campus_spots || []) {
-      await client.query(
-        `INSERT INTO campus_spots (name, description, lat, lng, safe_for_handover)
-         VALUES ($1, $2, $3, $4, $5) ON CONFLICT (name) DO NOTHING`,
-        [s.name, s.description || null, s.lat, s.lng, s.safe_for_handover !== false]
       );
     }
     await client.query('COMMIT');

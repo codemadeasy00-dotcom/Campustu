@@ -3,7 +3,7 @@ const config = require('../config');
 const { query } = require('../db');
 const { AppError } = require('../utils/errors');
 
-const USER_COLUMNS = 'id, email, full_name, display_name, role, status, branch_id, admission_year';
+const USER_COLUMNS = 'id, email, full_name, display_name, role, status, branch_id, admission_year, college_id';
 
 // Reads "Authorization: Bearer <token>", then loads the user FRESH from the database,
 // so a frozen/banned account is blocked immediately, not when the token expires.
@@ -37,6 +37,14 @@ function requireActive(req, _res, next) {
   next();
 }
 
+// Marketplace and lost & found only exist inside a college.
+function requireCollege(req, _res, next) {
+  if (!req.user.college_id) {
+    throw new AppError(403, 'Choose your college before using this feature', 'COLLEGE_REQUIRED')
+  }
+  next()
+}
+
 function requireAdmin(req, _res, next) {
   if (req.user.role !== 'admin') throw new AppError(403, 'Admins only');
   next();
@@ -49,4 +57,4 @@ function signToken(userId) {
   });
 }
 
-module.exports = { requireAuth, requireActive, requireAdmin, signToken };
+module.exports = { requireAuth, requireActive, requireCollege, requireAdmin, signToken };
