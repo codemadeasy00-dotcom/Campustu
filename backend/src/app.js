@@ -55,5 +55,5 @@ app.use('/api/colleges', require('./routes/colleges'));
 
 // Also ensure your me-college route is mounted if you haven't already:
 app.use('/api/me/college', require('./routes/me-college'));
-
+app.use('/api/colleges', require('./routes/colleges'));
 module.exports = app;
