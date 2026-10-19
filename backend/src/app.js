@@ -14,9 +14,7 @@ app.use(helmet());
 app.use(cors({ origin: config.corsOrigins, methods: ['GET', 'POST', 'PATCH', 'DELETE'] }));
 app.use(express.json({ limit: '100kb' }));
 
-// Uploaded photos served from local disk (only when no S3 bucket is configured).
-// nosniff stops browsers from treating a file as something it is not.
-// cross-origin is needed so the frontend (another origin) can show the images.
+// Uploaded photos served from local disk
 if (!storage.useS3) {
   app.use(
     '/uploads',
@@ -28,7 +26,7 @@ if (!storage.useS3) {
   );
 }
 
-// Slow down guessing and email-spamming on the auth endpoints.
+// Rate limiter for auth
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: config.isProd ? 30 : 500,
@@ -38,22 +36,15 @@ const authLimiter = rateLimit({
 });
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+
+// API Routes (Mounted under /api/ to match frontend requests)
 app.use('/auth', authLimiter, require('./routes/auth'));
 app.use('/meta', require('./routes/meta'));
-app.use('/colleges', require('./routes/colleges'));
+app.use('/api/colleges', require('./routes/colleges'));
+app.use('/api/me/college', require('./routes/me-college'));
 app.use('/items', require('./routes/items'));
 
 app.use(notFound);
 app.use(errorHandler);
 
-module.exports = app;
-
-const collegeRoutes = require('./routes/colleges');
-
-// --- ADD THIS LINE FOR LOCATION & SEARCH ---
-app.use('/api/colleges', require('./routes/colleges'));
-
-// Also ensure your me-college route is mounted if you haven't already:
-app.use('/api/me/college', require('./routes/me-college'));
-app.use('/api/colleges', require('./routes/colleges'));
 module.exports = app;

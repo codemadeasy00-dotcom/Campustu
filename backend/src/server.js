@@ -1,4 +1,5 @@
 const fs = require('fs');
+require('dotenv').config();
 const config = require('./config');
 const storage = require('./storage');
 const { pool } = require('./db');
@@ -6,8 +7,10 @@ const app = require('./app');
 
 if (!storage.useS3) fs.mkdirSync(storage.root, { recursive: true });
 
-const server = app.listen(config.port, () => {
-  console.log(`CampusKit API listening on port ${config.port} (${config.env})`);
+const PORT = config.port || process.env.PORT || 4000;
+
+const server = app.listen(PORT, () => {
+  console.log(`CampusKit API listening on port ${PORT} (${config.env || 'development'})`);
 });
 
 function shutdown() {
@@ -15,15 +18,3 @@ function shutdown() {
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-
-
-// Inside backend/src/server.js
-
-require('dotenv').config();
-const app = require('./app');
-
-const PORT = process.env.PORT || 4000;
-
-app.listen(PORT, () => {
-  console.log(`CampusKit API listening on port ${PORT} (development)`);
-});
