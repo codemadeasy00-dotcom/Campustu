@@ -54,3 +54,5 @@ const collegeRoutes = require('./routes/colleges');
 app.use('/api/colleges', collegeRoutes);
 
 app.use('/api/me/college', require('./routes/me-college'));
+// Mount the colleges location & search routes
+app.use('/api/colleges', require('./routes/colleges'));
