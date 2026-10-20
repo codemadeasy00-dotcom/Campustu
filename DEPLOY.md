@@ -60,7 +60,7 @@ A paused project means your site is down until you un-pause it in the dashboard.
    JWT_SECRET=<any long random text, 32+ characters>
    OTP_SECRET=<another long random text>
    ```
-   Leave the S3 and SMTP lines empty. (This `.env` is only so the commands below work. Never commit it.)
+   Leave the cloud-photo and SMTP lines empty. (This `.env` is only so the commands below work. Never commit it.)
 2. Run:
    ```
    npm install
@@ -99,8 +99,9 @@ CORS_ORIGIN=                    (the website address, once you have one)
 SMTP_HOST=...  SMTP_PORT=587  SMTP_USER=...  SMTP_PASS=...  MAIL_FROM="CampusKit <your-verified-sender>"
 S3_BUCKET=item-photos  S3_REGION=...  S3_ENDPOINT=...  S3_ACCESS_KEY_ID=...  S3_SECRET_ACCESS_KEY=...
 S3_PUBLIC_BASE_URL=https://<project-ref>.supabase.co/storage/v1/object/public/item-photos
+CLOUDINARY_CLOUD_NAME=...  CLOUDINARY_API_KEY=...  CLOUDINARY_API_SECRET=...
 ```
-The API refuses to start in production if email, bucket or strong secrets are missing. That is deliberate:
+Configure either the S3 variables or all three Cloudinary variables for persistent photo storage. When both are configured, new photos use Cloudinary and existing untagged S3 keys continue to use S3. The API refuses to start in production if email, persistent photo storage or strong secrets are missing. That is deliberate:
 read the Render log for the exact missing name.
 
 ## Step 6 - Check it works
