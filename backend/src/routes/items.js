@@ -227,4 +227,38 @@ router.delete('/:id', async (req, res) => {
   res.json({ success: true, message: 'Listing withdrawn' })
 })
 
+// PATCH /items/:id/status - Toggle item status ('available' or 'sold')
+router.patch('/:id/status', authMiddleware, async (req, res, next) => {
+  try {
+    const itemId = req.params.id;
+    const userId = req.user.id;
+    const { status } = req.body;
+
+    if (!['available', 'sold'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status value. Use "available" or "sold".' });
+    }
+
+    // Verify ownership
+    const check = await db.query('SELECT seller_id FROM items WHERE id = \$1', [itemId]);
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    if (check.rows[0].seller_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized to update this item' });
+    }
+
+    const updateQuery = `
+      UPDATE items 
+      SET status = $1, updated_at = NOW() 
+      WHERE id = $2 
+      RETURNING *;
+    `;
+    const result = await db.query(updateQuery, [status, itemId]);
+
+    return res.json({ success: true, item: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router
