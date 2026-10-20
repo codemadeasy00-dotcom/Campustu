@@ -34,8 +34,8 @@ export default function MyListings() {
     setBusyItemId(item.id)
     setActionError('')
     try {
-      const { item: updated } = await itemsApi.remove(item.id)
-      setItems((current) => current.map((listing) => listing.id === item.id ? updated : listing))
+      await itemsApi.remove(item.id)
+      setItems((current) => current.map((listing) => listing.id === item.id ? { ...listing, status: 'withdrawn' } : listing))
     } catch (err) {
       setActionError(errorMessage(err))
     } finally {
