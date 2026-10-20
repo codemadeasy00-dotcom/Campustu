@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { itemsApi, errorMessage } from '../services/api.js'
 import { STATUS_STYLES, formatPrice } from '../lib/format.js'
+import { getImageUrl } from '../lib/imageUrl.js'
 import { Alert, PageLoading } from '../components/ui.jsx'
 
 export default function MyListings() {
@@ -29,7 +30,7 @@ export default function MyListings() {
             <li key={item.id}>
               <Link to={`/items/${item.id}`} className="block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow">
                 <div className="aspect-square bg-slate-100">
-                  {item.photos[0] && <img src={item.photos[0]} alt="" className="h-full w-full object-cover" />}
+                  {item.photos[0] && <img src={getImageUrl(item.photos[0])} alt="" className="h-full w-full object-cover" />}
                 </div>
                 <div className="p-3">
                   <div className="truncate font-semibold">{item.title}</div>

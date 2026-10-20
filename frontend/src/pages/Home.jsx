@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { itemsApi, metaApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { formatPrice } from '../lib/format.js'
+import { getImageUrl } from '../lib/imageUrl.js'
 import { Button, inputClass } from '../components/ui.jsx'
 import Wordmark from '../components/Wordmark.jsx'
 
@@ -90,7 +91,7 @@ function Dashboard() {
               {recent.map((item) => (
                 <li key={item.id}>
                   <Link to={`/items/${item.id}`} className="block overflow-hidden rounded-2xl border border-white/70 bg-white shadow-sm hover:shadow-md">
-                    <div className="aspect-square bg-slate-100">{item.photos[0] && <img src={item.photos[0]} alt="" className="h-full w-full object-cover" />}</div>
+                    <div className="aspect-square bg-slate-100">{item.photos[0] && <img src={getImageUrl(item.photos[0])} alt="" className="h-full w-full object-cover" />}</div>
                     <div className="p-2.5">
                       <div className="truncate text-sm font-semibold">{item.title}</div>
                       <div className="text-sm font-bold text-brand-700">{formatPrice(item.price)}</div>

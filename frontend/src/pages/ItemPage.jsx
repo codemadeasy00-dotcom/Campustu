@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { itemsApi, metaApi, errorMessage } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { STATUS_STYLES, conditionLabel, formatPrice } from '../lib/format.js'
+import { getImageUrl } from '../lib/imageUrl.js'
 import { Alert, PageLoading } from '../components/ui.jsx'
 
 export default function ItemPage() {
@@ -34,13 +35,13 @@ export default function ItemPage() {
     <div className="grid gap-8 md:grid-cols-2">
       <div>
         <div className="aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {item.photos[selected] && <img src={item.photos[selected]} alt={item.title} className="h-full w-full object-contain" />}
+          {item.photos[selected] && <img src={getImageUrl(item.photos[selected])} alt={item.title} className="h-full w-full object-contain" />}
         </div>
         {item.photos.length > 1 && (
           <div className="mt-3 flex gap-2">
             {item.photos.map((url, i) => (
               <button key={url} onClick={() => setSelected(i)} className={`h-16 w-16 overflow-hidden rounded-lg border-2 ${i === selected ? 'border-brand-600' : 'border-transparent'}`}>
-                <img src={url} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                <img src={getImageUrl(url)} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
               </button>
             ))}
           </div>

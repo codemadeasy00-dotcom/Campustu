@@ -45,6 +45,9 @@ app.use('/api/colleges', require('./routes/colleges'));
 app.use('/api/me/college', require('./routes/me-college'));
 app.use('/items', require('./routes/items'));
 
+// Serve uploaded images statically
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 app.use(notFound);
 app.use(errorHandler);
 
