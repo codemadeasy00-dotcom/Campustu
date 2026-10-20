@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { itemsApi, errorMessage } from '../services/api.js'
 import { STATUS_STYLES, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
-import { Alert, Button, PageLoading } from '../components/ui.jsx'
+import { Alert, PageLoading } from '../components/ui.jsx'
 
 export default function MyListings() {
   const [items, setItems] = useState(null)
@@ -67,21 +67,31 @@ export default function MyListings() {
                   <div className="truncate font-semibold">{item.title}</div>
                   <div className="mt-1 flex items-center justify-between text-sm">
                     <span className="font-bold text-brand-700">{formatPrice(item.price)}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${STATUS_STYLES[item.status] || ''}`}>{item.status}</span>
                   </div>
                 </div>
               </Link>
-              <div className="flex flex-wrap gap-2 border-t border-slate-100 p-3">
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-3 py-3">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  item.status === 'available'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : item.status === 'sold'
+                      ? 'bg-amber-100 text-amber-800'
+                      : STATUS_STYLES[item.status] || 'bg-slate-100 text-slate-700'
+                }`}>
+                  {item.status === 'available' ? 'Available' : item.status === 'sold' ? 'Sold' : item.status}
+                </span>
+                <div className="flex items-center gap-1.5">
                 {['available', 'sold'].includes(item.status) && (
-                  <Button type="button" variant="secondary" className="px-3 py-1.5 text-xs" disabled={busyItemId === item.id} onClick={() => toggleStatus(item)}>
-                    {busyItemId === item.id ? 'Updating…' : `Mark as ${item.status === 'available' ? 'sold' : 'available'}`}
-                  </Button>
-                )}
-                {item.status === 'available' && (
-                  <button type="button" disabled={busyItemId === item.id} onClick={() => withdrawItem(item)} className="rounded-full px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">
-                    Remove listing
+                  <button type="button" disabled={busyItemId === item.id} onClick={() => toggleStatus(item)} className="rounded px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50">
+                    {busyItemId === item.id ? 'Updating…' : item.status === 'sold' ? 'Available' : 'Sold'}
                   </button>
                 )}
+                {item.status === 'available' && (
+                  <button type="button" disabled={busyItemId === item.id} onClick={() => withdrawItem(item)} className="rounded px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50">
+                    Delete
+                  </button>
+                )}
+                </div>
               </div>
             </li>
           ))}
