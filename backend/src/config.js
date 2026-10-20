@@ -40,6 +40,11 @@ const config = {
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
     publicBaseUrl: (process.env.S3_PUBLIC_BASE_URL || '').replace(/\/$/, ''),
   },
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+    apiKey: process.env.CLOUDINARY_API_KEY || '',
+    apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+  },
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'http://localhost:4000').replace(/\/$/, ''),
   otp: { ttlMinutes: 10, maxAttempts: 5, resendSeconds: 60 },
   jwtExpiresIn: '7d',
@@ -55,13 +60,18 @@ if (isProd) {
     throw new Error('JWT_SECRET and OTP_SECRET must be at least 32 characters in production');
   }
   if (!config.smtp.host) throw new Error('SMTP_HOST is required in production');
-  if (!config.s3.bucket) {
-    throw new Error('S3_BUCKET is required in production: free hosts delete local files on restart');
+  if (!config.s3.bucket && !config.cloudinary.cloudName) {
+    throw new Error('Configure S3_BUCKET or CLOUDINARY_CLOUD_NAME in production: local files are not persistent');
   }
 }
 
 if (config.s3.bucket && (!config.s3.accessKeyId || !config.s3.secretAccessKey || !config.s3.publicBaseUrl)) {
   throw new Error('S3_BUCKET is set, so S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and S3_PUBLIC_BASE_URL are also required');
+}
+
+const cloudinarySettings = [config.cloudinary.cloudName, config.cloudinary.apiKey, config.cloudinary.apiSecret];
+if (cloudinarySettings.some(Boolean) && cloudinarySettings.some((value) => !value)) {
+  throw new Error('CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET must be set together');
 }
 
 module.exports = config;

@@ -3,9 +3,20 @@
 //   - S3-compatible bucket (when S3_BUCKET is set): Supabase Storage, Cloudflare R2, AWS S3...
 const fs = require('fs/promises');
 const path = require('path');
+const { Readable } = require('stream');
 const config = require('./config');
 
+const useCloudinary = Boolean(config.cloudinary.cloudName);
 const useS3 = Boolean(config.s3.bucket);
+let cloudinary;
+if (useCloudinary) {
+  cloudinary = require('cloudinary').v2;
+  cloudinary.config({
+    cloud_name: config.cloudinary.cloudName,
+    api_key: config.cloudinary.apiKey,
+    api_secret: config.cloudinary.apiSecret,
+  });
+}
 
 // ---------- S3 driver ----------
 let s3, S3Cmds;
@@ -28,19 +39,45 @@ function resolveKey(key) {
 }
 
 async function save(key, buffer) {
+  if (useCloudinary) {
+    const publicId = `campustu/${key.replace(/\.[^/.]+$/, '')}`;
+    return new Promise((resolve, reject) => {
+      const upload = cloudinary.uploader.upload_stream(
+        {
+          public_id: publicId,
+          resource_type: 'image',
+          format: 'webp',
+          overwrite: false,
+          transformation: [{ width: 1600, crop: 'limit', quality: 'auto' }],
+        },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(`cloudinary:${result.public_id}`);
+        }
+      );
+      Readable.from([buffer]).pipe(upload).on('error', reject);
+    });
+  }
+
   if (useS3) {
     await s3.send(new S3Cmds.PutObjectCommand({
       Bucket: config.s3.bucket, Key: key, Body: buffer,
       ContentType: 'image/webp', CacheControl: 'public, max-age=31536000, immutable',
     }));
-    return;
+    return key;
   }
   const full = resolveKey(key);
   await fs.mkdir(path.dirname(full), { recursive: true });
   await fs.writeFile(full, buffer);
+  return key;
 }
 
 async function remove(key) {
+  if (key.startsWith('cloudinary:')) {
+    await cloudinary.uploader.destroy(key.slice('cloudinary:'.length), { resource_type: 'image', invalidate: true });
+    return;
+  }
+
   if (useS3) {
     await s3.send(new S3Cmds.DeleteObjectCommand({ Bucket: config.s3.bucket, Key: key }));
     return;
@@ -48,6 +85,11 @@ async function remove(key) {
   await fs.rm(resolveKey(key), { force: true });
 }
 
-const urlFor = (key) => (useS3 ? `${config.s3.publicBaseUrl}/${key}` : `${config.publicBaseUrl}/uploads/${key}`);
+function urlFor(key) {
+  if (key.startsWith('cloudinary:')) {
+    return cloudinary.url(key.slice('cloudinary:'.length), { secure: true, format: 'webp' });
+  }
+  return useS3 ? `${config.s3.publicBaseUrl}/${key}` : `${config.publicBaseUrl}/uploads/${key}`;
+}
 
-module.exports = { root, useS3, save, remove, urlFor };
+module.exports = { root, useS3, useCloudinary, save, remove, urlFor };

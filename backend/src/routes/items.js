@@ -119,9 +119,13 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
   const itemId = crypto.randomUUID()
   const cleaned = await Promise.all(files.map((f) => processPhoto(f.buffer)))
   const keys = cleaned.map(() => `items/${itemId}/${crypto.randomUUID()}.webp`)
-  await Promise.all(cleaned.map((buf, i) => storage.save(keys[i], buf)))
+  const storedKeys = []
 
   try {
+    for (let i = 0; i < keys.length; i++) {
+      storedKeys.push(await storage.save(keys[i], cleaned[i]))
+    }
+
     await tx(async (db) => {
       // college_id is filled in by a database trigger from the seller's college
       await db.query(
@@ -132,12 +136,12 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
          data.condition, data.price.toFixed(2), data.branch_id ?? null, data.semester ?? null,
          data.preferred_place ?? null]
       )
-      for (let i = 0; i < keys.length; i++) {
-        await db.query('INSERT INTO item_photos (item_id, storage_key, position) VALUES ($1, $2, $3)', [itemId, keys[i], i])
+      for (let i = 0; i < storedKeys.length; i++) {
+        await db.query('INSERT INTO item_photos (item_id, storage_key, position) VALUES ($1, $2, $3)', [itemId, storedKeys[i], i])
       }
     })
   } catch (err) {
-    await Promise.all(keys.map((k) => storage.remove(k).catch(() => {}))) // no orphan files
+    await Promise.all(storedKeys.map((key) => storage.remove(key).catch(() => {}))) // no orphan files
     throw err
   }
 
