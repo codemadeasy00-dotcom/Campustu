@@ -2,7 +2,11 @@ const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
-  port: Number(process.env.SMTP_PORT) || 587,
+  port: Number(process.env.SMTP_PORT) || 2525, // Port 2525 bypasses cloud firewall blocks
+  secure: false,
+  connectionTimeout: 10000, // 10s timeout so the server doesn't freeze
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -10,6 +14,12 @@ const transporter = nodemailer.createTransport({
 });
 
 async function sendOtpEmail(toEmail, code) {
+  // If SMTP credentials aren't set on Render, fallback to logging the code
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.log(`[DEV OTP FALLBACK] Code for ${toEmail}: ${code}`);
+    return;
+  }
+
   const mailOptions = {
     from: process.env.SMTP_FROM || 'Campustu <no-reply@campustu.app>',
     to: toEmail,
