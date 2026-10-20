@@ -2,9 +2,9 @@
 // Usage:  <CollegePicker onSelect={(college) => setCollegeId(college.id)} />
 // Needs in frontend/.env:  VITE_API_URL=https://campustu-backend.onrender.com   (restart `npm run dev` after editing)
 //
-// Exactly two options:
+// Exactly options:
 //   1. A dropdown of our approved colleges with a search box inside it.
-//   2. "I can't find my college": search the map and send it for admin review (saved as pending).
+//   2. "I can't find my college": search the map OR enter details manually for admin review (saved as pending).
 //
 // Safe inside a sign-up <form>: no nested forms, every button is type="button", Enter never submits.
 
@@ -47,11 +47,18 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
   const [listState, setListState] = useState('loading'); // loading | ready | error
   const [query, setQuery] = useState('');
 
-  // ---- option 2: can't find my college ----
+  // ---- option 2: can't find my college (map search) ----
   const [mapQuery, setMapQuery] = useState('');
   const [mapResults, setMapResults] = useState(null); // null = not searched yet
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+
+  // ---- option 2b: manual entry fallback ----
+  const [manualName, setManualName] = useState('');
+  const [manualCity, setManualCity] = useState('');
+  const [manualState, setManualState] = useState('');
+  const [manualBusy, setManualBusy] = useState(false);
+  const [manualMsg, setManualMsg] = useState('');
 
   function loadColleges() {
     if (!API) {
@@ -103,6 +110,7 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
     setOpen((o) => !o);
     setView('list');
     setMessage('');
+    setManualMsg('');
   }
 
   async function searchMap() {
@@ -153,6 +161,34 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function submitManual() {
+    const name = manualName.trim();
+    const city = manualCity.trim();
+    if (!name || !city) return;
+    setManualBusy(true);
+    setManualMsg('');
+    try {
+      await getJson('/api/colleges/suggest-direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          city,
+          state: manualState.trim() || undefined,
+        }),
+      });
+      setManualMsg('Thanks! Your college has been submitted for review. Please check back in a day or two.');
+      setManualName('');
+      setManualCity('');
+      setManualState('');
+    } catch (err) {
+      console.error('CollegePicker: manual suggest failed', err);
+      setManualMsg('Could not submit college. Please try again.');
+    } finally {
+      setManualBusy(false);
     }
   }
 
@@ -222,7 +258,7 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
               <div className="mt-2 border-t border-sky-100 pt-2">
                 <button
                   type="button"
-                  onClick={() => { setView('suggest'); setMessage(''); }}
+                  onClick={() => { setView('suggest'); setMessage(''); setManualMsg(''); }}
                   className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-sky-600 hover:bg-sky-50"
                 >
                   I can't find my college
@@ -232,14 +268,16 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
           )}
 
           {view === 'suggest' && (
-            <>
+            <div className="max-h-80 overflow-y-auto p-1">
               <button
                 type="button"
-                onClick={() => { setView('list'); setMessage(''); }}
+                onClick={() => { setView('list'); setMessage(''); setManualMsg(''); }}
                 className="mb-2 text-sm text-sky-600 hover:underline"
               >
                 &larr; Back to the list
               </button>
+
+              {/* Map search section */}
               <p className="mb-2 text-sm text-slate-500">
                 Search the map for your college. We review every new college before students can join it.
               </p>
@@ -264,12 +302,12 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
 
               {mapResults && mapResults.length === 0 && (
                 <p className="mt-3 text-sm text-slate-500">
-                  No college found on the map for that search. Try the full name with the city.
+                  No college found on the map for that search. Try manual entry below.
                 </p>
               )}
 
               {mapResults && mapResults.length > 0 && (
-                <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+                <div className="mt-3 max-h-48 space-y-2 overflow-y-auto">
                   {mapResults.map((c) => (
                     <button
                       type="button"
@@ -288,7 +326,43 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
               )}
 
               {message && <p className="mt-3 text-sm text-slate-700">{message}</p>}
-            </>
+
+              {/* Manual Entry Fallback Section */}
+              <div className="mt-6 border-t border-sky-100 pt-4">
+                <p className="mb-2 text-sm font-semibold text-slate-700">Can't find it on the map? Enter manually:</p>
+                <div className="space-y-3">
+                  <input
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                    placeholder="College Name (e.g. KIT College)"
+                    className={inputCls}
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      value={manualCity}
+                      onChange={(e) => setManualCity(e.target.value)}
+                      placeholder="City"
+                      className={`${inputCls} flex-1`}
+                    />
+                    <input
+                      value={manualState}
+                      onChange={(e) => setManualState(e.target.value)}
+                      placeholder="State"
+                      className={`${inputCls} flex-1`}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={submitManual}
+                    disabled={manualBusy || !manualName.trim() || !manualCity.trim()}
+                    className="w-full rounded-full bg-teal-500 px-5 py-3 font-medium text-white hover:bg-teal-600 disabled:opacity-60"
+                  >
+                    {manualBusy ? 'Submitting...' : 'Submit manual entry'}
+                  </button>
+                  {manualMsg && <p className="text-sm text-slate-700 text-center">{manualMsg}</p>}
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -296,8 +370,7 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
   );
 }
 
-// If anything inside the picker ever throws, show a small message here instead of letting React
-// remove the entire page.
+// Error Boundary
 class PickerBoundary extends Component {
   state = { failed: false };
   static getDerivedStateFromError() {

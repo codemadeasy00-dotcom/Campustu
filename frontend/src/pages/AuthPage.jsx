@@ -157,7 +157,7 @@ export default function AuthPage({ mode }) {
           /* ---- Sign up: details first, then the same code box ---- */
           <form onSubmit={onVerify} className="space-y-4 rounded-3xl border border-white/70 bg-white/80 p-5 shadow-lg backdrop-blur">
             <Field label="College" required>
-              <CollegePicker value={college} onChange={setCollege} />
+              <CollegePicker onSelect={(selectedCollege) => { setCollege(selectedCollege); setError('') }} />
             </Field>
             <Field label="College email" required>
               <input type="email" required autoComplete="email" className={inputClass} value={form.email} onChange={set('email')} />
