@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { itemsApi, metaApi, errorMessage } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { STATUS_STYLES, conditionLabel, formatPrice } from '../lib/format.js'
@@ -8,9 +8,12 @@ import { Alert, PageLoading } from '../components/ui.jsx'
 
 export default function ItemPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [state, setState] = useState({ item: null, meta: null, error: '' })
   const [selected, setSelected] = useState(0)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -30,6 +33,20 @@ export default function ItemPage() {
   const category = meta.categories.find((c) => c.id === item.category_id)
   const branch = meta.branches.find((b) => b.id === item.branch_id)
   const isOwner = user && user.id === item.seller.id
+
+  async function handleDelete() {
+    if (!window.confirm('Remove this listing from the marketplace? This cannot be undone.')) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await itemsApi.remove(id)
+      navigate('/')
+    } catch (err) {
+      setDeleteError(errorMessage(err))
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <div className="grid gap-8 md:grid-cols-2">
@@ -82,10 +99,23 @@ export default function ItemPage() {
           </div>
         </div>
 
+        {isOwner && deleteError && <div className="mt-4"><Alert>{deleteError}</Alert></div>}
         {isOwner && (
-          <p className="mt-4 text-sm text-slate-600">
-            This is your listing. <Link to="/my-listings" className="text-brand-700 underline">See all your listings</Link>
-          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+            <p className="text-sm text-slate-600">
+              This is your listing. <Link to="/my-listings" className="text-brand-700 underline">See all your listings</Link>
+            </p>
+            {item.status === 'available' && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deleting ? 'Removing…' : 'Delete Listing'}
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

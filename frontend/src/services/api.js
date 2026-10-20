@@ -103,4 +103,5 @@ export const itemsApi = {
   create: (formData) => request('/items', { method: 'POST', formData }),
   get: (id) => request(`/items/${encodeURIComponent(id)}`),
   mine: () => request('/items/mine'),
+  remove: (id) => request(`/items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }

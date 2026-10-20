@@ -172,4 +172,21 @@ router.get('/:id', async (req, res) => {
   res.json({ item })
 })
 
+// DELETE /items/:id (withdraw an available listing; retain related history)
+router.delete('/:id', async (req, res) => {
+  const { id } = idParam.parse(req.params)
+  await tx(async (db) => {
+    const { rows: [item] } = await db.query(
+      'SELECT seller_id, status FROM items WHERE id = $1 FOR UPDATE',
+      [id]
+    )
+    if (!item) throw new AppError(404, 'Listing not found')
+    if (item.seller_id !== req.user.id) throw new AppError(403, 'Only the seller can withdraw this listing')
+    if (item.status !== 'available') throw new AppError(409, 'Only available listings can be withdrawn')
+
+    await db.query("UPDATE items SET status = 'withdrawn', updated_at = now() WHERE id = $1", [id])
+  })
+  res.json({ success: true, message: 'Listing withdrawn' })
+})
+
 module.exports = router
