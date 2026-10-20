@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { itemsApi, metaApi, errorMessage } from '../services/api.js'
+import { deleteItem, itemsApi, metaApi, errorMessage } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { STATUS_STYLES, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
@@ -39,7 +39,7 @@ export default function ItemPage() {
     setDeleting(true)
     setDeleteError('')
     try {
-      await itemsApi.remove(id)
+      await deleteItem(id)
       navigate('/')
     } catch (err) {
       setDeleteError(errorMessage(err))

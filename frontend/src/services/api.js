@@ -98,10 +98,13 @@ export const collegesApi = {
   geocode: (q) => request(`/api/colleges/geocode?q=${encodeURIComponent(q)}`),
 }
 
+export const deleteItem = (itemId) =>
+  request(`/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' })
+
 export const itemsApi = {
   list: (limit = 12) => request(`/items?limit=${limit}`),
   create: (formData) => request('/items', { method: 'POST', formData }),
   get: (id) => request(`/items/${encodeURIComponent(id)}`),
   mine: () => request('/items/mine'),
-  remove: (id) => request(`/items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  remove: deleteItem,
 }
