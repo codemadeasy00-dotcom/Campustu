@@ -137,4 +137,36 @@ router.post('/suggest', suggestLimiter, async (req, res) => {
   }
 });
 
+// POST /api/colleges/suggest-direct - Direct student suggestion fallback
+router.post('/suggest-direct', async (req, res) => {
+  try {
+    const { name, city, state } = req.body;
+    if (!name || !city) {
+      return res.status(400).json({ error: 'Name and city are required' });
+    }
+
+    // Prevent duplicate pending entries for the same college name
+    const existing = await pool.query(
+      `SELECT id, name, status FROM colleges WHERE LOWER(name) = LOWER($1) AND LOWER(city) = LOWER($2)`,
+      [name.trim(), city.trim()]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.json({ status: existing.rows[0].status, college: existing.rows[0] });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO colleges (name, city, state, status, suggested_at)
+       VALUES ($1, $2, $3, 'pending', NOW())
+       RETURNING id, name, city, state, status`,
+      [name.trim(), city.trim(), state ? state.trim() : 'Maharashtra']
+    );
+
+    res.status(201).json({ status: 'pending', college: rows[0] });
+  } catch (err) {
+    console.error('Direct suggestion failed:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 module.exports = router;
