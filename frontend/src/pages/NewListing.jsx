@@ -36,6 +36,20 @@ export default function NewListing() {
   const frozen = user.status !== 'active'
   const categories = meta.categories.filter((c) => c.scope !== 'lost_found')
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
+  const listingSelection = form.item_type_id
+    ? `type:${form.item_type_id}`
+    : form.category_id
+      ? `category:${form.category_id}`
+      : ''
+
+  function setListingSelection(e) {
+    const [kind, id] = e.target.value.split(':')
+    setForm((f) => ({
+      ...f,
+      category_id: kind === 'category' ? id : '',
+      item_type_id: kind === 'type' ? id : '',
+    }))
+  }
 
   async function addPhotos(e) {
     setError('')
@@ -120,26 +134,22 @@ export default function NewListing() {
           <input required minLength={3} maxLength={120} className={inputClass} value={form.title} onChange={set('title')} placeholder="e.g. Mini drafter, used for one semester" />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Item type" hint="Pick one so it shows up in the right semester kit.">
-            <select className={inputClass} value={form.item_type_id} onChange={set('item_type_id')}>
-              <option value="">Other / not in the list</option>
-              {meta.item_types.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </Field>
-          {!form.item_type_id && (
-            <Field label="Category" required>
-              <select className={inputClass} value={form.category_id} onChange={set('category_id')} required>
-                <option value="">Select category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </Field>
-          )}
-        </div>
+        <Field label="Category / kit item" required hint="Choose a specific kit item to include it in matching semester kits, or choose a category for another item.">
+          <select className={inputClass} value={listingSelection} onChange={setListingSelection} required>
+            <option value="">Select category or kit item</option>
+            {categories.map((category) => {
+              const itemTypes = meta.item_types.filter((itemType) => itemType.category_id === category.id)
+              return (
+                <optgroup key={category.id} label={category.name}>
+                  <option value={`category:${category.id}`}>Other {category.name.toLowerCase()} item</option>
+                  {itemTypes.map((itemType) => (
+                    <option key={itemType.id} value={`type:${itemType.id}`}>{itemType.name} (kit item)</option>
+                  ))}
+                </optgroup>
+              )
+            })}
+          </select>
+        </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Condition" required>
