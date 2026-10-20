@@ -172,7 +172,7 @@ router.get('/:id', async (req, res) => {
   res.json({ item })
 })
 
-// DELETE /items/:id (withdraw an available listing; retain related history)
+// DELETE /items/:id
 router.delete('/:id', async (req, res) => {
   const { id } = idParam.parse(req.params)
   await tx(async (db) => {
