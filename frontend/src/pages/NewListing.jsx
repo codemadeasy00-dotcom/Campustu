@@ -4,6 +4,7 @@ import { itemsApi, metaApi, errorMessage } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { CONDITIONS } from '../lib/format.js'
 import { Alert, Button, Field, PageLoading, inputClass } from '../components/ui.jsx'
+import { processAndCompressImage } from '../utils/imageCompressor.js'
 
 const MAX_PHOTOS = 5
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024 // same limit as the server
@@ -18,6 +19,7 @@ export default function NewListing() {
     description: '', branch_id: '', semester: '', preferred_place: '',
   })
   const [photos, setPhotos] = useState([]) // [{ file, url }]
+  const [processingPhotos, setProcessingPhotos] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -35,19 +37,31 @@ export default function NewListing() {
   const categories = meta.categories.filter((c) => c.scope !== 'lost_found')
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
-  function addPhotos(e) {
+  async function addPhotos(e) {
     setError('')
     const chosen = Array.from(e.target.files || [])
     e.target.value = '' // lets the same file be picked again later
     const room = MAX_PHOTOS - photos.length
     const next = []
     for (const file of chosen.slice(0, room)) {
-      if (!file.type.startsWith('image/')) { setError(`${file.name} is not an image.`); continue }
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setError(`${file.name} must be a JPEG, PNG or WebP image.`); continue }
       if (file.size > MAX_PHOTO_BYTES) { setError(`${file.name} is larger than 8 MB.`); continue }
-      next.push({ file, url: URL.createObjectURL(file) })
+      next.push(file)
     }
     if (chosen.length > room) setError(`You can add at most ${MAX_PHOTOS} photos.`)
-    setPhotos((p) => [...p, ...next])
+    if (!next.length) return
+
+    setProcessingPhotos(true)
+    try {
+      const processed = await Promise.all(next.map((file) => processAndCompressImage(file)))
+      const oversizedIndex = processed.findIndex((file) => file.size > MAX_PHOTO_BYTES)
+      if (oversizedIndex !== -1) throw new Error(`${next[oversizedIndex].name} is still larger than 8 MB after compression.`)
+      setPhotos((p) => [...p, ...processed.map((file) => ({ file, url: URL.createObjectURL(file) }))])
+    } catch (err) {
+      setError(err.message || 'Could not process the selected photos.')
+    } finally {
+      setProcessingPhotos(false)
+    }
   }
 
   function removePhoto(index) {
@@ -60,6 +74,7 @@ export default function NewListing() {
   async function onSubmit(e) {
     e.preventDefault()
     setError('')
+    if (processingPhotos) return setError('Wait for photo processing to finish.')
     if (photos.length < 1) return setError('Add at least one photo.')
     if (!form.item_type_id && !form.category_id) return setError('Choose an item type or a category.')
 
@@ -179,17 +194,17 @@ export default function NewListing() {
               </div>
             ))}
             {photos.length < MAX_PHOTOS && (
-              <label className="flex h-24 w-24 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-center text-xs text-slate-500 hover:border-brand-400">
-                + Add photo
-                <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={addPhotos} />
+              <label className={`flex h-24 w-24 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-center text-xs text-slate-500 ${processingPhotos ? 'cursor-wait opacity-60' : 'cursor-pointer hover:border-brand-400'}`}>
+                {processingPhotos ? 'Processing…' : '+ Add photo'}
+                <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={addPhotos} disabled={processingPhotos} />
               </label>
             )}
           </div>
-          <p className="mt-1 text-xs text-slate-500">Location data in photos is removed automatically when you upload.</p>
+          <p className="mt-1 text-xs text-slate-500">Photos are resized and location metadata is removed before upload.</p>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button type="submit" disabled={busy || frozen}>{busy ? 'Uploading…' : 'List item'}</Button>
+          <Button type="submit" disabled={busy || frozen || processingPhotos}>{processingPhotos ? 'Processing photos…' : busy ? 'Uploading…' : 'List item'}</Button>
           <Link to="/" className="text-sm text-slate-500 underline">Cancel</Link>
         </div>
       </form>
