@@ -1,77 +1,327 @@
-import { useState, useEffect } from 'react';
+// frontend/src/components/CollegePicker.jsx   (replaces the earlier version)
+// Usage:  <CollegePicker onSelect={(college) => setCollegeId(college.id)} />
+// Needs in frontend/.env:  VITE_API_URL=https://campustu-backend.onrender.com   (restart `npm run dev` after editing)
+//
+// Exactly two options:
+//   1. A dropdown of our approved colleges with a search box inside it.
+//   2. "I can't find my college": search the map and send it for admin review (saved as pending).
+//
+// Safe inside a sign-up <form>: no nested forms, every button is type="button", Enter never submits.
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+import { Component, useEffect, useMemo, useRef, useState } from 'react';
 
-export default function CollegePicker({ onSelect }) {
+const API = import.meta.env.VITE_API_URL;
+
+async function getJson(path, options) {
+  const res = await fetch(`${API}${path}`, options);
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null; // not JSON (for example an HTML page from a wrong URL)
+  }
+  if (!res.ok || data === null) {
+    const err = new Error((data && data.error) || 'bad_response');
+    err.status = res.status;
+    err.data = data || {};
+    throw err;
+  }
+  return data;
+}
+
+const onEnter = (action) => (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    action();
+  }
+};
+
+function Picker({ onSelect, placeholder = 'Select your college' }) {
+  const rootRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState('list'); // 'list' | 'suggest'
+  const [selected, setSelected] = useState(null);
+
+  // ---- option 1: dropdown list ----
   const [colleges, setColleges] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [selectedCollege, setSelectedCollege] = useState(null);
+  const [listState, setListState] = useState('loading'); // loading | ready | error
+  const [query, setQuery] = useState('');
 
+  // ---- option 2: can't find my college ----
+  const [mapQuery, setMapQuery] = useState('');
+  const [mapResults, setMapResults] = useState(null); // null = not searched yet
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+
+  function loadColleges() {
+    if (!API) {
+      console.error('CollegePicker: VITE_API_URL is not set');
+      setListState('error');
+      return;
+    }
+    setListState('loading');
+    getJson('/api/colleges')
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : rows && Array.isArray(rows.colleges) ? rows.colleges : null;
+        if (!list) throw new Error('unexpected response shape');
+        setColleges(list.filter((c) => c && c.id != null && c.name));
+        setListState('ready');
+      })
+      .catch((err) => {
+        console.error(`CollegePicker: could not load colleges from ${API}/api/colleges`, err);
+        setListState('error');
+      });
+  }
+  useEffect(loadColleges, []);
+
+  // close when clicking outside
   useEffect(() => {
-    async function fetchColleges(lat, lng) {
-      try {
-        let url = `${API}/api/colleges`;
-        if (lat && lng) {
-          url = `${API}/api/colleges/nearby?lat=${lat}&lng=${lng}&limit=20`;
-        }
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Could not load colleges.');
-        const data = await res.json();
-        setColleges(data);
-      } catch (err) {
-        setError('Could not load colleges. Please try again.');
-      } finally {
-        setLoading(false);
-      }
+    function onDown(e) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
     }
-
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          fetchColleges(pos.coords.latitude, pos.coords.longitude);
-        },
-        () => {
-          // Fallback to fetch all colleges if location is denied/unavailable
-          fetchColleges(null, null);
-        },
-        { enableHighAccuracy: false, timeout: 5000 }
-      );
-    } else {
-      fetchColleges(null, null);
-    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
+  const filtered = useMemo(() => {
+    const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return colleges;
+    return colleges.filter((c) => {
+      const hay = `${c.name} ${c.city || ''} ${c.state || ''}`.toLowerCase();
+      return tokens.every((t) => hay.includes(t));
+    });
+  }, [colleges, query]);
+
+  function choose(c) {
+    setSelected(c);
+    setOpen(false);
+    setQuery('');
+    onSelect?.(c);
+  }
+
+  function toggle() {
+    setOpen((o) => !o);
+    setView('list');
+    setMessage('');
+  }
+
+  async function searchMap() {
+    const q = mapQuery.trim();
+    if (q.length < 3) return;
+    setMessage('');
+    setBusy(true);
+    try {
+      setMapResults(await getJson(`/api/colleges/place-search?q=${encodeURIComponent(q)}`));
+    } catch (err) {
+      console.error('CollegePicker: map search failed', err.status, err.data || err);
+      setMapResults(null);
+      setMessage(
+        err.status === 429 ? 'Too many searches. Please wait a minute.'
+        : err.status === 502 ? 'The map service is not responding right now. Try again in a minute.'
+        : err.status ? 'Map search is unavailable right now. Try again later.'
+        : 'Could not reach the server. Check your internet connection and try again.'
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function suggest(c) {
+    if (!window.confirm(`Send "${c.name}" for review? You can register once it is approved.`)) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const r = await getJson('/api/colleges/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ osm_ref: c.osm_ref }),
+      });
+      if (r.status === 'approved') {
+        setMessage('This college is already available. Go back to the list and select it.');
+        loadColleges();
+      } else if (r.status === 'rejected') {
+        setMessage('This college was reviewed and is not available.');
+      } else {
+        setMessage('Thanks! We will review it and add it soon. Please check back in a day or two.');
+      }
+    } catch (err) {
+      console.error('CollegePicker: suggest failed', err.status, err.data || err);
+      setMessage(
+        err.data?.error === 'not_a_college' ? 'That place is not listed as a college on the map.'
+        : err.status === 429 ? 'Too many requests right now. Please try again later.'
+        : 'Could not send the suggestion. Please try again.'
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const inputCls =
+    'w-full rounded-full border border-sky-200 bg-sky-50 px-5 py-3 outline-none focus:border-teal-400';
+
   return (
-    <div className="w-full max-w-xl mx-auto p-4">
-      <label className="block mb-2 font-medium text-slate-700">Select your college *</label>
-      
-      {loading ? (
-        <div className="w-full rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-500 text-center">
-          Detecting location & loading colleges...
+    <div
+      ref={rootRef}
+      className="relative w-full max-w-xl"
+      onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
+    >
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={toggle}
+        className="flex w-full items-center justify-between rounded-full border border-sky-200 bg-sky-50 px-5 py-3 text-left hover:border-teal-300"
+      >
+        <span className={selected ? 'text-slate-800' : 'text-slate-500'}>
+          {selected ? selected.name : placeholder}
+        </span>
+        <span aria-hidden="true" className="ml-3 text-slate-500">{open ? '▴' : '▾'}</span>
+      </button>
+
+      {open && (
+        <div className="absolute z-20 mt-2 w-full rounded-2xl border border-sky-100 bg-white p-3 shadow-lg">
+          {view === 'list' && (
+            <>
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onEnter(() => { if (filtered.length === 1) choose(filtered[0]); })}
+                placeholder="Search your college or city"
+                className={inputCls}
+              />
+
+              <div className="mt-2 max-h-64 overflow-y-auto" role="listbox">
+                {listState === 'loading' && <p className="px-3 py-2 text-sm text-slate-500">Loading colleges...</p>}
+                {listState === 'error' && (
+                  <p className="px-3 py-2 text-sm text-red-600">
+                    {API ? 'Could not load colleges.' : 'VITE_API_URL is not set (see frontend/.env).'}{' '}
+                    <button type="button" onClick={loadColleges} className="underline">Try again</button>
+                  </p>
+                )}
+                {listState === 'ready' && filtered.length === 0 && (
+                  <p className="px-3 py-2 text-sm text-slate-500">No college matches your search.</p>
+                )}
+                {listState === 'ready' && filtered.map((c) => (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={selected?.id === c.id}
+                    key={c.id}
+                    onClick={() => choose(c)}
+                    className="block w-full rounded-xl px-3 py-2 text-left hover:bg-sky-50"
+                  >
+                    <span className="block font-medium text-slate-800">{c.name}</span>
+                    <span className="block text-sm text-slate-500">
+                      {[c.city, c.state].filter(Boolean).join(', ')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-2 border-t border-sky-100 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setView('suggest'); setMessage(''); }}
+                  className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-sky-600 hover:bg-sky-50"
+                >
+                  I can't find my college
+                </button>
+              </div>
+            </>
+          )}
+
+          {view === 'suggest' && (
+            <>
+              <button
+                type="button"
+                onClick={() => { setView('list'); setMessage(''); }}
+                className="mb-2 text-sm text-sky-600 hover:underline"
+              >
+                &larr; Back to the list
+              </button>
+              <p className="mb-2 text-sm text-slate-500">
+                Search the map for your college. We review every new college before students can join it.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  value={mapQuery}
+                  onChange={(e) => setMapQuery(e.target.value)}
+                  onKeyDown={onEnter(searchMap)}
+                  placeholder="College name and city"
+                  className={`${inputCls} flex-1`}
+                />
+                <button
+                  type="button"
+                  onClick={searchMap}
+                  disabled={busy || mapQuery.trim().length < 3}
+                  className="rounded-full bg-sky-500 px-5 py-3 font-medium text-white hover:bg-sky-600 disabled:opacity-60"
+                >
+                  Search map
+                </button>
+              </div>
+
+              {mapResults && mapResults.length === 0 && (
+                <p className="mt-3 text-sm text-slate-500">
+                  No college found on the map for that search. Try the full name with the city.
+                </p>
+              )}
+
+              {mapResults && mapResults.length > 0 && (
+                <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+                  {mapResults.map((c) => (
+                    <button
+                      type="button"
+                      key={c.osm_ref}
+                      onClick={() => suggest(c)}
+                      disabled={busy}
+                      className="block w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-left hover:border-teal-300 disabled:opacity-60"
+                    >
+                      <span className="block font-medium text-slate-800">{c.name}</span>
+                      <span className="block text-sm text-slate-500">
+                        {[c.city, c.state].filter(Boolean).join(', ')}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {message && <p className="mt-3 text-sm text-slate-700">{message}</p>}
+            </>
+          )}
         </div>
-      ) : error ? (
-        <p className="text-sm text-red-600">{error}</p>
-      ) : (
-        <select
-          onChange={(e) => {
-            const found = colleges.find((c) => String(c.id) === e.target.value);
-            setSelectedCollege(found);
-            onSelect?.(found);
-          }}
-          defaultValue=""
-          className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 outline-none focus:border-teal-400 text-slate-800 shadow-sm"
-        >
-          <option value="" disabled>
-            Select your college from the list
-          </option>
-          {colleges.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} ({c.city}, {c.state}){c.distance_km ? ` — ${Math.round(c.distance_km)} km away` : ''}
-            </option>
-          ))}
-        </select>
       )}
     </div>
+  );
+}
+
+// If anything inside the picker ever throws, show a small message here instead of letting React
+// remove the entire page.
+class PickerBoundary extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error) {
+    console.error('CollegePicker crashed:', error);
+  }
+  render() {
+    if (this.state.failed) {
+      return (
+        <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          The college selector failed to load. Please refresh the page.
+        </p>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function CollegePicker(props) {
+  return (
+    <PickerBoundary>
+      <Picker {...props} />
+    </PickerBoundary>
   );
 }

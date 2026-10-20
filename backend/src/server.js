@@ -13,6 +13,9 @@ const server = app.listen(PORT, () => {
   console.log(`CampusKit API listening on port ${PORT} (${config.env || 'development'})`);
 });
 
+const collegeRoutes = require('./routes/colleges');
+app.use('/api/colleges', collegeRoutes);
+
 function shutdown() {
   server.close(() => pool.end().then(() => process.exit(0)));
 }
