@@ -40,6 +40,7 @@ const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(12),
   offset: z.coerce.number().int().min(0).default(0),
 })
+const statusSchema = z.object({ status: z.enum(['available', 'sold']) })
 
 // Columns every listing query needs. Photos come back as an ordered array of storage keys.
 const ITEM_SELECT = `
@@ -170,6 +171,43 @@ router.get('/:id', async (req, res) => {
   const item = await loadItem(id, req.user)
   if (!item) throw new AppError(404, 'Listing not found')
   res.json({ item })
+})
+
+// PATCH /items/:id/status (owners may toggle unreserved listings)
+router.patch('/:id/status', async (req, res) => {
+  const { id } = idParam.parse(req.params)
+  const { status } = statusSchema.parse(req.body)
+
+  await tx(async (db) => {
+    const { rows: [item] } = await db.query(
+      'SELECT seller_id, status FROM items WHERE id = $1 FOR UPDATE',
+      [id]
+    )
+    if (!item) throw new AppError(404, 'Listing not found')
+    if (item.seller_id !== req.user.id) throw new AppError(403, 'Only the seller can update this listing')
+    if (!['available', 'sold'].includes(item.status)) {
+      throw new AppError(409, 'Reserved or withdrawn listings cannot be changed here')
+    }
+
+    if (status === 'available') {
+      const { rows: [reservation] } = await db.query(
+        "SELECT EXISTS (SELECT 1 FROM reservations WHERE item_id = $1 AND status = 'completed') AS completed",
+        [id]
+      )
+      if (reservation.completed) throw new AppError(409, 'A completed sale cannot be marked available')
+    }
+
+    await db.query(
+      `UPDATE items
+          SET status = $1,
+              sold_at = CASE WHEN $1 = 'sold' THEN now() ELSE NULL END,
+              updated_at = now()
+        WHERE id = $2`,
+      [status, id]
+    )
+  })
+
+  res.json({ success: true, item: await loadItem(id, req.user) })
 })
 
 // DELETE /items/:id

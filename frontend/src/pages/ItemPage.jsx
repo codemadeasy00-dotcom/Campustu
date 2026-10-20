@@ -14,6 +14,8 @@ export default function ItemPage() {
   const [selected, setSelected] = useState(0)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [statusError, setStatusError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -45,6 +47,20 @@ export default function ItemPage() {
       setDeleteError(errorMessage(err))
     } finally {
       setDeleting(false)
+    }
+  }
+
+  async function handleStatusToggle() {
+    const status = item.status === 'available' ? 'sold' : 'available'
+    setUpdatingStatus(true)
+    setStatusError('')
+    try {
+      const { item: updated } = await itemsApi.updateStatus(id, status)
+      setState((current) => ({ ...current, item: updated }))
+    } catch (err) {
+      setStatusError(errorMessage(err))
+    } finally {
+      setUpdatingStatus(false)
     }
   }
 
@@ -99,22 +115,24 @@ export default function ItemPage() {
           </div>
         </div>
 
-        {isOwner && deleteError && <div className="mt-4"><Alert>{deleteError}</Alert></div>}
+        {isOwner && (deleteError || statusError) && <div className="mt-4"><Alert>{deleteError || statusError}</Alert></div>}
         {isOwner && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
             <p className="text-sm text-slate-600">
               This is your listing. <Link to="/my-listings" className="text-brand-700 underline">See all your listings</Link>
             </p>
-            {item.status === 'available' && (
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {deleting ? 'Removing…' : 'Delete Listing'}
-              </button>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {['available', 'sold'].includes(item.status) && (
+                <button type="button" onClick={handleStatusToggle} disabled={updatingStatus || deleting} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+                  {updatingStatus ? 'Updating…' : `Mark as ${item.status === 'available' ? 'sold' : 'available'}`}
+                </button>
+              )}
+              {item.status === 'available' && (
+                <button type="button" onClick={handleDelete} disabled={deleting || updatingStatus} className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">
+                  {deleting ? 'Removing…' : 'Delete Listing'}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

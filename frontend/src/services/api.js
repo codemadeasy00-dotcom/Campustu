@@ -106,5 +106,6 @@ export const itemsApi = {
   create: (formData) => request('/items', { method: 'POST', formData }),
   get: (id) => request(`/items/${encodeURIComponent(id)}`),
   mine: () => request('/items/mine'),
+  updateStatus: (id, status) => request(`/items/${encodeURIComponent(id)}/status`, { method: 'PATCH', json: { status } }),
   remove: deleteItem,
 }
