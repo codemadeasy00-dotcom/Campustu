@@ -15,7 +15,7 @@ export default function Home() {
 
 function Welcome() {
   return (
-    <div className="py-10 text-center">
+    <div className="animate-fade-in py-10 text-center">
       <Wordmark className="text-6xl" />
       <p className="mx-auto mt-6 max-w-md text-lg font-semibold text-brand-700">Buy &amp; sell campus basics. Find lost gear.</p>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">
@@ -60,7 +60,7 @@ function Dashboard() {
   }, [user.college])
 
   return (
-    <div className="space-y-8">
+    <div className="animate-fade-in space-y-8">
       <section className="rounded-3xl bg-brand-600 px-6 py-8 text-white shadow-lg">
         <h1 className="text-2xl font-bold sm:text-3xl">Buy &amp; Sell Campus Basics <span className="opacity-60">|</span> Find Lost Gear</h1>
         <p className="mt-1 text-sm text-brand-100">{user.college ? `Showing students of ${user.college.name}` : 'Choose your college to see listings'}</p>

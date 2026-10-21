@@ -16,7 +16,7 @@ export default function NewListing() {
   const [loadError, setLoadError] = useState('')
   const [form, setForm] = useState({
     title: '', item_type_id: '', category_id: '', condition: 'good', price: '',
-    description: '', branch_id: '', semester: '', preferred_place: '',
+    description: '', branch_id: '', semester: '', preferred_place: '', share_email: false,
   })
   const [photos, setPhotos] = useState([]) // [{ file, url }]
   const [processingPhotos, setProcessingPhotos] = useState(false)
@@ -111,7 +111,7 @@ export default function NewListing() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="animate-fade-in mx-auto max-w-2xl">
       <h1 className="text-2xl font-bold text-brand-700">Sell an item</h1>
       <p className="mt-1 text-sm text-slate-600">
         Visible to students of {user.college?.name || 'your college'}. They pay you directly when you meet; this site never handles money.
@@ -188,6 +188,19 @@ export default function NewListing() {
           <Field label="Preferred meeting place" hint="A public place on your campus.">
             <input maxLength={120} className={inputClass} value={form.preferred_place} onChange={set('preferred_place')} placeholder="e.g. main gate" />
           </Field>
+
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={form.share_email}
+              onChange={(event) => setForm((current) => ({ ...current, share_email: event.target.checked }))}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+            <span>
+              <span className="block font-medium text-slate-700">Share my verified email on this listing</span>
+              <span className="mt-0.5 block text-xs text-slate-500">Other students at your college can use it to contact you. Your email stays private unless you select this.</span>
+            </span>
+          </label>
         </div>
 
         <div>

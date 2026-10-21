@@ -32,6 +32,10 @@ const createSchema = z
     branch_id: optInt(1, 32767),
     semester: optInt(1, 8),
     preferred_place: z.preprocess(blankToUndefined, z.string().trim().max(120).optional()),
+    share_email: z.preprocess(
+      (value) => value === 'true' ? true : value === 'false' ? false : value,
+      z.boolean().default(false)
+    ),
   })
   .refine((d) => d.category_id || d.item_type_id, { message: 'Send category_id or item_type_id', path: ['category_id'] })
 
@@ -63,6 +67,7 @@ const ITEM_SELECT = `
   SELECT i.id, i.seller_id, i.college_id, i.category_id, i.item_type_id, i.title, i.description, i.condition,
          i.price, i.status, i.branch_id, i.semester, i.preferred_place, i.created_at,
          u.display_name AS seller_name, t.trust_score::int AS trust_score, t.is_trusted,
+         CASE WHEN i.share_email AND u.email_verified_at IS NOT NULL THEN u.email END AS seller_email,
          COALESCE((SELECT array_agg(p.storage_key ORDER BY p.position) FROM item_photos p WHERE p.item_id = i.id), '{}') AS photo_keys
     FROM items i
     JOIN users u ON u.id = i.seller_id
@@ -83,7 +88,13 @@ function shape(row) {
     preferred_place: row.preferred_place,
     created_at: row.created_at,
     photos: row.photo_keys.map((k) => storage.urlFor(k)),
-    seller: { id: row.seller_id, display_name: row.seller_name, trust_score: row.trust_score, is_trusted: row.is_trusted },
+    seller: {
+      id: row.seller_id,
+      display_name: row.seller_name,
+      trust_score: row.trust_score,
+      is_trusted: row.is_trusted,
+      contact_email: row.seller_email,
+    },
   }
 }
 
@@ -147,11 +158,11 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
       // college_id is filled in by a database trigger from the seller's college
       await db.query(
         `INSERT INTO items (id, seller_id, category_id, item_type_id, title, description, condition,
-                            price, branch_id, semester, preferred_place)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                            price, branch_id, semester, preferred_place, share_email)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [itemId, req.user.id, categoryId, data.item_type_id ?? null, data.title, data.description ?? null,
          data.condition, data.price.toFixed(2), data.branch_id ?? null, data.semester ?? null,
-         data.preferred_place ?? null]
+         data.preferred_place ?? null, data.share_email]
       )
       for (let i = 0; i < storedKeys.length; i++) {
         await db.query('INSERT INTO item_photos (item_id, storage_key, position) VALUES ($1, $2, $3)', [itemId, storedKeys[i], i])

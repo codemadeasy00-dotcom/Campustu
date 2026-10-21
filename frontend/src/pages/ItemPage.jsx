@@ -67,7 +67,7 @@ export default function ItemPage() {
   }
 
   return (
-    <div className="grid gap-8 md:grid-cols-2">
+    <div className="animate-fade-in grid gap-8 md:grid-cols-2">
       <div>
         <div className="aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white">
           {item.photos[selected] && <img src={getImageUrl(item.photos[selected])} alt={item.title} className="h-full w-full object-contain" />}
@@ -116,6 +116,22 @@ export default function ItemPage() {
               : `Completed handovers with ${item.seller.trust_score} different student${item.seller.trust_score === 1 ? '' : 's'}.`}
           </div>
         </div>
+
+        {!isOwner && item.seller.contact_email && (
+          <div className="mt-6">
+            <a
+              href={`mailto:${item.seller.contact_email}?subject=${encodeURIComponent(`Interested in ${item.title} on Campustu`)}&body=${encodeURIComponent(`Hi ${item.seller.display_name},\n\nI'm interested in your listing "${item.title}" on Campustu. Is it still available?`)}`}
+              className="inline-flex w-full items-center justify-center rounded-xl bg-teal-600 px-6 py-3 font-semibold text-white shadow-md transition-all hover:bg-teal-700 hover:shadow-lg active:scale-[0.98]"
+            >
+              Contact Seller by Email
+            </a>
+          </div>
+        )}
+        {!isOwner && !item.seller.contact_email && (
+          <p className="mt-6 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+            The seller has not shared a contact email for this listing.
+          </p>
+        )}
 
         {isOwner && (deleteError || statusError) && <div className="mt-4"><Alert>{deleteError || statusError}</Alert></div>}
         {isOwner && (
