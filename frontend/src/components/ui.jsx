@@ -1,27 +1,20 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
-import React from 'react';
-import Wordmark from './Wordmark';
+import Wordmark from './Wordmark.jsx'
 
 const ToastContext = createContext(null)
 
-export default function LogoLoader({ message = "Loading..." }) {
+export function LogoLoader({ message = 'Loading…' }) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-      {/* Flipping Logo */}
-      <div className="animate-logo-flip mb-4 scale-110">
+    <div role="status" className="flex flex-col items-center justify-center px-4 py-12 text-center">
+      <div className="animate-logo-flip motion-reduce:animate-none mb-4 scale-110">
         <Wordmark />
       </div>
-
-      {/* Subtitle Message */}
-      <p className="text-gray-600 font-medium text-sm animate-pulse">
-        {message}
-      </p>
-      
-      <p className="text-xs text-gray-400 mt-1 max-w-xs">
+      <p className="animate-pulse text-sm font-medium text-slate-600">{message}</p>
+      <p className="mt-1 max-w-xs text-xs text-slate-400">
         The first request can take up to a minute while the free server wakes up.
       </p>
     </div>
-  );
+  )
 }
 
 export function ToastProvider({ children }) {
@@ -155,13 +148,7 @@ export function Alert({ kind = 'error', children }) {
 }
 
 export function PageLoading({ message = 'Loading…' }) {
-  return (
-    <div className="py-16 text-center text-sm text-slate-600">
-      <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" />
-      {message}
-      <div className="mt-1 text-xs">The first request can take up to a minute while the free server wakes up.</div>
-    </div>
-  )
+  return <LogoLoader message={message} />
 }
 
 // ---- the rounded "pill" input from the design: round icon on the left, optional action on the right ----
