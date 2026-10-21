@@ -38,7 +38,11 @@ export default function Layout() {
       />
       <header className="sticky top-0 z-10 border-b border-brand-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
-          <Link to="/" aria-label="Home"><Wordmark className="text-2xl" /></Link>
+          <Link to="/" aria-label="Home">
+            <span className="animate-logo-flip motion-reduce:animate-none">
+              <Wordmark className="text-2xl" />
+            </span>
+          </Link>
           <nav className="flex flex-1 flex-wrap items-center gap-1">
             {user && (
               <>
