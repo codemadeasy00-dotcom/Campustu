@@ -7,6 +7,7 @@ import NewListing from './pages/NewListing.jsx'
 import ItemPage from './pages/ItemPage.jsx'
 import MyListings from './pages/MyListings.jsx'
 import ComingSoon from './pages/ComingSoon.jsx'
+import Marketplace from './pages/Marketplace.jsx'
 
 function NotFound() {
   return (
@@ -30,7 +31,7 @@ export default function App() {
         <Route path="/my-listings" element={guard(<MyListings />)} />
         <Route path="/items/:id" element={guard(<ItemPage />)} />
         <Route path="/kits" element={guard(<ComingSoon title="Semester kits">Pick your branch and semester, see the standard list, and add the second-hand items that are available.</ComingSoon>)} />
-        <Route path="/marketplace" element={guard(<ComingSoon title="Marketplace">Browse and filter every listing at your college.</ComingSoon>)} />
+        <Route path="/marketplace" element={guard(<Marketplace />)} />
         <Route path="/lost-found" element={guard(<ComingSoon title="Lost &amp; Found">Post lost or found items and see them on your campus map.</ComingSoon>)} />
         <Route path="*" element={<NotFound />} />
       </Route>

@@ -102,7 +102,17 @@ export const deleteItem = (itemId) =>
   request(`/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' })
 
 export const itemsApi = {
-  list: (limit = 12) => request(`/items?limit=${limit}`),
+  list: (options = 12) => {
+    const params = new URLSearchParams()
+    if (typeof options === 'number') {
+      params.set('limit', String(options))
+    } else {
+      Object.entries(options).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
+      })
+    }
+    return request(`/items?${params.toString()}`)
+  },
   create: (formData) => request('/items', { method: 'POST', formData }),
   get: (id) => request(`/items/${encodeURIComponent(id)}`),
   mine: () => request('/items/mine'),

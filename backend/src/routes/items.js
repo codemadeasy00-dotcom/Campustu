@@ -194,12 +194,11 @@ router.get('/', requireCollege, async (req, res) => {
   const add = (sql, value) => { params.push(value); where.push(sql.replace('?', `$${params.length}`)) }
 
   if (f.q) {
-    // every word must appear in the title or description (case-insensitive); \, % and _ are escaped
-    f.q.split(/\s+/).filter(Boolean).slice(0, 5).forEach((word) => {
-      params.push(`%${word.replace(/[\\%_]/g, (c) => '\\' + c)}%`)
-      const n = params.length
-      where.push(`(i.title ILIKE $${n} OR COALESCE(i.description, '') ILIKE $${n})`)
-    })
+    params.push(f.q)
+    where.push(
+      `to_tsvector('simple', COALESCE(i.title, '') || ' ' || COALESCE(i.description, '')) ` +
+      `@@ plainto_tsquery('simple', $${params.length})`
+    )
   }
   if (f.category_id) add('i.category_id = ?', f.category_id)
   if (f.item_type_id) add('i.item_type_id = ?', f.item_type_id)
