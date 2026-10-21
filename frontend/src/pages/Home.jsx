@@ -29,6 +29,18 @@ function Welcome() {
   )
 }
 
+function ListingSkeleton() {
+  return (
+    <li aria-hidden="true" className="animate-pulse overflow-hidden rounded-2xl border border-white/70 bg-white shadow-sm">
+      <div className="aspect-square bg-slate-200" />
+      <div className="space-y-2 p-2.5">
+        <div className="h-4 w-3/4 rounded bg-slate-200" />
+        <div className="h-4 w-1/2 rounded bg-slate-200" />
+      </div>
+    </li>
+  )
+}
+
 function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -80,7 +92,9 @@ function Dashboard() {
             <Link to="/my-listings" className="text-xs text-brand-700 underline">My listings</Link>
           </div>
           {recent === null ? (
-            <p className="mt-3 text-sm text-slate-500">Loading…</p>
+            <ul aria-label="Loading recent listings" className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {Array.from({ length: 6 }, (_, index) => <ListingSkeleton key={index} />)}
+            </ul>
           ) : recent.length === 0 ? (
             <div className="mt-3 rounded-2xl border border-dashed border-brand-200 bg-white/70 p-6 text-center text-sm text-slate-600">
               {recentError ? 'Could not load listings.' : 'Nothing listed at your college yet.'}

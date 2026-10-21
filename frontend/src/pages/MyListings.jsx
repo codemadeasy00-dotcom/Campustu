@@ -3,13 +3,15 @@ import { Link } from 'react-router-dom'
 import { itemsApi, errorMessage } from '../services/api.js'
 import { STATUS_STYLES, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
-import { Alert, PageLoading } from '../components/ui.jsx'
+import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
 
 export default function MyListings() {
+  const showToast = useToast()
   const [items, setItems] = useState(null)
   const [error, setError] = useState('')
   const [actionError, setActionError] = useState('')
   const [busyItemId, setBusyItemId] = useState(null)
+  const [pendingDelete, setPendingDelete] = useState(null)
 
   useEffect(() => {
     itemsApi.mine().then((r) => setItems(r.items)).catch((e) => setError(errorMessage(e)))
@@ -22,6 +24,7 @@ export default function MyListings() {
     try {
       const { item: updated } = await itemsApi.updateStatus(item.id, status)
       setItems((current) => current.map((listing) => listing.id === item.id ? updated : listing))
+      showToast(`Listing marked ${status}.`)
     } catch (err) {
       setActionError(errorMessage(err))
     } finally {
@@ -32,12 +35,12 @@ export default function MyListings() {
   // The server deletes the listing for good, or (if chats/reservations/reports point at it) hides it
   // and erases its photos. Either way it should leave this page.
   async function deleteItem(item) {
-    if (!window.confirm('Delete this listing and its photos? This cannot be undone.')) return
     setBusyItemId(item.id)
     setActionError('')
     try {
       await itemsApi.remove(item.id)
       setItems((current) => current.filter((listing) => listing.id !== item.id))
+      showToast('Listing deleted successfully.')
     } catch (err) {
       setActionError(errorMessage(err))
     } finally {
@@ -89,7 +92,7 @@ export default function MyListings() {
                     </button>
                   )}
                   {['available', 'withdrawn'].includes(item.status) && (
-                    <button type="button" disabled={busyItemId === item.id} onClick={() => deleteItem(item)} className="rounded px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50">
+                      <button type="button" disabled={busyItemId === item.id} onClick={() => setPendingDelete(item)} className="rounded px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50">
                       Delete
                     </button>
                   )}
@@ -99,6 +102,20 @@ export default function MyListings() {
           ))}
         </ul>
       )}
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete this listing?"
+        confirmLabel="Delete listing"
+        danger
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          const item = pendingDelete
+          setPendingDelete(null)
+          if (item) deleteItem(item)
+        }}
+      >
+        This will delete the listing and its photos. This action cannot be undone.
+      </ConfirmDialog>
     </div>
   )
 }

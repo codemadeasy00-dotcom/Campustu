@@ -1,3 +1,97 @@
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
+
+const ToastContext = createContext(null)
+
+export function ToastProvider({ children }) {
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    if (!message) return undefined
+    const timeout = window.setTimeout(() => setMessage(''), 3500)
+    return () => window.clearTimeout(timeout)
+  }, [message])
+
+  return (
+    <ToastContext.Provider value={setMessage}>
+      {children}
+      {message && (
+        <div role="status" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm font-medium text-emerald-800 shadow-lg">
+          {message}
+        </div>
+      )}
+    </ToastContext.Provider>
+  )
+}
+
+export function useToast() {
+  const showToast = useContext(ToastContext)
+  if (!showToast) throw new Error('useToast must be used inside ToastProvider')
+  return showToast
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  children,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  danger = false,
+  onConfirm,
+  onCancel,
+}) {
+  const cancelButtonRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    cancelButtonRef.current?.focus()
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [open, onCancel])
+
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel()
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+      >
+        <h2 id="confirm-dialog-title" className="text-lg font-bold text-slate-900">{title}</h2>
+        <div className="mt-2 text-sm text-slate-600">{children}</div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            ref={cancelButtonRef}
+            type="button"
+            onClick={onCancel}
+            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${
+              danger ? 'bg-red-600 hover:bg-red-700' : 'bg-brand-600 hover:bg-brand-700'
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export const inputClass =
   'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-200 disabled:bg-slate-100'
 

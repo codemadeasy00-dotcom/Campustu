@@ -4,15 +4,17 @@ import { deleteItem, itemsApi, metaApi, errorMessage } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { STATUS_STYLES, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
-import { Alert, PageLoading } from '../components/ui.jsx'
+import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
 
 export default function ItemPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const showToast = useToast()
   const [state, setState] = useState({ item: null, meta: null, error: '' })
   const [selected, setSelected] = useState(0)
   const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [statusError, setStatusError] = useState('')
@@ -37,11 +39,11 @@ export default function ItemPage() {
   const isOwner = user && user.id === item.seller.id
 
   async function handleDelete() {
-    if (!window.confirm('Remove this listing from the marketplace? This cannot be undone.')) return
     setDeleting(true)
     setDeleteError('')
     try {
       await deleteItem(id)
+      showToast('Listing deleted successfully.')
       navigate('/')
     } catch (err) {
       setDeleteError(errorMessage(err))
@@ -128,7 +130,7 @@ export default function ItemPage() {
                 </button>
               )}
               {item.status === 'available' && (
-                <button type="button" onClick={handleDelete} disabled={deleting || updatingStatus} className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">
+                <button type="button" onClick={() => setConfirmDelete(true)} disabled={deleting || updatingStatus} className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">
                   {deleting ? 'Removing…' : 'Delete Listing'}
                 </button>
               )}
@@ -136,6 +138,19 @@ export default function ItemPage() {
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Remove this listing?"
+        confirmLabel="Remove listing"
+        danger
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false)
+          handleDelete()
+        }}
+      >
+        This listing will be removed from the marketplace. This action cannot be undone.
+      </ConfirmDialog>
     </div>
   )
 }

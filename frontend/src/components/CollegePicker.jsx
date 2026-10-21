@@ -9,6 +9,7 @@
 // Safe inside a sign-up <form>: no nested forms, every button is type="button", Enter never submits.
 
 import { Component, useEffect, useMemo, useRef, useState } from 'react';
+import { ConfirmDialog } from './ui.jsx';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -52,6 +53,7 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
   const [mapResults, setMapResults] = useState(null); // null = not searched yet
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [pendingSuggestion, setPendingSuggestion] = useState(null);
 
   // ---- option 2b: manual entry fallback ----
   const [manualName, setManualName] = useState('');
@@ -135,7 +137,6 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
   }
 
   async function suggest(c) {
-    if (!window.confirm(`Send "${c.name}" for review? You can register once it is approved.`)) return;
     setBusy(true);
     setMessage('');
     try {
@@ -228,7 +229,16 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
               />
 
               <div className="mt-2 max-h-64 overflow-y-auto" role="listbox">
-                {listState === 'loading' && <p className="px-3 py-2 text-sm text-slate-500">Loading colleges...</p>}
+                {listState === 'loading' && (
+                  <div aria-label="Loading colleges" className="space-y-2 px-3 py-2">
+                    {[1, 2, 3].map((row) => (
+                      <div key={row} aria-hidden="true" className="animate-pulse space-y-1.5 py-1">
+                        <div className="h-4 w-2/3 rounded bg-slate-200" />
+                        <div className="h-3 w-1/3 rounded bg-slate-100" />
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {listState === 'error' && (
                   <p className="px-3 py-2 text-sm text-red-600">
                     {API ? 'Could not load colleges.' : 'VITE_API_URL is not set (see frontend/.env).'}{' '}
@@ -312,7 +322,7 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
                     <button
                       type="button"
                       key={c.osm_ref}
-                      onClick={() => suggest(c)}
+                      onClick={() => setPendingSuggestion(c)}
                       disabled={busy}
                       className="block w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-left hover:border-teal-300 disabled:opacity-60"
                     >
@@ -364,6 +374,19 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
               </div>
             </div>
           )}
+          <ConfirmDialog
+            open={Boolean(pendingSuggestion)}
+            title="Submit this college for review?"
+            confirmLabel={busy ? 'Submitting…' : 'Submit'}
+            onCancel={() => setPendingSuggestion(null)}
+            onConfirm={() => {
+              const college = pendingSuggestion;
+              setPendingSuggestion(null);
+              if (college) suggest(college);
+            }}
+          >
+            Send “{pendingSuggestion?.name}” for review? You can register once it is approved.
+          </ConfirmDialog>
         </div>
       )}
     </div>
