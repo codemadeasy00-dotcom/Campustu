@@ -1,0 +1,86 @@
+Campustu/
+├── .env.local
+├── .env.production
+├── .gitignore
+├── DEPLOY.md
+├── README.md
+├── render.yaml
+├── package-lock.json
+├── backend/
+│   ├── .env
+│   ├── .env.example
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── README.md
+│   ├── scripts/
+│   │   ├── init-db.js
+│   │   ├── make-admin.js
+│   │   ├── migrate.js
+│   │   └── seed-reference.js
+│   ├── src/
+│   │   ├── app.js
+│   │   ├── config.js
+│   │   ├── db.js
+│   │   ├── dbConfig.js
+│   │   ├── email.js
+│   │   ├── server.js
+│   │   ├── storage.js
+│   │   ├── middleware/
+│   │   │   ├── auth.js
+│   │   │   └── errorHandler.js
+│   │   ├── routes/
+│   │   │   ├── auth.js
+│   │   │   ├── colleges.js
+│   │   │   ├── items.js
+│   │   │   ├── me-college.js
+│   │   │   └── meta.js
+│   │   └── utils/
+│   │       ├── errors.js
+│   │       ├── images.js
+│   │       ├── otp.js
+│   │       └── semester.js
+│   └── uploads/
+├── db/
+│   ├── reference-data.json
+│   ├── schema.sql
+│   ├── migrations/
+│   │   └── 003_multi_college.sql
+│   └── tests/
+│       ├── test_flows.sql
+│       └── test_multi_college.sql
+└── frontend/
+    ├── .env
+    ├── .env.example
+    ├── index.html
+    ├── package.json
+    ├── package-lock.json
+    ├── vercel.json
+    ├── vite.config.js
+    └── src/
+        ├── App.jsx
+        ├── index.css
+        ├── main.jsx
+        ├── components/
+        │   ├── CollegePicker.jsx
+        │   ├── CollegeSettings.jsx
+        │   ├── Layout.jsx
+        │   ├── ProtectedRoute.jsx
+        │   ├── ui.jsx
+        │   └── Wordmark.jsx
+        ├── context/
+        │   └── AuthContext.jsx
+        ├── lib/
+        │   ├── api.js
+        │   ├── format.js
+        │   └── imageUrl.js
+        ├── pages/
+        │   ├── AuthPage.jsx
+        │   ├── ComingSoon.jsx
+        │   ├── Home.jsx
+        │   ├── ItemPage.jsx
+        │   ├── MyListings.jsx
+        │   └── NewListing.jsx
+        ├── services/
+        │   └── api.js
+        └── utils/
+            └── imageCompressor.js

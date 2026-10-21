@@ -29,13 +29,15 @@ export default function MyListings() {
     }
   }
 
-  async function withdrawItem(item) {
-    if (!window.confirm('Remove this listing from the marketplace? This cannot be undone.')) return
+  // The server deletes the listing for good, or (if chats/reservations/reports point at it) hides it
+  // and erases its photos. Either way it should leave this page.
+  async function deleteItem(item) {
+    if (!window.confirm('Delete this listing and its photos? This cannot be undone.')) return
     setBusyItemId(item.id)
     setActionError('')
     try {
       await itemsApi.remove(item.id)
-      setItems((current) => current.map((listing) => listing.id === item.id ? { ...listing, status: 'withdrawn' } : listing))
+      setItems((current) => current.filter((listing) => listing.id !== item.id))
     } catch (err) {
       setActionError(errorMessage(err))
     } finally {
@@ -81,16 +83,16 @@ export default function MyListings() {
                   {item.status === 'available' ? 'Available' : item.status === 'sold' ? 'Sold' : item.status}
                 </span>
                 <div className="flex items-center gap-1.5">
-                {['available', 'sold'].includes(item.status) && (
-                  <button type="button" disabled={busyItemId === item.id} onClick={() => toggleStatus(item)} className="rounded px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50">
-                    {busyItemId === item.id ? 'Updating…' : item.status === 'sold' ? 'Available' : 'Sold'}
-                  </button>
-                )}
-                {item.status === 'available' && (
-                  <button type="button" disabled={busyItemId === item.id} onClick={() => withdrawItem(item)} className="rounded px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50">
-                    Delete
-                  </button>
-                )}
+                  {['available', 'sold'].includes(item.status) && (
+                    <button type="button" disabled={busyItemId === item.id} onClick={() => toggleStatus(item)} className="rounded px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50">
+                      {busyItemId === item.id ? 'Updating…' : item.status === 'sold' ? 'Available' : 'Sold'}
+                    </button>
+                  )}
+                  {['available', 'withdrawn'].includes(item.status) && (
+                    <button type="button" disabled={busyItemId === item.id} onClick={() => deleteItem(item)} className="rounded px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50">
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             </li>

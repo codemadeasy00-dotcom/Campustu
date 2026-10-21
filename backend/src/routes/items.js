@@ -211,20 +211,53 @@ router.patch('/:id/status', async (req, res) => {
 })
 
 // DELETE /items/:id
+// A real delete, for the seller's own listing while it is 'available' or 'withdrawn':
+//   - no chats, reservations or reports point at it  -> the listing row is deleted for good
+//   - something does point at it (history other people rely on) -> the row is kept as a
+//     hidden record (status 'removed'), but its photos are erased and it disappears from every list
+// Either way the photo files are deleted from storage. Reserved and sold listings are refused.
 router.delete('/:id', async (req, res) => {
   const { id } = idParam.parse(req.params)
+  let photoKeys = []
+  let outcome = 'deleted'
+
   await tx(async (db) => {
     const { rows: [item] } = await db.query(
       'SELECT seller_id, status FROM items WHERE id = $1 FOR UPDATE',
       [id]
     )
     if (!item) throw new AppError(404, 'Listing not found')
-    if (item.seller_id !== req.user.id) throw new AppError(403, 'Only the seller can withdraw this listing')
-    if (item.status !== 'available') throw new AppError(409, 'Only available listings can be withdrawn')
+    if (item.seller_id !== req.user.id) throw new AppError(403, 'Only the seller can delete this listing')
+    if (item.status === 'reserved') {
+      throw new AppError(409, 'This listing is reserved. Cancel or finish the reservation first')
+    }
+    if (!['available', 'withdrawn'].includes(item.status)) {
+      throw new AppError(409, 'Sold listings are kept as a record and cannot be deleted')
+    }
 
-    await db.query("UPDATE items SET status = 'withdrawn', updated_at = now() WHERE id = $1", [id])
+    const { rows } = await db.query('SELECT storage_key FROM item_photos WHERE item_id = $1', [id])
+    photoKeys = rows.map((r) => r.storage_key)
+
+    // Try the real delete. If other tables still reference this item, the database refuses
+    // (foreign key violation); undo just that attempt and archive the listing instead.
+    await db.query('SAVEPOINT hard_delete')
+    try {
+      await db.query('DELETE FROM items WHERE id = $1', [id])
+    } catch (err) {
+      if (err.code !== '23503') throw err
+      await db.query('ROLLBACK TO SAVEPOINT hard_delete')
+      await db.query('DELETE FROM item_photos WHERE item_id = $1', [id])
+      await db.query(
+        "UPDATE items SET status = 'removed', removed_reason = 'deleted by seller', updated_at = now() WHERE id = $1",
+        [id]
+      )
+      outcome = 'archived'
+    }
   })
-  res.json({ success: true, message: 'Listing withdrawn' })
+
+  // Files go only after the database change has committed, so a failure here never loses a listing.
+  await Promise.all(photoKeys.map((key) => storage.remove(key).catch(() => {})))
+  res.json({ success: true, outcome, message: 'Listing deleted' })
 })
 
 module.exports = router
