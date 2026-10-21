@@ -1,6 +1,28 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import React from 'react';
+import Wordmark from './Wordmark';
 
 const ToastContext = createContext(null)
+
+export default function LogoLoader({ message = "Loading..." }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+      {/* Flipping Logo */}
+      <div className="animate-logo-flip mb-4 scale-110">
+        <Wordmark />
+      </div>
+
+      {/* Subtitle Message */}
+      <p className="text-gray-600 font-medium text-sm animate-pulse">
+        {message}
+      </p>
+      
+      <p className="text-xs text-gray-400 mt-1 max-w-xs">
+        The first request can take up to a minute while the free server wakes up.
+      </p>
+    </div>
+  );
+}
 
 export function ToastProvider({ children }) {
   const [message, setMessage] = useState('')

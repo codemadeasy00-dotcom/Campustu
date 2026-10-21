@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { CONDITIONS } from '../lib/format.js'
 import { Alert, Button, Field, PageLoading, inputClass } from '../components/ui.jsx'
 import { processAndCompressImage } from '../utils/imageCompressor.js'
+import LogoLoader from '../components/LogoLoader';
 
 const MAX_PHOTOS = 5
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024 // same limit as the server
@@ -30,7 +31,13 @@ export default function NewListing() {
   // Free the preview image memory when the page closes.
   useEffect(() => () => photos.forEach((p) => URL.revokeObjectURL(p.url)), []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loadError) return <Alert>{loadError}</Alert>
+  if (loading) {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <LogoLoader message="Loading seller workspace..." />
+    </div>
+  );
+}
   if (!meta) return <PageLoading />
 
   const frozen = user.status !== 'active'
