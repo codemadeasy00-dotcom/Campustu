@@ -36,10 +36,26 @@ const createSchema = z
   .refine((d) => d.category_id || d.item_type_id, { message: 'Send category_id or item_type_id', path: ['category_id'] })
 
 const idParam = z.object({ id: z.uuid() })
+// Marketplace browse filters. Every filter is optional; blank values are ignored.
+const optNum = z.preprocess(blankToUndefined, z.coerce.number().min(0).max(1000000).optional())
+const conditionList = z.preprocess(
+  (v) => (blankToUndefined(v) === undefined ? undefined : String(v).split(',').map((c) => c.trim()).filter(Boolean)),
+  z.array(z.enum(['like_new', 'good', 'fair', 'worn'])).max(4).optional()
+)
 const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(12),
   offset: z.coerce.number().int().min(0).default(0),
+  q: z.preprocess(blankToUndefined, z.string().trim().max(80).optional()),
+  category_id: optInt(1, 32767),
+  item_type_id: optInt(1, 2147483647),
+  condition: conditionList,
+  min_price: optNum,
+  max_price: optNum,
+  branch_id: optInt(1, 32767),
+  semester: optInt(1, 8),
+  sort: z.enum(['newest', 'price_asc', 'price_desc']).default('newest'),
 })
+
 const statusSchema = z.object({ status: z.enum(['available', 'sold']) })
 
 // Columns every listing query needs. Photos come back as an ordered array of storage keys.
@@ -149,14 +165,45 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
   res.status(201).json({ item: await loadItem(itemId, req.user) })
 })
 
-// GET /items?limit=12&offset=0  -> newest available listings at the viewer's college
+// GET /items  -> available listings at the viewer's college, with optional filters:
+//   q (words in title/description), category_id, item_type_id, condition (comma list),
+//   min_price, max_price, branch_id, semester, sort (newest | price_asc | price_desc), limit, offset
+// branch_id / semester also match listings tagged "any" (NULL), because those suit every branch/semester.
+// Response: { items: [...], has_more: boolean }
+const SORTS = {
+  newest: 'i.created_at DESC, i.id DESC',
+  price_asc: 'i.price ASC, i.created_at DESC, i.id DESC',
+  price_desc: 'i.price DESC, i.created_at DESC, i.id DESC',
+}
+
 router.get('/', requireCollege, async (req, res) => {
-  const { limit, offset } = listQuery.parse(req.query)
+  const f = listQuery.parse(req.query)
+  const params = [req.user.college_id]
+  const where = ["i.college_id = $1", "i.status = 'available'"]
+  const add = (sql, value) => { params.push(value); where.push(sql.replace('?', `$${params.length}`)) }
+
+  if (f.q) {
+    // every word must appear in the title or description (case-insensitive); \, % and _ are escaped
+    f.q.split(/\s+/).filter(Boolean).slice(0, 5).forEach((word) => {
+      params.push(`%${word.replace(/[\\%_]/g, (c) => '\\' + c)}%`)
+      const n = params.length
+      where.push(`(i.title ILIKE $${n} OR COALESCE(i.description, '') ILIKE $${n})`)
+    })
+  }
+  if (f.category_id) add('i.category_id = ?', f.category_id)
+  if (f.item_type_id) add('i.item_type_id = ?', f.item_type_id)
+  if (f.condition && f.condition.length) add('i.condition = ANY(?)', f.condition)
+  if (f.min_price !== undefined) add('i.price >= ?', f.min_price)
+  if (f.max_price !== undefined) add('i.price <= ?', f.max_price)
+  if (f.branch_id) add('(i.branch_id = ? OR i.branch_id IS NULL)', f.branch_id)
+  if (f.semester) add('(i.semester = ? OR i.semester IS NULL)', f.semester)
+
+  params.push(f.limit + 1, f.offset)
   const { rows } = await query(
-    `${ITEM_SELECT} WHERE i.college_id = $1 AND i.status = 'available' ORDER BY i.created_at DESC LIMIT $2 OFFSET $3`,
-    [req.user.college_id, limit, offset]
+    `${ITEM_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${SORTS[f.sort]} LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
   )
-  res.json({ items: rows.map(shape) })
+  res.json({ items: rows.slice(0, f.limit).map(shape), has_more: rows.length > f.limit })
 })
 
 // GET /items/mine   (must be declared before /:id)

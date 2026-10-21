@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import Wordmark from './Wordmark.jsx'
@@ -10,9 +11,31 @@ const navClass = ({ isActive }) =>
 export default function Layout() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const [scrollProgress, setScrollProgress] = useState(0)
+
+  useEffect(() => {
+    const updateScrollProgress = () => {
+      const totalScroll = document.documentElement.scrollHeight - document.documentElement.clientHeight
+      const currentScroll = window.scrollY
+      setScrollProgress(totalScroll > 0 ? (currentScroll / totalScroll) * 100 : 0)
+    }
+
+    updateScrollProgress()
+    window.addEventListener('scroll', updateScrollProgress, { passive: true })
+    window.addEventListener('resize', updateScrollProgress)
+    return () => {
+      window.removeEventListener('scroll', updateScrollProgress)
+      window.removeEventListener('resize', updateScrollProgress)
+    }
+  }, [])
 
   return (
     <div className="min-h-screen">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed left-0 top-0 z-50 h-1 bg-gradient-to-r from-teal-500 to-teal-300 transition-[width] duration-75"
+        style={{ width: `${scrollProgress}%` }}
+      />
       <header className="sticky top-0 z-10 border-b border-brand-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
           <Link to="/" aria-label="Home"><Wordmark className="text-2xl" /></Link>
