@@ -6,10 +6,10 @@ import AuthPage from './pages/AuthPage.jsx'
 import NewListing from './pages/NewListing.jsx'
 import ItemPage from './pages/ItemPage.jsx'
 import MyListings from './pages/MyListings.jsx'
-import ComingSoon from './pages/ComingSoon.jsx'
 import Marketplace from './pages/Marketplace.jsx'
 import Kits from './pages/Kits.jsx'
 import Wishlist from './pages/Wishlist.jsx'
+import LostFound from './pages/LostFound.jsx'
 
 function NotFound() {
   return (
@@ -34,7 +34,7 @@ export default function App() {
         <Route path="/items/:id" element={guard(<ItemPage />)} />
         <Route path="/kits" element={guard(<Kits />)} />
         <Route path="/marketplace" element={guard(<Marketplace />)} />
-        <Route path="/lost-found" element={guard(<ComingSoon title="Lost &amp; Found">Post lost or found items and see them on your campus map.</ComingSoon>)} />
+        <Route path="/lost-found" element={guard(<LostFound />)} />
         <Route path="/wishlist" element={guard(<Wishlist />)} />
         <Route path="*" element={<NotFound />} />
       </Route>
