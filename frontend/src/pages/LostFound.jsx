@@ -35,14 +35,24 @@ export default function LostFound() {
 
   // Initialize Google Maps API
   useEffect(() => {
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.warn("Google Maps API key is missing");
+      return;
+    }
+
     const loader = new Loader({
-      apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+      apiKey,
       version: 'weekly',
     });
 
-    loader.load().then((google) => {
-      setGoogleMaps(google);
-    }).catch(err => console.error("Google Maps load error:", err));
+    loader.load()
+      .then((google) => {
+        setGoogleMaps(google);
+      })
+      .catch((err) => {
+        console.error("Google Maps failed to load:", err);
+      });
   }, []);
 
   // Fetch Lost & Found Items
@@ -219,6 +229,11 @@ export default function LostFound() {
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm mb-8">
         <h3 className="text-xs font-bold uppercase text-slate-500 mb-2 px-2">Interactive Campus Pin Map</h3>
         <div ref={mapRef} className="w-full h-80 rounded-xl bg-slate-100" />
+        {!googleMaps && (
+          <p className="px-2 pt-2 text-sm text-slate-500">
+            The map is loading or unavailable. You can still browse and search listings below.
+          </p>
+        )}
       </div>
 
       {/* Search & Filter Controls */}
