@@ -1,5 +1,36 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
+import React, { useEffect, useMemo, useState } from 'react';
+import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+const defaultCenter = [18.2831, 75.7196];
+
+const lostIcon = L.divIcon({
+  className: '',
+  html: '<span style="display:block;width:24px;height:24px;border:3px solid white;border-radius:50% 50% 50% 0;background:#dc2626;transform:rotate(-45deg);box-shadow:0 1px 4px #0008"></span>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 24],
+  popupAnchor: [0, -24],
+});
+
+const foundIcon = L.divIcon({
+  className: '',
+  html: '<span style="display:block;width:24px;height:24px;border:3px solid white;border-radius:50% 50% 50% 0;background:#16a34a;transform:rotate(-45deg);box-shadow:0 1px 4px #0008"></span>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 24],
+  popupAnchor: [0, -24],
+});
+
+function LocationMarker({ position, onPositionChange }) {
+  const eventHandlers = useMemo(() => ({
+    dragend(event) {
+      const { lat, lng } = event.target.getLatLng();
+      onPositionChange([lat, lng]);
+    },
+  }), [onPositionChange]);
+
+  return <Marker position={position} draggable eventHandlers={eventHandlers} />;
+}
 
 export default function LostFound() {
   const [items, setItems] = useState([]);
@@ -29,36 +60,7 @@ export default function LostFound() {
     dropoff_location: 'Main Security Gate',
   });
 
-  const mapRef = useRef(null);
-  const postMapRef = useRef(null);
-  const [googleMaps, setGoogleMaps] = useState(null);
-
-  // Initialize Google Maps API
-  useEffect(() => {
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-      console.warn("Google Maps API key is missing");
-      return;
-    }
-
-    let active = true;
-    try {
-      setOptions({ key: apiKey, v: 'weekly' });
-      importLibrary('maps')
-        .then((maps) => {
-          if (active) setGoogleMaps({ maps });
-        })
-        .catch((err) => {
-          console.error("Google Maps failed to load:", err);
-        });
-    } catch (err) {
-      console.error("Google Maps failed to load:", err);
-    }
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  const [modalPin, setModalPin] = useState(defaultCenter);
 
   // Fetch Lost & Found Items
   const fetchItems = async () => {
@@ -91,72 +93,6 @@ export default function LostFound() {
   useEffect(() => {
     fetchItems();
   }, [statusFilter, categoryFilter, search]);
-
-  // Render Map with Markers when items or googleMaps change
-  useEffect(() => {
-    if (!googleMaps || !mapRef.current || items.length === 0) return;
-
-    const defaultCenter = { lat: 18.2831, lng: 75.7196 }; // DBATU Campus Center
-    const map = new googleMaps.maps.Map(mapRef.current, {
-      center: defaultCenter,
-      zoom: 16,
-      mapTypeId: 'roadmap',
-      disableDefaultUI: false,
-    });
-
-    items.forEach((item) => {
-      if (item.latitude && item.longitude) {
-        const marker = new googleMaps.maps.Marker({
-          position: { lat: parseFloat(item.latitude), lng: parseFloat(item.longitude) },
-          map,
-          title: item.title,
-          icon: item.status === 'lost' 
-            ? 'http://maps.google.com/mapfiles/ms/icons/red-dot.png' 
-            : 'http://maps.google.com/mapfiles/ms/icons/green-dot.png',
-        });
-
-        const infoWindow = new googleMaps.maps.InfoWindow({
-          content: `
-            <div style="padding: 6px; max-width: 200px;">
-              <span style="font-size:10px; font-weight:bold; text-transform:uppercase; color:${item.status === 'lost' ? '#dc2626' : '#16a34a'};">
-                ${item.status}
-              </span>
-              <h4 style="font-weight:bold; margin:2px 0;">${item.title}</h4>
-              <p style="font-size:12px; color:#4b5563; margin:0;">📍 ${item.location_name}</p>
-            </div>
-          `,
-        });
-
-        marker.addListener('click', () => {
-          infoWindow.open(map, marker);
-        });
-      }
-    });
-  }, [googleMaps, items]);
-
-  // Interactive Pin Picker for Posting Modal
-  useEffect(() => {
-    if (!showPostModal || !googleMaps || !postMapRef.current) return;
-
-    const defaultCenter = { lat: formData.latitude, lng: formData.longitude };
-    const map = new googleMaps.maps.Map(postMapRef.current, {
-      center: defaultCenter,
-      zoom: 16,
-    });
-
-    const marker = new googleMaps.maps.Marker({
-      position: defaultCenter,
-      map,
-      draggable: true,
-      title: 'Drag me to exact campus location',
-    });
-
-    marker.addListener('dragend', (e) => {
-      const newLat = e.latLng.lat();
-      const newLng = e.latLng.lng();
-      setFormData(prev => ({ ...prev, latitude: newLat, longitude: newLng }));
-    });
-  }, [showPostModal, googleMaps]);
 
   // Handle Post Form Submit
   const handlePostSubmit = async (e) => {
@@ -223,22 +159,45 @@ export default function LostFound() {
           </p>
         </div>
         <button
-          onClick={() => setShowPostModal(true)}
+          onClick={() => {
+            setModalPin([formData.latitude, formData.longitude]);
+            setShowPostModal(true);
+          }}
           className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold px-6 py-3 rounded-2xl transition-all shadow-lg active:scale-95"
         >
           + Report Lost / Found Item
         </button>
       </div>
 
-      {/* Google Map Overview Container */}
-      <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm mb-8">
+      {/* OpenStreetMap overview */}
+      <div className="relative z-0 mb-8 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
         <h3 className="text-xs font-bold uppercase text-slate-500 mb-2 px-2">Interactive Campus Pin Map</h3>
-        <div ref={mapRef} className="w-full h-80 rounded-xl bg-slate-100" />
-        {!googleMaps && (
-          <p className="px-2 pt-2 text-sm text-slate-500">
-            The map is loading or unavailable. You can still browse and search listings below.
-          </p>
-        )}
+        <MapContainer center={defaultCenter} zoom={16} scrollWheelZoom={false} className="z-0 h-80 w-full rounded-xl">
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          {items.map((item) => {
+            if (item.latitude == null || item.longitude == null) return null;
+            const lat = Number(item.latitude);
+            const lng = Number(item.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+            return (
+              <Marker key={item.id} position={[lat, lng]} icon={item.status === 'lost' ? lostIcon : foundIcon}>
+                <Popup>
+                  <div className="max-w-[180px] p-1">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${item.status === 'lost' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {item.status}
+                    </span>
+                    <h4 className="mb-0.5 mt-1 text-sm font-bold">{item.title}</h4>
+                    <p className="m-0 text-xs text-slate-600">📍 {item.location_name}</p>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
+        </MapContainer>
       </div>
 
       {/* Search & Filter Controls */}
@@ -428,7 +387,25 @@ export default function LostFound() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Drag Marker to Exact Location</label>
-                <div ref={postMapRef} className="w-full h-48 rounded-xl bg-slate-100" />
+                <div className="h-48 w-full overflow-hidden rounded-xl border border-slate-200">
+                  <MapContainer center={modalPin} zoom={15} scrollWheelZoom={false} className="h-full w-full">
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    <LocationMarker
+                      position={modalPin}
+                      onPositionChange={(position) => {
+                        setModalPin(position);
+                        setFormData((previous) => ({
+                          ...previous,
+                          latitude: position[0],
+                          longitude: position[1],
+                        }));
+                      }}
+                    />
+                  </MapContainer>
+                </div>
               </div>
 
               <div>
