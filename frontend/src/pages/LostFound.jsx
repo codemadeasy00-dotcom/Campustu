@@ -235,8 +235,8 @@ export default function LostFound() {
           <span className="text-[11px] text-slate-400">Search location or click "Locate Me"</span>
         </div>
         
-        <div className="relative w-full h-96 rounded-xl overflow-hidden z-0">
-          <MapContainer center={defaultCenter} zoom={16} scrollWheelZoom={true} className="w-full h-full z-0">
+        <div className="relative w-full h-[400px] rounded-xl overflow-hidden z-0">
+          <MapContainer center={defaultCenter} zoom={16} scrollWheelZoom={true} className="w-full h-[400px] z-0">
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -377,8 +377,8 @@ export default function LostFound() {
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
                   Click Anywhere on Map to Pinpoint Location
                 </label>
-                <div className="relative w-full h-56 rounded-xl overflow-hidden border border-slate-200">
-                  <MapContainer center={modalPin} zoom={16} scrollWheelZoom={false} className="w-full h-full">
+                <div className="relative w-full h-[250px] rounded-xl overflow-hidden border border-slate-200">
+                  <MapContainer center={modalPin} zoom={16} scrollWheelZoom={false} className="w-full h-[250px]">
                     <TileLayer
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
