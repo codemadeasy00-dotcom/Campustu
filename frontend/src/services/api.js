@@ -91,6 +91,19 @@ export const metaApi = {
   get: () => request('/meta'),
 }
 
+export const kitsApi = {
+  get: (params) => {
+    const query = new URLSearchParams(params)
+    return request(`/kits?${query.toString()}`)
+  },
+}
+
+export const wishlistApi = {
+  list: () => request('/wishlist'),
+  add: (itemIds) => request('/wishlist', { method: 'POST', json: { item_ids: itemIds } }),
+  remove: (itemId) => request(`/wishlist/${encodeURIComponent(itemId)}`, { method: 'DELETE' }),
+}
+
 export const collegesApi = {
   list: (q = '') => request(`/api/colleges${q ? `?q=\${encodeURIComponent(q)}` : ''}`),
   nearby: (lat, lng, limit = 10) => request(`/api/colleges/nearby?lat=${lat}&lng=${lng}&limit=${limit}`),

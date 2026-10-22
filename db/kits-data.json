@@ -1,0 +1,12 @@
+{
+  "_help": [
+    "Fill the 'kits' list below, then run:  cd backend && node scripts/seed-kits.js",
+    "Each kit = one branch + one semester. Shape of one entry (copy it into 'kits'):",
+    "  { \"branch\": \"CSE\", \"semester\": 3, \"name\": \"CSE semester 3\",",
+    "    \"items\": [ { \"item_type\": \"Scientific calculator\", \"quantity\": 1, \"optional\": false } ] }",
+    "'branch': a branch CODE from your branches table, or null for a kit that applies to EVERY branch (for example a shared first year).",
+    "'item_type': must match an item type name exactly (the script lists the valid names if one is wrong). 'quantity' and 'optional' are optional.",
+    "Only you can decide what each semester needs. This file is intentionally empty: no invented lists."
+  ],
+  "kits": []
+}

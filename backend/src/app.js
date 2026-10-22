@@ -5,6 +5,9 @@ const rateLimit = require('express-rate-limit');
 const config = require('./config');
 const storage = require('./storage');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
+const kitsRouter = require('./routes/kits');
+const wishlistRouter = require('./routes/wishlist');
+
 
 const app = express();
 app.set('trust proxy', 1);
@@ -44,6 +47,9 @@ app.use('/meta', require('./routes/meta'));
 app.use('/api/colleges', require('./routes/colleges'));
 app.use('/api/me/college', require('./routes/me-college'));
 app.use('/items', require('./routes/items'));
+
+app.use('/kits', kitsRouter);
+app.use('/wishlist', wishlistRouter);
 
 app.use(notFound);
 app.use(errorHandler);
