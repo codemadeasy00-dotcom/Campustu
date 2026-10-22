@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
+import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 
 export default function LostFound() {
   const [items, setItems] = useState([]);
@@ -41,18 +41,23 @@ export default function LostFound() {
       return;
     }
 
-    const loader = new Loader({
-      apiKey,
-      version: 'weekly',
-    });
+    let active = true;
+    try {
+      setOptions({ key: apiKey, v: 'weekly' });
+      importLibrary('maps')
+        .then((maps) => {
+          if (active) setGoogleMaps({ maps });
+        })
+        .catch((err) => {
+          console.error("Google Maps failed to load:", err);
+        });
+    } catch (err) {
+      console.error("Google Maps failed to load:", err);
+    }
 
-    loader.load()
-      .then((google) => {
-        setGoogleMaps(google);
-      })
-      .catch((err) => {
-        console.error("Google Maps failed to load:", err);
-      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Fetch Lost & Found Items
