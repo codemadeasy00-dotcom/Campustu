@@ -1,7 +1,9 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
+import 'leaflet/dist/leaflet.css';
+import 'leaflet-geosearch/dist/geosearch.css';
 
 // Leaflet default marker fix
 delete L.Icon.Default.prototype._getIconUrl;
@@ -39,6 +41,7 @@ function SearchField() {
     const searchControl = new GeoSearchControl({
       provider: provider,
       style: 'bar',
+      position: 'topright',
       showMarker: false,
       showPopup: false,
       autoClose: true,
@@ -89,8 +92,10 @@ function LocationPinPicker({ position, setPosition }) {
 function LocateUserButton({ onLocationFound }) {
   const map = useMap();
   const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState('');
 
   const handleLocate = () => {
+    setLocationError('');
     setLocating(true);
     map.locate({ setView: true, maxZoom: 17 });
   };
@@ -102,18 +107,31 @@ function LocateUserButton({ onLocationFound }) {
     },
     locationerror(e) {
       setLocating(false);
-      alert("Could not retrieve location. Please check browser permissions.");
+      setLocationError(e.message || 'Enable location access to find your position.');
     }
   });
 
   return (
-    <button
-      type="button"
-      onClick={handleLocate}
-      className="absolute bottom-4 right-4 z-[1000] bg-white text-slate-800 font-bold px-3 py-2 rounded-xl shadow-md border border-slate-200 text-xs flex items-center gap-1.5 hover:bg-slate-50 transition-all"
-    >
-      🎯 {locating ? 'Detecting Location...' : 'Locate Me'}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={handleLocate}
+        disabled={locating}
+        className="absolute bottom-4 right-4 z-[1000] inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-white px-3.5 py-2.5 text-xs font-bold text-brand-700 shadow-lg transition hover:border-brand-400 hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:cursor-wait disabled:opacity-70"
+      >
+        <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+          <circle cx="10" cy="10" r="6.25" stroke="currentColor" strokeWidth="1.7" />
+          <circle cx="10" cy="10" r="2" fill="currentColor" />
+          <path d="M10 1.5v2.25M10 16.25v2.25M1.5 10h2.25m12.5 0h2.25" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        </svg>
+        {locating ? 'Finding you…' : 'Locate me'}
+      </button>
+      {locationError && (
+        <p role="status" className="absolute bottom-16 right-4 z-[1000] max-w-56 rounded-xl border border-brand-100 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-lg">
+          {locationError}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -235,7 +253,7 @@ export default function LostFound() {
           <span className="text-[11px] text-slate-400">Search location or click "Locate Me"</span>
         </div>
         
-        <div className="relative w-full h-[400px] rounded-xl overflow-hidden z-0">
+        <div className="lost-found-map relative z-0 h-[400px] w-full overflow-hidden rounded-xl">
           <MapContainer center={defaultCenter} zoom={16} scrollWheelZoom={true} className="w-full h-[400px] z-0">
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -377,7 +395,7 @@ export default function LostFound() {
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
                   Click Anywhere on Map to Pinpoint Location
                 </label>
-                <div className="relative w-full h-[250px] rounded-xl overflow-hidden border border-slate-200">
+                <div className="lost-found-map relative h-[250px] w-full overflow-hidden rounded-xl border border-slate-200">
                   <MapContainer center={modalPin} zoom={16} scrollWheelZoom={false} className="w-full h-[250px]">
                     <TileLayer
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
