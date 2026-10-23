@@ -22,57 +22,15 @@ body {
   @apply text-slate-900 antialiased;
 }
 
-.lost-found-map .leaflet-control-geosearch {
-  --geosearch-background: #fffdf7;
-  --geosearch-text: #334155;
-  --geosearch-strong: #175a6d;
-  --geosearch-muted: #64748b;
-  --geosearch-border: #a9ded9;
-  --geosearch-divider: #d5f0ef;
-  --geosearch-hover: #eef9f9;
-  --geosearch-button-hover: #eef9f9;
-  --geosearch-icon: #175a6d;
-  margin: 12px;
-  font-family: inherit;
-}
-
-.lost-found-map .leaflet-control-geosearch a.leaflet-bar-part {
-  border: 1px solid #a9ded9;
-  border-radius: 0.75rem;
+.lost-found-map .leaflet-control-zoom a {
+  border-color: #a9ded9;
   background: #fffdf7;
   color: #175a6d;
-  box-shadow: 0 4px 12px rgb(23 90 109 / 14%);
 }
 
-.lost-found-map .leaflet-control-geosearch form {
-  border: 1px solid #a9ded9;
-  border-radius: 0.75rem;
-  background: #fffdf7;
-  box-shadow: 0 4px 12px rgb(23 90 109 / 14%);
-}
-
-.lost-found-map .leaflet-control-geosearch form input {
-  border-radius: 0.75rem;
-  background: #fffdf7;
-  color: #334155;
-  font: inherit;
-}
-
-.lost-found-map .leaflet-control-geosearch .results {
-  overflow: hidden;
-  border: 1px solid #d5f0ef;
-  border-radius: 0.75rem;
-  background: #fffdf7;
-  box-shadow: 0 4px 12px rgb(23 90 109 / 14%);
-}
-
-.lost-found-map .leaflet-control-geosearch .results > * {
-  border-color: #d5f0ef;
-  color: #334155;
-}
-
-.lost-found-map .leaflet-control-geosearch .results > *:hover {
+.lost-found-map .leaflet-control-zoom a:hover {
   background: #eef9f9;
+  color: #175a6d;
 }
 
 /* The chunky logo lettering: dark blue letters with a light teal outline. */
