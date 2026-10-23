@@ -1,13 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl } from 'react-leaflet';
 import L from 'leaflet';
-import { OpenStreetMapProvider } from 'leaflet-geosearch';
-import { lostFoundApi, errorMessage } from '../services/api.js';
-import { Alert, useToast } from '../components/ui.jsx';
-import { processAndCompressImage } from '../utils/imageCompressor.js';
-
-const MAX_PHOTOS = 5;
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
 
 // Leaflet default marker fix
 delete L.Icon.Default.prototype._getIconUrl;
@@ -17,7 +11,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Custom Pins
+// Custom Markers
 const redIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
@@ -36,128 +30,29 @@ const greenIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-const cartoApiKey = import.meta.env.VITE_CARTO_API_KEY;
-const standardTileUrl = cartoApiKey
-  ? `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${encodeURIComponent(cartoApiKey)}`
-  : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const standardTileAttribution = cartoApiKey
-  ? '&copy; <a href="https://carto.com/attributions/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-
 // Search Box Component
 function SearchField() {
   const map = useMap();
-  const provider = useMemo(() => new OpenStreetMapProvider(), []);
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [error, setError] = useState('');
 
-  const handleSearch = async (event) => {
-    event.preventDefault();
-    if (!query.trim()) return;
+  useEffect(() => {
+    const provider = new OpenStreetMapProvider();
+    const searchControl = new GeoSearchControl({
+      provider: provider,
+      style: 'bar',
+      showMarker: false,
+      showPopup: false,
+      autoClose: true,
+      retainZoomLevel: false,
+      animateZoom: true,
+      keepResult: true,
+      searchLabel: 'Search campus buildings or places...',
+    });
 
-    setSearching(true);
-    setError('');
-    setResults([]);
-    try {
-      const matches = await provider.search({ query: query.trim() });
-      if (matches.length === 0) {
-        setError('No places found. Try a nearby landmark.');
-      } else {
-        setResults(matches.slice(0, 5));
-      }
-    } catch (searchError) {
-      console.error('Map search failed:', searchError);
-      setError('Search is unavailable right now. Please try again.');
-    } finally {
-      setSearching(false);
-    }
-  };
+    map.addControl(searchControl);
+    return () => map.removeControl(searchControl);
+  }, [map]);
 
-  const selectResult = (result) => {
-    map.setView([result.y, result.x], 17);
-    setQuery(result.label);
-    setResults([]);
-  };
-
-  return (
-    <div className="absolute left-3 right-3 top-3 z-[1000] sm:right-auto sm:w-96">
-      <form
-        onSubmit={handleSearch}
-        className="flex items-center overflow-hidden rounded-xl border border-brand-200 bg-cream shadow-lg shadow-brand-700/15 transition focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-200"
-      >
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="ml-3 h-4 w-4 shrink-0 text-brand-600" stroke="currentColor" strokeWidth="2">
-          <circle cx="11" cy="11" r="6.5" />
-          <path strokeLinecap="round" d="m16 16 4 4" />
-        </svg>
-        <input
-          type="search"
-          aria-label="Search map places"
-          placeholder="Search a place or campus building"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setResults([]);
-            setError('');
-          }}
-          className="min-w-0 flex-1 bg-transparent px-2.5 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400"
-        />
-        <button
-          type="submit"
-          disabled={searching}
-          className="mr-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-600 disabled:cursor-wait disabled:opacity-60"
-        >
-          {searching ? 'Searching...' : 'Search'}
-        </button>
-      </form>
-      {error && (
-        <p role="status" className="mt-1 rounded-lg bg-cream px-3 py-2 text-xs font-medium text-brand-700 shadow">
-          {error}
-        </p>
-      )}
-      {results.length > 0 && (
-        <ul className="mt-1 max-h-52 overflow-y-auto rounded-xl border border-brand-200 bg-cream shadow-lg">
-          {results.map((result) => (
-            <li key={`${result.x}-${result.y}-${result.label}`}>
-              <button
-                type="button"
-                onClick={() => selectResult(result)}
-                className="w-full border-b border-brand-100 px-3 py-2 text-left text-xs text-slate-700 last:border-0 hover:bg-brand-50"
-              >
-                {result.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function MapLayerControl({ selectedLayer, onSelectLayer }) {
-  return (
-    <div className="absolute right-3 top-16 z-[1000] flex rounded-xl border border-brand-200 bg-cream p-1 shadow-lg shadow-brand-700/15 sm:top-3">
-      {[
-        { id: 'standard', label: 'Standard' },
-        { id: 'satellite', label: 'Satellite' },
-      ].map((layer) => (
-        <button
-          key={layer.id}
-          type="button"
-          aria-pressed={selectedLayer === layer.id}
-          onClick={() => onSelectLayer(layer.id)}
-          className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
-            selectedLayer === layer.id
-              ? 'bg-brand-700 text-white shadow-sm'
-              : 'text-brand-700 hover:bg-brand-50'
-          }`}
-        >
-          {layer.label}
-        </button>
-      ))}
-    </div>
-  );
+  return null;
 }
 
 // Click to Pinpoint Location
@@ -194,11 +89,9 @@ function LocationPinPicker({ position, setPosition }) {
 function LocateUserButton({ onLocationFound }) {
   const map = useMap();
   const [locating, setLocating] = useState(false);
-  const [locationError, setLocationError] = useState('');
 
   const handleLocate = () => {
     setLocating(true);
-    setLocationError('');
     map.locate({ setView: true, maxZoom: 17 });
   };
 
@@ -209,39 +102,24 @@ function LocateUserButton({ onLocationFound }) {
     },
     locationerror() {
       setLocating(false);
-      setLocationError('Could not detect your location. Check browser permissions.');
+      alert("Could not retrieve location. Please check browser permissions.");
     }
   });
 
   return (
-    <>
-      {locationError && (
-        <p role="status" className="absolute bottom-16 right-3 z-[1000] max-w-56 rounded-xl border border-brand-200 bg-cream px-3 py-2 text-xs font-medium text-brand-700 shadow-lg">
-          {locationError}
-        </p>
-      )}
-      <button
-        type="button"
-        onClick={handleLocate}
-        disabled={locating}
-        className="absolute bottom-4 right-3 z-[1000] flex items-center gap-2 rounded-xl border border-brand-200 bg-cream px-4 py-2.5 text-xs font-bold text-brand-700 shadow-lg shadow-brand-700/15 transition hover:bg-brand-50 disabled:cursor-wait disabled:opacity-70"
-      >
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.8">
-          <circle cx="12" cy="12" r="7.5" />
-          <circle cx="12" cy="12" r="2.5" />
-          <path strokeLinecap="round" d="M12 2v2m0 16v2M2 12h2m16 0h2" />
-        </svg>
-        {locating ? 'Detecting...' : 'Detect me'}
-      </button>
-    </>
+    <button
+      type="button"
+      onClick={handleLocate}
+      className="absolute bottom-4 right-4 z-[1000] bg-white text-slate-800 font-bold px-3 py-2 rounded-xl shadow-md border border-slate-200 text-xs flex items-center gap-1.5 hover:bg-slate-50 transition-all"
+    >
+      🎯 {locating ? 'Detecting...' : 'Detect me'}
+    </button>
   );
 }
 
 export default function LostFound() {
-  const showToast = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [itemsError, setItemsError] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   
@@ -251,17 +129,10 @@ export default function LostFound() {
   const [claimAnswer, setClaimAnswer] = useState('');
   const [claimResult, setClaimResult] = useState(null);
   const [submittingClaim, setSubmittingClaim] = useState(false);
-  const [postError, setPostError] = useState('');
-  const [postingItem, setPostingItem] = useState(false);
-  const [photos, setPhotos] = useState([]);
-  const [photoPreviews, setPhotoPreviews] = useState([]);
-  const [processingPhotos, setProcessingPhotos] = useState(false);
-  const photoPreviewsRef = React.useRef([]);
 
   // Default Campus Coordinates (DBATU Lonere)
   const defaultCenter = [18.1678, 73.3364];
   const [modalPin, setModalPin] = useState(defaultCenter);
-  const [selectedLayer, setSelectedLayer] = useState('standard');
 
   const [formData, setFormData] = useState({
     title: '',
@@ -284,69 +155,27 @@ export default function LostFound() {
     }));
   }, [modalPin]);
 
-  useEffect(() => () => photoPreviewsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
-
-  const clearPhotos = () => {
-    photoPreviewsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    photoPreviewsRef.current = [];
-    setPhotoPreviews([]);
-    setPhotos([]);
-  };
-
-  const handlePhotoSelect = async (event) => {
-    const selectedFiles = Array.from(event.target.files || []);
-    event.target.value = '';
-    setPostError('');
-    const remainingSlots = MAX_PHOTOS - photos.length;
-    if (selectedFiles.length > remainingSlots) {
-      setPostError(`You can add up to ${MAX_PHOTOS} photos.`);
-    }
-
-    const validFiles = selectedFiles.slice(0, remainingSlots).filter((file) => {
-      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-        setPostError(`${file.name} must be a JPEG, PNG, or WebP image.`);
-        return false;
-      }
-      if (file.size > MAX_PHOTO_BYTES) {
-        setPostError(`${file.name} is larger than 8 MB.`);
-        return false;
-      }
-      return true;
-    });
-    if (validFiles.length === 0) return;
-
-    setProcessingPhotos(true);
-    try {
-      const processedFiles = await Promise.all(validFiles.map((file) => processAndCompressImage(file)));
-      const oversized = processedFiles.find((file) => file.size > MAX_PHOTO_BYTES);
-      if (oversized) throw new Error(`${oversized.name} is still larger than 8 MB after compression.`);
-      const urls = processedFiles.map((file) => URL.createObjectURL(file));
-      photoPreviewsRef.current = [...photoPreviewsRef.current, ...urls];
-      setPhotos((current) => [...current, ...processedFiles]);
-      setPhotoPreviews((current) => [...current, ...urls]);
-    } catch (err) {
-      setPostError(errorMessage(err));
-    } finally {
-      setProcessingPhotos(false);
-    }
-  };
-
-  const removePhoto = (index) => {
-    URL.revokeObjectURL(photoPreviews[index]);
-    photoPreviewsRef.current = photoPreviewsRef.current.filter((_, photoIndex) => photoIndex !== index);
-    setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index));
-    setPhotoPreviews((current) => current.filter((_, photoIndex) => photoIndex !== index));
-  };
-
   const fetchItems = async () => {
     setLoading(true);
-    setItemsError('');
     try {
-      const data = await lostFoundApi.list({ status: statusFilter, search });
-      setItems(data.items || []);
+      const token = localStorage.getItem('token');
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://campustu-backend.onrender.com';
+      const params = new URLSearchParams();
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (search) params.append('search', search);
+
+      const res = await fetch(`${apiUrl}/lost-found?${params.toString()}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setItems(data.items || []);
+      }
     } catch (err) {
       console.error("Failed to fetch items:", err);
-      setItemsError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -358,42 +187,40 @@ export default function LostFound() {
 
   const handlePostSubmit = async (e) => {
     e.preventDefault();
-    setPostError('');
-    if (processingPhotos) {
-      setPostError('Wait for photo processing to finish.');
-      return;
-    }
-    setPostingItem(true);
     try {
-      const payload = new FormData();
-      Object.entries(formData).forEach(([key, value]) => {
-        if (value !== '' && value !== null && value !== undefined) {
-          payload.append(key, String(value));
-        }
+      const token = localStorage.getItem('token');
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://campustu-backend.onrender.com';
+      const res = await fetch(`${apiUrl}/lost-found`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
       });
-      photos.forEach((photo) => payload.append('photos', photo));
-      await lostFoundApi.create(payload);
-      clearPhotos();
-      setShowPostModal(false);
-      setFormData({
-        title: '',
-        description: '',
-        category: 'Electronics & Gadgets',
-        status: 'lost',
-        location_name: '',
-        latitude: modalPin[0],
-        longitude: modalPin[1],
-        security_question: '',
-        security_answer: '',
-        dropoff_location: 'Main Security Gate',
-      });
-      showToast('Lost & found item published.');
-      await fetchItems();
+      const data = await res.json();
+      if (data.success) {
+        setShowPostModal(false);
+        // Reset form
+        setFormData({
+          title: '',
+          description: '',
+          category: 'Electronics & Gadgets',
+          status: 'lost',
+          location_name: '',
+          latitude: defaultCenter[0],
+          longitude: defaultCenter[1],
+          security_question: '',
+          security_answer: '',
+          dropoff_location: 'Main Security Gate',
+        });
+        fetchItems();
+      } else {
+        alert(data.message || 'Failed to publish item.');
+      }
     } catch (err) {
       console.error("Post error:", err);
-      setPostError(errorMessage(err));
-    } finally {
-      setPostingItem(false);
+      alert('Network error while publishing item.');
     }
   };
 
@@ -404,10 +231,20 @@ export default function LostFound() {
     setClaimResult(null);
 
     try {
-      const data = await lostFoundApi.claim(claimModalItem.id, claimAnswer);
+      const token = localStorage.getItem('token');
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://campustu-backend.onrender.com';
+      const res = await fetch(`${apiUrl}/lost-found/${claimModalItem.id}/claim`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ answer_attempt: claimAnswer }),
+      });
+      const data = await res.json();
       setClaimResult(data);
     } catch (err) {
-      setClaimResult({ success: false, message: errorMessage(err) });
+      setClaimResult({ success: false, message: 'Failed to process claim.' });
     } finally {
       setSubmittingClaim(false);
     }
@@ -434,27 +271,31 @@ export default function LostFound() {
         </button>
       </div>
 
-      {/* Main Interactive Map with Standard/Satellite Switcher */}
+      {/* Main Interactive Map with Keyless Tiles */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm mb-8 z-0 relative">
         <div className="flex justify-between items-center mb-2 px-2">
           <h3 className="text-xs font-bold uppercase text-slate-500">Interactive Campus Pin Map (Standard / Satellite)</h3>
-          <span className="text-[11px] text-slate-400">Search, detect your location, or switch map style</span>
+          <span className="text-[11px] text-slate-400">Use top-right icon to switch view</span>
         </div>
         
         <div className="relative w-full h-[450px] rounded-xl overflow-hidden z-0">
-          <MapContainer center={defaultCenter} zoom={16} zoomControl={false} scrollWheelZoom={true} className="lost-found-map w-full h-full z-0">
-            <TileLayer
-              key={selectedLayer}
-              attribution={selectedLayer === 'standard'
-                ? standardTileAttribution
-                : 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGIS, and the GIS User Community'}
-              url={selectedLayer === 'standard'
-                ? standardTileUrl
-                : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'}
-            />
-            <ZoomControl position="bottomleft" />
+          <MapContainer center={defaultCenter} zoom={16} scrollWheelZoom={true} className="w-full h-full z-0">
+            <LayersControl position="topright">
+              <LayersControl.BaseLayer checked name="Standard Map">
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+              </LayersControl.BaseLayer>
+              <LayersControl.BaseLayer name="Satellite Map">
+                <TileLayer
+                  attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-eGIS, and the GIS User Community'
+                  url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                />
+              </LayersControl.BaseLayer>
+            </LayersControl>
+
             <SearchField />
-            <MapLayerControl selectedLayer={selectedLayer} onSelectLayer={setSelectedLayer} />
             <LocateUserButton />
             
             {items.map((item) => (
@@ -506,7 +347,6 @@ export default function LostFound() {
       </div>
 
       {/* Item List */}
-      {itemsError && <div className="mb-6"><Alert>{itemsError}</Alert></div>}
       {loading ? (
         <div className="text-center py-12 text-slate-500">Loading lost & found items...</div>
       ) : items.length === 0 ? (
@@ -517,13 +357,6 @@ export default function LostFound() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {items.map((item) => (
             <div key={item.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-              {item.photo && (
-                <img
-                  src={item.photo}
-                  alt={item.title}
-                  className="mb-4 h-40 w-full rounded-xl bg-slate-100 object-cover"
-                />
-              )}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${
@@ -633,7 +466,6 @@ export default function LostFound() {
           <div className="bg-white max-w-lg w-full rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-slate-900 mb-4">Report Lost / Found Item</h3>
             <form onSubmit={handlePostSubmit} className="space-y-4">
-              {postError && <Alert>{postError}</Alert>}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
                 <select
@@ -647,27 +479,10 @@ export default function LostFound() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Category</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
-                >
-                  <option>Electronics &amp; Gadgets</option>
-                  <option>Books &amp; Study Materials</option>
-                  <option>Clothing &amp; Accessories</option>
-                  <option>Keys &amp; ID Cards</option>
-                  <option>Bags &amp; Personal Items</option>
-                  <option>Other</option>
-                </select>
-              </div>
-
-              <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Title</label>
                 <input
                   type="text"
                   required
-                  maxLength={255}
                   placeholder="e.g., Casio Scientific Calculator"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -675,53 +490,17 @@ export default function LostFound() {
                 />
               </div>
 
+              {/* Description field added here to satisfy database constraint */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Description</label>
                 <textarea
                   required
-                  minLength={5}
-                  maxLength={2000}
-                  rows={3}
-                  placeholder="Describe the item and any identifying details."
+                  rows="2"
+                  placeholder="Provide item details (color, brand, identifying marks)..."
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full resize-y px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
                 />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs font-semibold text-slate-600">
-                  Photos <span className="font-normal text-slate-400">(optional, up to {MAX_PHOTOS}; JPEG, PNG, WebP; 8 MB each)</span>
-                </label>
-                <div className="flex flex-wrap gap-3">
-                  {photoPreviews.map((url, index) => (
-                    <div key={url} className="relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200">
-                      <img src={url} alt={`Selected item photo ${index + 1}`} className="h-full w-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => removePhoto(index)}
-                        aria-label={`Remove photo ${index + 1}`}
-                        className="absolute right-1 top-1 rounded-full bg-slate-900/75 px-1.5 text-xs text-white"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  {photos.length < MAX_PHOTOS && (
-                    <label className={`flex h-20 w-20 items-center justify-center rounded-lg border-2 border-dashed border-brand-200 text-center text-xs text-brand-700 ${processingPhotos ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-brand-50'}`}>
-                      {processingPhotos ? 'Preparing…' : '+ Add photo'}
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        multiple
-                        className="sr-only"
-                        onChange={handlePhotoSelect}
-                        disabled={processingPhotos}
-                      />
-                    </label>
-                  )}
-                </div>
-                <p className="mt-1 text-[10px] text-slate-400">Photos are resized and location metadata is removed before upload.</p>
               </div>
 
               <div>
@@ -729,7 +508,6 @@ export default function LostFound() {
                 <input
                   type="text"
                   required
-                  maxLength={255}
                   placeholder="e.g., Central Library 2nd Floor"
                   value={formData.location_name}
                   onChange={(e) => setFormData({ ...formData, location_name: e.target.value })}
@@ -742,12 +520,8 @@ export default function LostFound() {
                   Click on Map to Pinpoint Location
                 </label>
                 <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-slate-200">
-                  <MapContainer center={modalPin} zoom={16} zoomControl={false} scrollWheelZoom={false} className="lost-found-map w-full h-full">
-                    <TileLayer
-                      attribution={standardTileAttribution}
-                      url={standardTileUrl}
-                    />
-                    <ZoomControl position="bottomleft" />
+                  <MapContainer center={modalPin} zoom={16} scrollWheelZoom={false} className="w-full h-full">
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     <SearchField />
                     <LocateUserButton onLocationFound={(coords) => setModalPin(coords)} />
                     <LocationPinPicker position={modalPin} setPosition={setModalPin} />
@@ -783,22 +557,16 @@ export default function LostFound() {
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    clearPhotos();
-                    setPostError('');
-                    setShowPostModal(false);
-                  }}
-                  disabled={postingItem || processingPhotos}
-                  className="flex-1 bg-slate-100 text-slate-700 font-semibold text-xs py-2.5 rounded-xl disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => setShowPostModal(false)}
+                  className="flex-1 bg-slate-100 text-slate-700 font-semibold text-xs py-2.5 rounded-xl"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={postingItem || processingPhotos}
-                  className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs py-2.5 rounded-xl disabled:cursor-wait disabled:opacity-60"
+                  className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs py-2.5 rounded-xl"
                 >
-                  {postingItem ? 'Publishing…' : 'Publish Item'}
+                  Publish Item
                 </button>
               </div>
             </form>
