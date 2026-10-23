@@ -38,7 +38,7 @@ router.get('/', requireCollege, async (req, res, next) => {
   try {
     const { status, search, category } = req.query;
     let sql = `
-      SELECT lif.*, u.name as poster_name,
+      SELECT lif.*, u.display_name as poster_name,
              (SELECT storage_key FROM lost_found_photos WHERE item_id = lif.id ORDER BY position LIMIT 1) as photo_key
       FROM lost_found_items lif
       JOIN users u ON u.id = lif.user_id
