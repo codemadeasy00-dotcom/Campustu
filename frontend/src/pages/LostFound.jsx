@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
+import { OpenStreetMapProvider } from 'leaflet-geosearch';
 
 // Leaflet default marker fix
 delete L.Icon.Default.prototype._getIconUrl;
@@ -41,26 +41,113 @@ const standardTileAttribution = cartoApiKey
 // Search Box Component
 function SearchField() {
   const map = useMap();
+  const provider = useMemo(() => new OpenStreetMapProvider(), []);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    const provider = new OpenStreetMapProvider();
-    const searchControl = new GeoSearchControl({
-      provider: provider,
-      style: 'bar',
-      showMarker: false,
-      showPopup: false,
-      autoClose: true,
-      retainZoomLevel: false,
-      animateZoom: true,
-      keepResult: true,
-      searchLabel: 'Search campus buildings or places...',
-    });
+  const handleSearch = async (event) => {
+    event.preventDefault();
+    if (!query.trim()) return;
 
-    map.addControl(searchControl);
-    return () => map.removeControl(searchControl);
-  }, [map]);
+    setSearching(true);
+    setError('');
+    setResults([]);
+    try {
+      const matches = await provider.search({ query: query.trim() });
+      if (matches.length === 0) {
+        setError('No places found. Try a nearby landmark.');
+      } else {
+        setResults(matches.slice(0, 5));
+      }
+    } catch (searchError) {
+      console.error('Map search failed:', searchError);
+      setError('Search is unavailable right now. Please try again.');
+    } finally {
+      setSearching(false);
+    }
+  };
 
-  return null;
+  const selectResult = (result) => {
+    map.setView([result.y, result.x], 17);
+    setQuery(result.label);
+    setResults([]);
+  };
+
+  return (
+    <div className="absolute left-3 right-3 top-3 z-[1000] sm:right-auto sm:w-80">
+      <form
+        onSubmit={handleSearch}
+        className="flex overflow-hidden rounded-xl border border-brand-200 bg-cream shadow-lg shadow-brand-700/15"
+      >
+        <input
+          type="search"
+          aria-label="Search map places"
+          placeholder="Search campus buildings or places..."
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setResults([]);
+            setError('');
+          }}
+          className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+        />
+        <button
+          type="submit"
+          disabled={searching}
+          className="border-l border-brand-200 bg-brand-50 px-3 text-sm font-bold text-brand-700 transition hover:bg-brand-100 disabled:cursor-wait disabled:opacity-60"
+        >
+          {searching ? 'Searching...' : 'Search'}
+        </button>
+      </form>
+      {error && (
+        <p role="status" className="mt-1 rounded-lg bg-cream px-3 py-2 text-xs font-medium text-brand-700 shadow">
+          {error}
+        </p>
+      )}
+      {results.length > 0 && (
+        <ul className="mt-1 overflow-hidden rounded-xl border border-brand-200 bg-cream shadow-lg">
+          {results.map((result) => (
+            <li key={`${result.x}-${result.y}-${result.label}`}>
+              <button
+                type="button"
+                onClick={() => selectResult(result)}
+                className="w-full border-b border-brand-100 px-3 py-2 text-left text-xs text-slate-700 last:border-0 hover:bg-brand-50"
+              >
+                {result.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function MapLayerControl({ selectedLayer, onSelectLayer }) {
+  return (
+    <div className="absolute right-3 top-16 z-[1000] flex rounded-xl border border-brand-200 bg-cream p-1 shadow-lg shadow-brand-700/15 sm:top-3">
+      {[
+        { id: 'standard', label: 'Standard' },
+        { id: 'satellite', label: 'Satellite' },
+      ].map((layer) => (
+        <button
+          key={layer.id}
+          type="button"
+          aria-pressed={selectedLayer === layer.id}
+          onClick={() => onSelectLayer(layer.id)}
+          className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
+            selectedLayer === layer.id
+              ? 'bg-brand-700 text-white shadow-sm'
+              : 'text-brand-700 hover:bg-brand-50'
+          }`}
+        >
+          {layer.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // Click to Pinpoint Location
@@ -97,9 +184,11 @@ function LocationPinPicker({ position, setPosition }) {
 function LocateUserButton({ onLocationFound }) {
   const map = useMap();
   const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState('');
 
   const handleLocate = () => {
     setLocating(true);
+    setLocationError('');
     map.locate({ setView: true, maxZoom: 17 });
   };
 
@@ -110,18 +199,31 @@ function LocateUserButton({ onLocationFound }) {
     },
     locationerror() {
       setLocating(false);
-      alert("Could not retrieve location. Please check browser permissions.");
+      setLocationError('Could not detect your location. Check browser permissions.');
     }
   });
 
   return (
-    <button
-      type="button"
-      onClick={handleLocate}
-      className="absolute bottom-4 right-4 z-[1000] bg-white text-slate-800 font-bold px-3 py-2 rounded-xl shadow-md border border-slate-200 text-xs flex items-center gap-1.5 hover:bg-slate-50 transition-all"
-    >
-      🎯 {locating ? 'Detecting...' : 'Locate Me'}
-    </button>
+    <>
+      {locationError && (
+        <p role="status" className="absolute bottom-16 right-3 z-[1000] max-w-56 rounded-xl border border-brand-200 bg-cream px-3 py-2 text-xs font-medium text-brand-700 shadow-lg">
+          {locationError}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={handleLocate}
+        disabled={locating}
+        className="absolute bottom-4 right-3 z-[1000] flex items-center gap-2 rounded-xl border border-brand-200 bg-cream px-4 py-2.5 text-xs font-bold text-brand-700 shadow-lg shadow-brand-700/15 transition hover:bg-brand-50 disabled:cursor-wait disabled:opacity-70"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.8">
+          <circle cx="12" cy="12" r="7.5" />
+          <circle cx="12" cy="12" r="2.5" />
+          <path strokeLinecap="round" d="M12 2v2m0 16v2M2 12h2m16 0h2" />
+        </svg>
+        {locating ? 'Detecting...' : 'Detect me'}
+      </button>
+    </>
   );
 }
 
@@ -141,6 +243,7 @@ export default function LostFound() {
   // Default Campus Coordinates (DBATU Lonere)
   const defaultCenter = [18.1678, 73.3364];
   const [modalPin, setModalPin] = useState(defaultCenter);
+  const [selectedLayer, setSelectedLayer] = useState('standard');
 
   const [formData, setFormData] = useState({
     title: '',
@@ -267,27 +370,22 @@ export default function LostFound() {
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm mb-8 z-0 relative">
         <div className="flex justify-between items-center mb-2 px-2">
           <h3 className="text-xs font-bold uppercase text-slate-500">Interactive Campus Pin Map (Standard / Satellite)</h3>
-          <span className="text-[11px] text-slate-400">Use top-right layer switcher for satellite view</span>
+          <span className="text-[11px] text-slate-400">Search, detect your location, or switch map style</span>
         </div>
         
         <div className="relative w-full h-[450px] rounded-xl overflow-hidden z-0">
-          <MapContainer center={defaultCenter} zoom={16} scrollWheelZoom={true} className="w-full h-full z-0">
-            <LayersControl position="topright">
-              <LayersControl.BaseLayer checked name={`Standard Map (${cartoApiKey ? 'CARTO' : 'OpenStreetMap'})`}>
-                <TileLayer
-                  attribution={standardTileAttribution}
-                  url={standardTileUrl}
-                />
-              </LayersControl.BaseLayer>
-              <LayersControl.BaseLayer name="Satellite Map (Esri)">
-                <TileLayer
-                  attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-eGIS, and the GIS User Community'
-                  url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                />
-              </LayersControl.BaseLayer>
-            </LayersControl>
-
+          <MapContainer center={defaultCenter} zoom={16} scrollWheelZoom={true} className="lost-found-map w-full h-full z-0">
+            <TileLayer
+              key={selectedLayer}
+              attribution={selectedLayer === 'standard'
+                ? standardTileAttribution
+                : 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGIS, and the GIS User Community'}
+              url={selectedLayer === 'standard'
+                ? standardTileUrl
+                : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'}
+            />
             <SearchField />
+            <MapLayerControl selectedLayer={selectedLayer} onSelectLayer={setSelectedLayer} />
             <LocateUserButton />
             
             {items.map((item) => (
@@ -499,7 +597,7 @@ export default function LostFound() {
                   Click on Map to Pinpoint Location
                 </label>
                 <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-slate-200">
-                  <MapContainer center={modalPin} zoom={16} scrollWheelZoom={false} className="w-full h-full">
+                  <MapContainer center={modalPin} zoom={16} scrollWheelZoom={false} className="lost-found-map w-full h-full">
                     <TileLayer
                       attribution={standardTileAttribution}
                       url={standardTileUrl}
