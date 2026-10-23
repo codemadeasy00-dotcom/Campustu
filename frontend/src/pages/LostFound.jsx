@@ -30,6 +30,14 @@ const greenIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
+const cartoApiKey = import.meta.env.VITE_CARTO_API_KEY;
+const standardTileUrl = cartoApiKey
+  ? `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${encodeURIComponent(cartoApiKey)}`
+  : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const standardTileAttribution = cartoApiKey
+  ? '&copy; <a href="https://carto.com/attributions/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
 // Search Box Component
 function SearchField() {
   const map = useMap();
@@ -265,10 +273,10 @@ export default function LostFound() {
         <div className="relative w-full h-[450px] rounded-xl overflow-hidden z-0">
           <MapContainer center={defaultCenter} zoom={16} scrollWheelZoom={true} className="w-full h-full z-0">
             <LayersControl position="topright">
-              <LayersControl.BaseLayer checked name="Standard Map (CARTO)">
+              <LayersControl.BaseLayer checked name={`Standard Map (${cartoApiKey ? 'CARTO' : 'OpenStreetMap'})`}>
                 <TileLayer
-                  attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                  attribution={standardTileAttribution}
+                  url={standardTileUrl}
                 />
               </LayersControl.BaseLayer>
               <LayersControl.BaseLayer name="Satellite Map (Esri)">
@@ -492,7 +500,10 @@ export default function LostFound() {
                 </label>
                 <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-slate-200">
                   <MapContainer center={modalPin} zoom={16} scrollWheelZoom={false} className="w-full h-full">
-                    <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+                    <TileLayer
+                      attribution={standardTileAttribution}
+                      url={standardTileUrl}
+                    />
                     <SearchField />
                     <LocateUserButton onLocationFound={(coords) => setModalPin(coords)} />
                     <LocationPinPicker position={modalPin} setPosition={setModalPin} />
