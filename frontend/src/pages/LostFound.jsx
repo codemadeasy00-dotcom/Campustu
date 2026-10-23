@@ -1,9 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl } from 'react-leaflet';
 import L from 'leaflet';
 import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
-import 'leaflet/dist/leaflet.css';
-import 'leaflet-geosearch/dist/geosearch.css';
 
 // Leaflet default marker fix
 delete L.Icon.Default.prototype._getIconUrl;
@@ -32,7 +30,7 @@ const greenIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-// 1. Search Box Component inside Leaflet
+// Search Box Component
 function SearchField() {
   const map = useMap();
 
@@ -41,7 +39,6 @@ function SearchField() {
     const searchControl = new GeoSearchControl({
       provider: provider,
       style: 'bar',
-      position: 'topright',
       showMarker: false,
       showPopup: false,
       autoClose: true,
@@ -58,7 +55,7 @@ function SearchField() {
   return null;
 }
 
-// 2. Click to Pinpoint Location & Center
+// Click to Pinpoint Location
 function LocationPinPicker({ position, setPosition }) {
   useMapEvents({
     click(e) {
@@ -88,14 +85,12 @@ function LocationPinPicker({ position, setPosition }) {
   );
 }
 
-// 3. Auto-Locate User Button Component
+// Auto-Locate Button
 function LocateUserButton({ onLocationFound }) {
   const map = useMap();
   const [locating, setLocating] = useState(false);
-  const [locationError, setLocationError] = useState('');
 
   const handleLocate = () => {
-    setLocationError('');
     setLocating(true);
     map.locate({ setView: true, maxZoom: 17 });
   };
@@ -105,33 +100,20 @@ function LocateUserButton({ onLocationFound }) {
       setLocating(false);
       if (onLocationFound) onLocationFound([e.latlng.lat, e.latlng.lng]);
     },
-    locationerror(e) {
+    locationerror() {
       setLocating(false);
-      setLocationError(e.message || 'Enable location access to find your position.');
+      alert("Could not retrieve location. Please check browser permissions.");
     }
   });
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={handleLocate}
-        disabled={locating}
-        className="absolute bottom-4 right-4 z-[1000] inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-white px-3.5 py-2.5 text-xs font-bold text-brand-700 shadow-lg transition hover:border-brand-400 hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:cursor-wait disabled:opacity-70"
-      >
-        <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
-          <circle cx="10" cy="10" r="6.25" stroke="currentColor" strokeWidth="1.7" />
-          <circle cx="10" cy="10" r="2" fill="currentColor" />
-          <path d="M10 1.5v2.25M10 16.25v2.25M1.5 10h2.25m12.5 0h2.25" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-        </svg>
-        {locating ? 'Finding you…' : 'Locate me'}
-      </button>
-      {locationError && (
-        <p role="status" className="absolute bottom-16 right-4 z-[1000] max-w-56 rounded-xl border border-brand-100 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-lg">
-          {locationError}
-        </p>
-      )}
-    </>
+    <button
+      type="button"
+      onClick={handleLocate}
+      className="absolute bottom-4 right-4 z-[1000] bg-white text-slate-800 font-bold px-3 py-2 rounded-xl shadow-md border border-slate-200 text-xs flex items-center gap-1.5 hover:bg-slate-50 transition-all"
+    >
+      🎯 {locating ? 'Detecting...' : 'Locate Me'}
+    </button>
   );
 }
 
@@ -146,6 +128,7 @@ export default function LostFound() {
   const [claimModalItem, setClaimModalItem] = useState(null);
   const [claimAnswer, setClaimAnswer] = useState('');
   const [claimResult, setClaimResult] = useState(null);
+  const [submittingClaim, setSubmittingClaim] = useState(false);
 
   // Default Campus Coordinates (DBATU Lonere)
   const defaultCenter = [18.1678, 73.3364];
@@ -225,6 +208,32 @@ export default function LostFound() {
     }
   };
 
+  const handleClaimSubmit = async (e) => {
+    e.preventDefault();
+    if (!claimModalItem) return;
+    setSubmittingClaim(true);
+    setClaimResult(null);
+
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://campustu-backend.onrender.com';
+      const res = await fetch(`${apiUrl}/lost-found/${claimModalItem.id}/claim`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ answer_attempt: claimAnswer }),
+      });
+      const data = await res.json();
+      setClaimResult(data);
+    } catch (err) {
+      setClaimResult({ success: false, message: 'Failed to process claim.' });
+    } finally {
+      setSubmittingClaim(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
@@ -246,19 +255,30 @@ export default function LostFound() {
         </button>
       </div>
 
-      {/* Main Interactive Map */}
+      {/* Main Interactive Map with Standard/Satellite Switcher */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm mb-8 z-0 relative">
         <div className="flex justify-between items-center mb-2 px-2">
-          <h3 className="text-xs font-bold uppercase text-slate-500">Interactive Campus Pin Map</h3>
-          <span className="text-[11px] text-slate-400">Search location or click "Locate Me"</span>
+          <h3 className="text-xs font-bold uppercase text-slate-500">Interactive Campus Pin Map (Standard / Satellite)</h3>
+          <span className="text-[11px] text-slate-400">Use top-right layer switcher for satellite view</span>
         </div>
         
-        <div className="lost-found-map relative z-0 h-[400px] w-full overflow-hidden rounded-xl">
-          <MapContainer center={defaultCenter} zoom={16} scrollWheelZoom={true} className="w-full h-[400px] z-0">
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+        <div className="relative w-full h-[450px] rounded-xl overflow-hidden z-0">
+          <MapContainer center={defaultCenter} zoom={16} scrollWheelZoom={true} className="w-full h-full z-0">
+            <LayersControl position="topright">
+              <LayersControl.BaseLayer checked name="Standard Map (CARTO)">
+                <TileLayer
+                  attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                />
+              </LayersControl.BaseLayer>
+              <LayersControl.BaseLayer name="Satellite Map (Esri)">
+                <TileLayer
+                  attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-eGIS, and the GIS User Community'
+                  url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                />
+              </LayersControl.BaseLayer>
+            </LayersControl>
+
             <SearchField />
             <LocateUserButton />
             
@@ -349,7 +369,82 @@ export default function LostFound() {
         </div>
       )}
 
-      {/* Post Modal with Click/Drag Pin Selection */}
+      {/* Claim Modal */}
+      {claimModalItem && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Claim Item: {claimModalItem.title}</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              {claimModalItem.security_question 
+                ? `Answer the security question to verify ownership.`
+                : `Submit proof details to verify ownership.`}
+            </p>
+
+            {claimResult ? (
+              <div className="space-y-4">
+                <div className={`p-4 rounded-2xl text-sm font-medium ${claimResult.success && claimResult.claim?.status === 'approved' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+                  {claimResult.message}
+                </div>
+
+                {claimResult.claim?.handover_pass_code && (
+                  <div className="bg-teal-50 border border-teal-200 p-4 rounded-2xl text-center">
+                    <span className="text-[10px] uppercase font-bold text-teal-700 tracking-wider">Campus Security Handover Pass</span>
+                    <div className="text-2xl font-mono font-extrabold text-teal-900 my-1">
+                      {claimResult.claim.handover_pass_code}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setClaimModalItem(null)}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2.5 rounded-xl text-xs"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleClaimSubmit} className="space-y-4">
+                {claimModalItem.security_question && (
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs font-medium text-slate-700">
+                    ❓ <strong>Question:</strong> {claimModalItem.security_question}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Your Answer / Proof</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter answer..."
+                    value={claimAnswer}
+                    onChange={(e) => setClaimAnswer(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setClaimModalItem(null)}
+                    className="flex-1 bg-slate-100 text-slate-700 font-semibold text-xs py-2.5 rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingClaim}
+                    className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs py-2.5 rounded-xl"
+                  >
+                    {submittingClaim ? 'Verifying...' : 'Submit Claim'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Post Modal */}
       {showPostModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white max-w-lg w-full rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -372,7 +467,7 @@ export default function LostFound() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g., Blue Casio Scientific Calculator"
+                  placeholder="e.g., Casio Scientific Calculator"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
@@ -393,13 +488,11 @@ export default function LostFound() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Click Anywhere on Map to Pinpoint Location
+                  Click on Map to Pinpoint Location
                 </label>
-                <div className="lost-found-map relative h-[250px] w-full overflow-hidden rounded-xl border border-slate-200">
-                  <MapContainer center={modalPin} zoom={16} scrollWheelZoom={false} className="w-full h-[250px]">
-                    <TileLayer
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
+                <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-slate-200">
+                  <MapContainer center={modalPin} zoom={16} scrollWheelZoom={false} className="w-full h-full">
+                    <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
                     <SearchField />
                     <LocateUserButton onLocationFound={(coords) => setModalPin(coords)} />
                     <LocationPinPicker position={modalPin} setPosition={setModalPin} />
@@ -414,7 +507,7 @@ export default function LostFound() {
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Security Question</label>
                 <input
                   type="text"
-                  placeholder="e.g., What sticker is on the laptop?"
+                  placeholder="e.g., What color is the cover?"
                   value={formData.security_question}
                   onChange={(e) => setFormData({ ...formData, security_question: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
@@ -425,7 +518,7 @@ export default function LostFound() {
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Security Answer</label>
                 <input
                   type="text"
-                  placeholder="Expected verification answer"
+                  placeholder="Expected answer"
                   value={formData.security_answer}
                   onChange={(e) => setFormData({ ...formData, security_answer: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
