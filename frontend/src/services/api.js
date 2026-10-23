@@ -132,3 +132,18 @@ export const itemsApi = {
   updateStatus: (id, status) => request(`/items/${encodeURIComponent(id)}/status`, { method: 'PATCH', json: { status } }),
   remove: deleteItem,
 }
+
+export const lostFoundApi = {
+  list: ({ status, search } = {}) => {
+    const params = new URLSearchParams()
+    if (status && status !== 'all') params.set('status', status)
+    if (search) params.set('search', search)
+    return request(`/lost-found?${params.toString()}`)
+  },
+  create: (formData) => request('/lost-found', { method: 'POST', formData }),
+  claim: (id, answerAttempt) =>
+    request(`/lost-found/${encodeURIComponent(id)}/claim`, {
+      method: 'POST',
+      json: { answer_attempt: answerAttempt },
+    }),
+}

@@ -2,6 +2,12 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { OpenStreetMapProvider } from 'leaflet-geosearch';
+import { lostFoundApi, errorMessage } from '../services/api.js';
+import { Alert, useToast } from '../components/ui.jsx';
+import { processAndCompressImage } from '../utils/imageCompressor.js';
+
+const MAX_PHOTOS = 5;
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 
 // Leaflet default marker fix
 delete L.Icon.Default.prototype._getIconUrl;
@@ -232,8 +238,10 @@ function LocateUserButton({ onLocationFound }) {
 }
 
 export default function LostFound() {
+  const showToast = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [itemsError, setItemsError] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   
@@ -243,6 +251,12 @@ export default function LostFound() {
   const [claimAnswer, setClaimAnswer] = useState('');
   const [claimResult, setClaimResult] = useState(null);
   const [submittingClaim, setSubmittingClaim] = useState(false);
+  const [postError, setPostError] = useState('');
+  const [postingItem, setPostingItem] = useState(false);
+  const [photos, setPhotos] = useState([]);
+  const [photoPreviews, setPhotoPreviews] = useState([]);
+  const [processingPhotos, setProcessingPhotos] = useState(false);
+  const photoPreviewsRef = React.useRef([]);
 
   // Default Campus Coordinates (DBATU Lonere)
   const defaultCenter = [18.1678, 73.3364];
@@ -270,27 +284,69 @@ export default function LostFound() {
     }));
   }, [modalPin]);
 
+  useEffect(() => () => photoPreviewsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
+
+  const clearPhotos = () => {
+    photoPreviewsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    photoPreviewsRef.current = [];
+    setPhotoPreviews([]);
+    setPhotos([]);
+  };
+
+  const handlePhotoSelect = async (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    event.target.value = '';
+    setPostError('');
+    const remainingSlots = MAX_PHOTOS - photos.length;
+    if (selectedFiles.length > remainingSlots) {
+      setPostError(`You can add up to ${MAX_PHOTOS} photos.`);
+    }
+
+    const validFiles = selectedFiles.slice(0, remainingSlots).filter((file) => {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        setPostError(`${file.name} must be a JPEG, PNG, or WebP image.`);
+        return false;
+      }
+      if (file.size > MAX_PHOTO_BYTES) {
+        setPostError(`${file.name} is larger than 8 MB.`);
+        return false;
+      }
+      return true;
+    });
+    if (validFiles.length === 0) return;
+
+    setProcessingPhotos(true);
+    try {
+      const processedFiles = await Promise.all(validFiles.map((file) => processAndCompressImage(file)));
+      const oversized = processedFiles.find((file) => file.size > MAX_PHOTO_BYTES);
+      if (oversized) throw new Error(`${oversized.name} is still larger than 8 MB after compression.`);
+      const urls = processedFiles.map((file) => URL.createObjectURL(file));
+      photoPreviewsRef.current = [...photoPreviewsRef.current, ...urls];
+      setPhotos((current) => [...current, ...processedFiles]);
+      setPhotoPreviews((current) => [...current, ...urls]);
+    } catch (err) {
+      setPostError(errorMessage(err));
+    } finally {
+      setProcessingPhotos(false);
+    }
+  };
+
+  const removePhoto = (index) => {
+    URL.revokeObjectURL(photoPreviews[index]);
+    photoPreviewsRef.current = photoPreviewsRef.current.filter((_, photoIndex) => photoIndex !== index);
+    setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index));
+    setPhotoPreviews((current) => current.filter((_, photoIndex) => photoIndex !== index));
+  };
+
   const fetchItems = async () => {
     setLoading(true);
+    setItemsError('');
     try {
-      const token = localStorage.getItem('token');
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://campustu-backend.onrender.com';
-      const params = new URLSearchParams();
-      if (statusFilter !== 'all') params.append('status', statusFilter);
-      if (search) params.append('search', search);
-
-      const res = await fetch(`${apiUrl}/lost-found?${params.toString()}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      const data = await res.json();
-      if (data.success) {
-        setItems(data.items || []);
-      }
+      const data = await lostFoundApi.list({ status: statusFilter, search });
+      setItems(data.items || []);
     } catch (err) {
       console.error("Failed to fetch items:", err);
+      setItemsError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -302,24 +358,42 @@ export default function LostFound() {
 
   const handlePostSubmit = async (e) => {
     e.preventDefault();
+    setPostError('');
+    if (processingPhotos) {
+      setPostError('Wait for photo processing to finish.');
+      return;
+    }
+    setPostingItem(true);
     try {
-      const token = localStorage.getItem('token');
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://campustu-backend.onrender.com';
-      const res = await fetch(`${apiUrl}/lost-found`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
+      const payload = new FormData();
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value !== '' && value !== null && value !== undefined) {
+          payload.append(key, String(value));
+        }
       });
-      const data = await res.json();
-      if (data.success) {
-        setShowPostModal(false);
-        fetchItems();
-      }
+      photos.forEach((photo) => payload.append('photos', photo));
+      await lostFoundApi.create(payload);
+      clearPhotos();
+      setShowPostModal(false);
+      setFormData({
+        title: '',
+        description: '',
+        category: 'Electronics & Gadgets',
+        status: 'lost',
+        location_name: '',
+        latitude: modalPin[0],
+        longitude: modalPin[1],
+        security_question: '',
+        security_answer: '',
+        dropoff_location: 'Main Security Gate',
+      });
+      showToast('Lost & found item published.');
+      await fetchItems();
     } catch (err) {
       console.error("Post error:", err);
+      setPostError(errorMessage(err));
+    } finally {
+      setPostingItem(false);
     }
   };
 
@@ -330,20 +404,10 @@ export default function LostFound() {
     setClaimResult(null);
 
     try {
-      const token = localStorage.getItem('token');
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://campustu-backend.onrender.com';
-      const res = await fetch(`${apiUrl}/lost-found/${claimModalItem.id}/claim`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ answer_attempt: claimAnswer }),
-      });
-      const data = await res.json();
+      const data = await lostFoundApi.claim(claimModalItem.id, claimAnswer);
       setClaimResult(data);
     } catch (err) {
-      setClaimResult({ success: false, message: 'Failed to process claim.' });
+      setClaimResult({ success: false, message: errorMessage(err) });
     } finally {
       setSubmittingClaim(false);
     }
@@ -442,6 +506,7 @@ export default function LostFound() {
       </div>
 
       {/* Item List */}
+      {itemsError && <div className="mb-6"><Alert>{itemsError}</Alert></div>}
       {loading ? (
         <div className="text-center py-12 text-slate-500">Loading lost & found items...</div>
       ) : items.length === 0 ? (
@@ -452,6 +517,13 @@ export default function LostFound() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {items.map((item) => (
             <div key={item.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+              {item.photo && (
+                <img
+                  src={item.photo}
+                  alt={item.title}
+                  className="mb-4 h-40 w-full rounded-xl bg-slate-100 object-cover"
+                />
+              )}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${
@@ -561,6 +633,7 @@ export default function LostFound() {
           <div className="bg-white max-w-lg w-full rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-slate-900 mb-4">Report Lost / Found Item</h3>
             <form onSubmit={handlePostSubmit} className="space-y-4">
+              {postError && <Alert>{postError}</Alert>}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
                 <select
@@ -574,10 +647,27 @@ export default function LostFound() {
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Category</label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                >
+                  <option>Electronics &amp; Gadgets</option>
+                  <option>Books &amp; Study Materials</option>
+                  <option>Clothing &amp; Accessories</option>
+                  <option>Keys &amp; ID Cards</option>
+                  <option>Bags &amp; Personal Items</option>
+                  <option>Other</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Title</label>
                 <input
                   type="text"
                   required
+                  maxLength={255}
                   placeholder="e.g., Casio Scientific Calculator"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -586,10 +676,60 @@ export default function LostFound() {
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Description</label>
+                <textarea
+                  required
+                  minLength={5}
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Describe the item and any identifying details."
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full resize-y px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-semibold text-slate-600">
+                  Photos <span className="font-normal text-slate-400">(optional, up to {MAX_PHOTOS}; JPEG, PNG, WebP; 8 MB each)</span>
+                </label>
+                <div className="flex flex-wrap gap-3">
+                  {photoPreviews.map((url, index) => (
+                    <div key={url} className="relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200">
+                      <img src={url} alt={`Selected item photo ${index + 1}`} className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(index)}
+                        aria-label={`Remove photo ${index + 1}`}
+                        className="absolute right-1 top-1 rounded-full bg-slate-900/75 px-1.5 text-xs text-white"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {photos.length < MAX_PHOTOS && (
+                    <label className={`flex h-20 w-20 items-center justify-center rounded-lg border-2 border-dashed border-brand-200 text-center text-xs text-brand-700 ${processingPhotos ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-brand-50'}`}>
+                      {processingPhotos ? 'Preparing…' : '+ Add photo'}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        multiple
+                        className="sr-only"
+                        onChange={handlePhotoSelect}
+                        disabled={processingPhotos}
+                      />
+                    </label>
+                  )}
+                </div>
+                <p className="mt-1 text-[10px] text-slate-400">Photos are resized and location metadata is removed before upload.</p>
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Spot Name</label>
                 <input
                   type="text"
                   required
+                  maxLength={255}
                   placeholder="e.g., Central Library 2nd Floor"
                   value={formData.location_name}
                   onChange={(e) => setFormData({ ...formData, location_name: e.target.value })}
@@ -643,16 +783,22 @@ export default function LostFound() {
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowPostModal(false)}
-                  className="flex-1 bg-slate-100 text-slate-700 font-semibold text-xs py-2.5 rounded-xl"
+                  onClick={() => {
+                    clearPhotos();
+                    setPostError('');
+                    setShowPostModal(false);
+                  }}
+                  disabled={postingItem || processingPhotos}
+                  className="flex-1 bg-slate-100 text-slate-700 font-semibold text-xs py-2.5 rounded-xl disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs py-2.5 rounded-xl"
+                  disabled={postingItem || processingPhotos}
+                  className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs py-2.5 rounded-xl disabled:cursor-wait disabled:opacity-60"
                 >
-                  Publish Item
+                  {postingItem ? 'Publishing…' : 'Publish Item'}
                 </button>
               </div>
             </form>

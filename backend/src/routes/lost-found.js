@@ -1,16 +1,25 @@
 const router = require('express').Router();
+const multer = require('multer');
+const crypto = require('crypto');
 const { z } = require('zod');
+const config = require('../config');
 const { query, tx } = require('../db');
 const storage = require('../storage');
 const { AppError } = require('../utils/errors');
-const { requireAuth, requireCollege } = require('../middleware/auth');
+const { processPhoto } = require('../utils/images');
+const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
 
 router.use(requireAuth);
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: config.maxPhotoBytes, files: config.maxPhotosPerItem },
+});
+
 const createItemSchema = z.object({
-  title: z.string().min(3).max(255),
-  description: z.string().min(5),
-  category: z.string(),
+  title: z.string().trim().min(3).max(255),
+  description: z.string().trim().min(5),
+  category: z.string().trim().min(1).max(100),
   status: z.enum(['lost', 'found']),
   latitude: z.coerce.number().optional(),
   longitude: z.coerce.number().optional(),
@@ -70,35 +79,54 @@ router.get('/', requireCollege, async (req, res, next) => {
 });
 
 // POST /lost-found - Create a new lost or found listing
-router.post('/', requireCollege, async (req, res, next) => {
+router.post('/', requireActive, requireCollege, upload.array('photos', config.maxPhotosPerItem), async (req, res) => {
+  const data = createItemSchema.parse(req.body);
+  const itemId = crypto.randomUUID();
+  const files = req.files || [];
+  const cleanedPhotos = await Promise.all(files.map((file) => processPhoto(file.buffer)));
+  const keys = cleanedPhotos.map(() => `lost-found/${itemId}/${crypto.randomUUID()}.webp`);
+  const storedKeys = [];
+
   try {
-    const data = createItemSchema.parse(req.body);
+    for (let index = 0; index < keys.length; index++) {
+      storedKeys.push(await storage.save(keys[index], cleanedPhotos[index]));
+    }
 
-    const { rows } = await query(
-      `INSERT INTO lost_found_items 
-       (college_id, user_id, title, description, category, status, latitude, longitude, location_name, security_question, security_answer_hash, dropoff_location)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-       RETURNING id`,
-      [
-        req.user.college_id,
-        req.user.id,
-        data.title,
-        data.description,
-        data.category,
-        data.status,
-        data.latitude || null,
-        data.longitude || null,
-        data.location_name,
-        data.security_question || null,
-        data.security_answer ? data.security_answer.toLowerCase().trim() : null, // Simple storage or hash
-        data.dropoff_location || null,
-      ]
-    );
+    await tx(async (db) => {
+      await db.query(
+        `INSERT INTO lost_found_items
+         (id, college_id, user_id, title, description, category, status, latitude, longitude, location_name, security_question, security_answer_hash, dropoff_location)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [
+          itemId,
+          req.user.college_id,
+          req.user.id,
+          data.title,
+          data.description,
+          data.category,
+          data.status,
+          data.latitude ?? null,
+          data.longitude ?? null,
+          data.location_name,
+          data.security_question || null,
+          data.security_answer ? data.security_answer.toLowerCase().trim() : null,
+          data.dropoff_location || null,
+        ]
+      );
 
-    res.status(201).json({ success: true, itemId: rows[0].id });
+      for (let index = 0; index < storedKeys.length; index++) {
+        await db.query(
+          'INSERT INTO lost_found_photos (item_id, storage_key, position) VALUES ($1, $2, $3)',
+          [itemId, storedKeys[index], index]
+        );
+      }
+    });
   } catch (err) {
-    next(err);
+    await Promise.all(storedKeys.map((key) => storage.remove(key).catch(() => {})));
+    throw err;
   }
+
+  res.status(201).json({ success: true, itemId });
 });
 
 // POST /lost-found/:id/claim - Submit proof-of-ownership claim (Option 3A / 3B)
