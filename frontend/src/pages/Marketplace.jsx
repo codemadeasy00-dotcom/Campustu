@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { itemsApi, metaApi, errorMessage } from '../services/api.js'
 import { CONDITIONS, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
@@ -54,11 +54,12 @@ function ListingCard({ item, categoryName }) {
 }
 
 export default function Marketplace() {
+  const [searchParams] = useSearchParams()
   const [metadata, setMetadata] = useState(null)
   const [metadataError, setMetadataError] = useState('')
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('q') || '')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [categoryId, setCategoryId] = useState('')
+  const [categoryId, setCategoryId] = useState(() => searchParams.get('category_id') || '')
   const [condition, setCondition] = useState('')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
