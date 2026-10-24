@@ -108,7 +108,7 @@ function Dashboard() {
         })
       lostFoundApi.list()
         .then((result) => {
-          if (!cancelled) setLostFound(result.items.slice(0, 4))
+          if (!cancelled) setLostFound(result.items)
         })
         .catch((error) => {
           if (!cancelled) {
@@ -294,7 +294,7 @@ function Dashboard() {
             </p>
           ) : (
             <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {lostFound.map((item) => (
+              {lostFound.slice(0, 4).map((item) => (
                 <li key={item.id} className="rounded-2xl border border-white/70 bg-white p-4 shadow-sm">
                   <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
                     item.status === 'found' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
+import { CircleMarker, MapContainer, TileLayer, Marker, Popup, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { OpenStreetMapProvider } from 'leaflet-geosearch';
 import { lostFoundApi, errorMessage } from '../services/api.js';
@@ -8,6 +8,14 @@ import { processAndCompressImage } from '../utils/imageCompressor.js';
 
 const MAX_PHOTOS = 5;
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+
+function hasValidCoordinates(item) {
+  if (item.latitude == null || item.longitude == null || item.latitude === '' || item.longitude === '') return false;
+  const latitude = Number(item.latitude);
+  const longitude = Number(item.longitude);
+  return Number.isFinite(latitude) && Number.isFinite(longitude)
+    && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
+}
 
 // Leaflet default marker fix
 delete L.Icon.Default.prototype._getIconUrl;
@@ -45,7 +53,7 @@ const standardTileAttribution = cartoApiKey
   : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 // Search Box Component
-function SearchField() {
+function SearchField({ onSelect }) {
   const map = useMap();
   const provider = useMemo(() => new OpenStreetMapProvider(), []);
   const [query, setQuery] = useState('');
@@ -77,6 +85,7 @@ function SearchField() {
 
   const selectResult = (result) => {
     map.setView([result.y, result.x], 17);
+    onSelect?.([result.y, result.x]);
     setQuery(result.label);
     setResults([]);
   };
@@ -181,6 +190,8 @@ function LocationPinPicker({ position, setPosition }) {
     [setPosition],
   );
 
+  if (!position) return null;
+
   return (
     <Marker
       draggable={true}
@@ -195,6 +206,7 @@ function LocateUserButton({ onLocationFound }) {
   const map = useMap();
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState('');
+  const [position, setPosition] = useState(null);
 
   const handleLocate = () => {
     setLocating(true);
@@ -205,7 +217,9 @@ function LocateUserButton({ onLocationFound }) {
   useMapEvents({
     locationfound(e) {
       setLocating(false);
-      if (onLocationFound) onLocationFound([e.latlng.lat, e.latlng.lng]);
+      const coords = [e.latlng.lat, e.latlng.lng];
+      setPosition(coords);
+      if (onLocationFound) onLocationFound(coords);
     },
     locationerror() {
       setLocating(false);
@@ -215,6 +229,7 @@ function LocateUserButton({ onLocationFound }) {
 
   return (
     <>
+      {position && <CircleMarker center={position} radius={8} pathOptions={{ color: '#fff', weight: 3, fillColor: '#2563eb', fillOpacity: 1 }} />}
       {locationError && (
         <p role="status" className="absolute bottom-16 right-3 z-[1000] max-w-56 rounded-xl border border-brand-200 bg-cream px-3 py-2 text-xs font-medium text-brand-700 shadow-lg">
           {locationError}
@@ -234,6 +249,24 @@ function LocateUserButton({ onLocationFound }) {
         {locating ? 'Detecting...' : 'Detect me'}
       </button>
     </>
+  );
+}
+
+function RecenterButton({ center }) {
+  const map = useMap();
+
+  return (
+    <button
+      type="button"
+      onClick={() => map.setView(center, 16)}
+      aria-label="Recenter map"
+      title="Recenter map"
+      className="absolute bottom-16 right-3 z-[1000] flex h-10 w-10 items-center justify-center rounded-xl border border-brand-200 bg-cream text-brand-700 shadow-lg hover:bg-brand-50"
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 10V4h6M20 14v6h-6M4 4l6 6m10 10-6-6" />
+      </svg>
+    </button>
   );
 }
 
@@ -260,7 +293,7 @@ export default function LostFound() {
 
   // Default Campus Coordinates (DBATU Lonere)
   const defaultCenter = [18.1678, 73.3364];
-  const [modalPin, setModalPin] = useState(defaultCenter);
+  const [modalPin, setModalPin] = useState(null);
   const [selectedLayer, setSelectedLayer] = useState('standard');
 
   const [formData, setFormData] = useState({
@@ -269,8 +302,8 @@ export default function LostFound() {
     category: 'Electronics & Gadgets',
     status: 'lost',
     location_name: '',
-    latitude: defaultCenter[0],
-    longitude: defaultCenter[1],
+    latitude: null,
+    longitude: null,
     security_question: '',
     security_answer: '',
     dropoff_location: 'Main Security Gate',
@@ -279,8 +312,8 @@ export default function LostFound() {
   useEffect(() => {
     setFormData(prev => ({
       ...prev,
-      latitude: modalPin[0],
-      longitude: modalPin[1]
+      latitude: modalPin?.[0] ?? null,
+      longitude: modalPin?.[1] ?? null
     }));
   }, [modalPin]);
 
@@ -381,12 +414,13 @@ export default function LostFound() {
         category: 'Electronics & Gadgets',
         status: 'lost',
         location_name: '',
-        latitude: modalPin[0],
-        longitude: modalPin[1],
+        latitude: modalPin?.[0] ?? null,
+        longitude: modalPin?.[1] ?? null,
         security_question: '',
         security_answer: '',
         dropoff_location: 'Main Security Gate',
       });
+      setModalPin(null);
       showToast('Lost & found item published.');
       await fetchItems();
     } catch (err) {
@@ -427,7 +461,10 @@ export default function LostFound() {
           </p>
         </div>
         <button
-          onClick={() => setShowPostModal(true)}
+          onClick={() => {
+            setModalPin(null);
+            setShowPostModal(true);
+          }}
           className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold px-6 py-3 rounded-2xl transition-all shadow-lg active:scale-95"
         >
           + Report Lost / Found Item
@@ -455,13 +492,14 @@ export default function LostFound() {
             <ZoomControl position="bottomleft" />
             <SearchField />
             <MapLayerControl selectedLayer={selectedLayer} onSelectLayer={setSelectedLayer} />
+            <RecenterButton center={defaultCenter} />
             <LocateUserButton />
             
             {items.map((item) => (
-              item.latitude && item.longitude ? (
+              hasValidCoordinates(item) ? (
                 <Marker
                   key={item.id}
-                  position={[parseFloat(item.latitude), parseFloat(item.longitude)]}
+                  position={[Number(item.latitude), Number(item.longitude)]}
                   icon={item.status === 'lost' ? redIcon : greenIcon}
                 >
                   <Popup>
@@ -742,19 +780,22 @@ export default function LostFound() {
                   Click on Map to Pinpoint Location
                 </label>
                 <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-slate-200">
-                  <MapContainer center={modalPin} zoom={16} zoomControl={false} scrollWheelZoom={false} className="lost-found-map w-full h-full">
+                  <MapContainer center={modalPin ?? defaultCenter} zoom={16} zoomControl={false} scrollWheelZoom={false} className="lost-found-map w-full h-full">
                     <TileLayer
                       attribution={standardTileAttribution}
                       url={standardTileUrl}
                     />
                     <ZoomControl position="bottomleft" />
-                    <SearchField />
+                    <SearchField onSelect={setModalPin} />
+                    <RecenterButton center={modalPin ?? defaultCenter} />
                     <LocateUserButton onLocationFound={(coords) => setModalPin(coords)} />
                     <LocationPinPicker position={modalPin} setPosition={setModalPin} />
                   </MapContainer>
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Selected Pin: Lat {modalPin[0].toFixed(5)}, Lon {modalPin[1].toFixed(5)}
+                  {modalPin
+                    ? `Selected pin: Lat ${modalPin[0].toFixed(5)}, Lon ${modalPin[1].toFixed(5)}`
+                    : 'No map location selected. Click the map, search for a place, or use Detect me; otherwise this post will have no map pin.'}
                 </p>
               </div>
 
@@ -786,6 +827,7 @@ export default function LostFound() {
                   onClick={() => {
                     clearPhotos();
                     setPostError('');
+                    setModalPin(null);
                     setShowPostModal(false);
                   }}
                   disabled={postingItem || processingPhotos}
