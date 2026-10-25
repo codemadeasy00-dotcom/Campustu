@@ -246,27 +246,64 @@ function LocateUserButton({ onLocationFound }) {
           <circle cx="12" cy="12" r="2.5" />
           <path strokeLinecap="round" d="M12 2v2m0 16v2M2 12h2m16 0h2" />
         </svg>
-        {locating ? 'Detecting...' : 'Detect me'}
+        {locating ? 'Locating...' : 'Recenter me'}
       </button>
     </>
   );
 }
 
-function RecenterButton({ center }) {
+function FullscreenButton() {
   const map = useMap();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState('');
+
+  useEffect(() => {
+    const updateFullscreen = () => {
+      setIsFullscreen(document.fullscreenElement === map.getContainer().parentElement);
+      requestAnimationFrame(() => map.invalidateSize());
+    };
+    document.addEventListener('fullscreenchange', updateFullscreen);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreen);
+  }, [map]);
+
+  const toggleFullscreen = async () => {
+    const container = map.getContainer().parentElement;
+    if (!container) return;
+
+    setFullscreenError('');
+    try {
+      if (document.fullscreenElement === container) {
+        await document.exitFullscreen();
+      } else {
+        await container.requestFullscreen();
+      }
+    } catch (error) {
+      console.error('Could not toggle lost-and-found map fullscreen:', error);
+      setFullscreenError('Fullscreen is unavailable in this browser.');
+    }
+  };
 
   return (
-    <button
-      type="button"
-      onClick={() => map.setView(center, 16)}
-      aria-label="Recenter map"
-      title="Recenter map"
-      className="absolute bottom-16 right-3 z-[1000] flex h-10 w-10 items-center justify-center rounded-xl border border-brand-200 bg-cream text-brand-700 shadow-lg hover:bg-brand-50"
-    >
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 10V4h6M20 14v6h-6M4 4l6 6m10 10-6-6" />
-      </svg>
-    </button>
+    <>
+      {fullscreenError && <p role="status" className="absolute bottom-[7.25rem] right-3 z-[1000] max-w-56 rounded-xl border border-brand-200 bg-cream px-3 py-2 text-xs font-medium text-brand-700 shadow-lg">{fullscreenError}</p>}
+      <button
+        type="button"
+        onClick={toggleFullscreen}
+        aria-label={isFullscreen ? 'Exit fullscreen map' : 'View map fullscreen'}
+        title={isFullscreen ? 'Exit fullscreen' : 'View fullscreen'}
+        className="absolute bottom-[4.5rem] right-3 z-[1000] flex h-10 w-10 items-center justify-center rounded-xl border border-brand-200 bg-cream text-brand-700 shadow-lg hover:bg-brand-50"
+      >
+        {isFullscreen ? (
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 4v5H4m16 0h-5V4M4 15h5v5m6 0v-5h5" />
+          </svg>
+        ) : (
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 10V4h6M20 14v6h-6M4 4l6 6m10 10-6-6" />
+          </svg>
+        )}
+      </button>
+    </>
   );
 }
 
@@ -478,7 +515,7 @@ export default function LostFound() {
           <span className="text-[11px] text-slate-400">Search, detect your location, or switch map style</span>
         </div>
         
-        <div className="relative w-full h-[450px] rounded-xl overflow-hidden z-0">
+        <div className="map-fullscreen-container relative w-full h-[450px] rounded-xl overflow-hidden z-0">
           <MapContainer center={defaultCenter} zoom={16} zoomControl={false} scrollWheelZoom={true} className="lost-found-map w-full h-full z-0">
             <TileLayer
               key={selectedLayer}
@@ -492,7 +529,7 @@ export default function LostFound() {
             <ZoomControl position="bottomleft" />
             <SearchField />
             <MapLayerControl selectedLayer={selectedLayer} onSelectLayer={setSelectedLayer} />
-            <RecenterButton center={defaultCenter} />
+            <FullscreenButton />
             <LocateUserButton />
             
             {items.map((item) => (
@@ -779,7 +816,7 @@ export default function LostFound() {
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
                   Click on Map to Pinpoint Location
                 </label>
-                <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-slate-200">
+                <div className="map-fullscreen-container relative w-full h-[300px] rounded-xl overflow-hidden border border-slate-200">
                   <MapContainer center={modalPin ?? defaultCenter} zoom={16} zoomControl={false} scrollWheelZoom={false} className="lost-found-map w-full h-full">
                     <TileLayer
                       attribution={standardTileAttribution}
@@ -787,7 +824,7 @@ export default function LostFound() {
                     />
                     <ZoomControl position="bottomleft" />
                     <SearchField onSelect={setModalPin} />
-                    <RecenterButton center={modalPin ?? defaultCenter} />
+                    <FullscreenButton />
                     <LocateUserButton onLocationFound={(coords) => setModalPin(coords)} />
                     <LocationPinPicker position={modalPin} setPosition={setModalPin} />
                   </MapContainer>
@@ -795,7 +832,7 @@ export default function LostFound() {
                 <p className="text-[10px] text-slate-400 mt-1">
                   {modalPin
                     ? `Selected pin: Lat ${modalPin[0].toFixed(5)}, Lon ${modalPin[1].toFixed(5)}`
-                    : 'No map location selected. Click the map, search for a place, or use Detect me; otherwise this post will have no map pin.'}
+                    : 'No map location selected. Click the map, search for a place, or use Recenter me; otherwise this post will have no map pin.'}
                 </p>
               </div>
 

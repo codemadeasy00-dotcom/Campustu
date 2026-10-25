@@ -153,30 +153,58 @@ function LayerControl({ selectedLayer, onSelectLayer }) {
   )
 }
 
-function RecenterControl({ center, items }) {
+function FullscreenControl() {
   const map = useMap()
-  const positions = items.map(coordinatesFor).filter(Boolean)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const updateFullscreen = () => {
+      setIsFullscreen(document.fullscreenElement === map.getContainer().parentElement)
+      requestAnimationFrame(() => map.invalidateSize())
+    }
+    document.addEventListener('fullscreenchange', updateFullscreen)
+    return () => document.removeEventListener('fullscreenchange', updateFullscreen)
+  }, [map])
+
+  const toggleFullscreen = async () => {
+    const container = map.getContainer().parentElement
+    if (!container) return
+
+    setError('')
+    try {
+      if (document.fullscreenElement === container) {
+        await document.exitFullscreen()
+      } else {
+        await container.requestFullscreen()
+      }
+    } catch (fullscreenError) {
+      console.error('Could not toggle campus map fullscreen:', fullscreenError)
+      setError('Fullscreen is unavailable in this browser.')
+    }
+  }
 
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (positions.length === 1) {
-          map.setView(positions[0], 16)
-        } else if (positions.length > 1) {
-          map.fitBounds(L.latLngBounds(positions), { padding: [32, 32], maxZoom: 16 })
-        } else {
-          map.setView(center, 14)
-        }
-      }}
-      aria-label="Recenter map"
-      title="Recenter map"
-      className="absolute bottom-[4.5rem] right-3 z-[1000] flex h-10 w-10 items-center justify-center rounded-xl border border-brand-200 bg-cream text-brand-700 shadow-lg hover:bg-brand-50"
-    >
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 10V4h6M20 14v6h-6M4 4l6 6m10 10-6-6" />
-      </svg>
-    </button>
+    <>
+      {error && <p role="status" className="absolute bottom-[7.25rem] right-3 z-[1000] max-w-56 rounded-xl border border-brand-200 bg-cream px-3 py-2 text-xs font-medium text-brand-700 shadow-lg">{error}</p>}
+      <button
+        type="button"
+        onClick={toggleFullscreen}
+        aria-label={isFullscreen ? 'Exit fullscreen map' : 'View map fullscreen'}
+        title={isFullscreen ? 'Exit fullscreen' : 'View fullscreen'}
+        className="absolute bottom-[4.5rem] right-3 z-[1000] flex h-10 w-10 items-center justify-center rounded-xl border border-brand-200 bg-cream text-brand-700 shadow-lg hover:bg-brand-50"
+      >
+        {isFullscreen ? (
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 4v5H4m16 0h-5V4M4 15h5v5m6 0v-5h5" />
+          </svg>
+        ) : (
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 10V4h6M20 14v6h-6M4 4l6 6m10 10-6-6" />
+          </svg>
+        )}
+      </button>
+    </>
   )
 }
 
@@ -217,7 +245,7 @@ function LocateControl() {
           <circle cx="12" cy="12" r="2.5" />
           <path strokeLinecap="round" d="M12 2v2m0 16v2M2 12h2m16 0h2" />
         </svg>
-        {locating ? 'Detecting…' : 'Detect me'}
+        {locating ? 'Locating…' : 'Recenter me'}
       </button>
     </>
   )
@@ -263,7 +291,7 @@ export default function CampusMap({ items = [], center = DEFAULT_CENTER, classNa
         </div>
       </div>
 
-      <div className="campus-map-container relative h-[340px] w-full sm:h-[400px]">
+      <div className="campus-map-container map-fullscreen-container relative h-[340px] w-full sm:h-[400px]">
         <MapContainer
           center={center}
           zoom={14}
@@ -283,7 +311,7 @@ export default function CampusMap({ items = [], center = DEFAULT_CENTER, classNa
           <ZoomControl position="bottomleft" />
           <SearchControl />
           <LayerControl selectedLayer={selectedLayer} onSelectLayer={setSelectedLayer} />
-          <RecenterControl center={center} items={visibleItems} />
+          <FullscreenControl />
           <LocateControl />
           <FitPins items={visibleItems} />
           {visibleItems.map((item) => {
