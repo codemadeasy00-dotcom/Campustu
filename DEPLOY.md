@@ -69,6 +69,11 @@ A paused project means your site is down until you un-pause it in the dashboard.
    npm run db:seed        # 15 general branches, categories, item types (the same for every college)
    ```
    Use `db:init` OR `db:migrate`, not both. `db:migrate` is safe to repeat.
+   Visual matching uses PostgreSQL's `vector` extension. Migration `007_lost_found_visual_matching.sql`
+   enables it and adds the private image-embedding column and index; apply migrations before deploying
+   the backend update. Existing lost-and-found posts are not backfilled; only posts with a photo and an
+   embedding generated after this update can appear as visual matches. The first image submission in a
+   browser downloads the CLIP model for local inference.
 3. Add your first college (the platform is multi-college; students pick theirs at sign-up). In the Neon SQL editor:
    ```sql
    INSERT INTO colleges (name, city, state, email_domain, status)
