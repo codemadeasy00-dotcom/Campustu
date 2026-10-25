@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { CircleMarker, MapContainer, TileLayer, Marker, Popup, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
+import { Circle, CircleMarker, MapContainer, TileLayer, Marker, Popup, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import { OpenStreetMapProvider } from 'leaflet-geosearch';
 import { lostFoundApi, errorMessage } from '../services/api.js';
 import { Alert, useToast } from '../components/ui.jsx';
 import { processAndCompressImage } from '../utils/imageCompressor.js';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 
 const MAX_PHOTOS = 5;
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
@@ -201,6 +204,16 @@ function LocationPinPicker({ position, setPosition }) {
   );
 }
 
+function RadiusCenterPicker({ onSelect }) {
+  useMapEvents({
+    click(event) {
+      onSelect([event.latlng.lat, event.latlng.lng]);
+    },
+  });
+
+  return null;
+}
+
 // Auto-Locate Button
 function LocateUserButton({ onLocationFound }) {
   const map = useMap();
@@ -314,6 +327,12 @@ export default function LostFound() {
   const [itemsError, setItemsError] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [nearbyCenter, setNearbyCenter] = useState(null);
+  const [radiusMeters, setRadiusMeters] = useState(1000);
+  const [nearbyItems, setNearbyItems] = useState(null);
+  const [nearbyHasMore, setNearbyHasMore] = useState(false);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [nearbyError, setNearbyError] = useState('');
   
   // Modals
   const [showPostModal, setShowPostModal] = useState(false);
@@ -424,8 +443,46 @@ export default function LostFound() {
   };
 
   useEffect(() => {
+    setNearbyItems(null);
+    setNearbyHasMore(false);
+    setNearbyError('');
     fetchItems();
   }, [statusFilter, search]);
+
+  const selectNearbyCenter = (coords) => {
+    setNearbyCenter(coords);
+    setNearbyItems(null);
+    setNearbyHasMore(false);
+    setNearbyError('');
+  };
+
+  const searchNearby = async () => {
+    if (!nearbyCenter) {
+      setNearbyError('Choose a search center by using Recenter me, searching for a place, or clicking the map.');
+      return;
+    }
+
+    setNearbyLoading(true);
+    setNearbyItems(null);
+    setNearbyHasMore(false);
+    setNearbyError('');
+    try {
+      const result = await lostFoundApi.nearby({
+        lat: nearbyCenter[0],
+        lng: nearbyCenter[1],
+        radius: radiusMeters,
+        status: statusFilter,
+        search: search.trim(),
+      });
+      setNearbyItems(result.items);
+      setNearbyHasMore(result.has_more);
+    } catch (err) {
+      console.error('Nearby lost-and-found search failed:', err);
+      setNearbyError(errorMessage(err));
+    } finally {
+      setNearbyLoading(false);
+    }
+  };
 
   const handlePostSubmit = async (e) => {
     e.preventDefault();
@@ -585,10 +642,56 @@ export default function LostFound() {
 
       {/* Main Interactive Map with Standard/Satellite Switcher */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm mb-8 z-0 relative">
-        <div className="flex justify-between items-center mb-2 px-2">
-          <h3 className="text-xs font-bold uppercase text-slate-500">Interactive Campus Pin Map (Standard / Satellite)</h3>
-          <span className="text-[11px] text-slate-400">Search, detect your location, or switch map style</span>
+        <div className="mb-3 flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-xs font-bold uppercase text-slate-500">Interactive Campus Pin Map (Standard / Satellite)</h3>
+            <p className="mt-1 text-[11px] text-slate-400">Search or click the map to choose a radius center. Recenter me uses your location.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="lost-found-radius" className="text-xs font-semibold text-slate-600">Radius</label>
+            <select
+              id="lost-found-radius"
+              value={radiusMeters}
+              onChange={(event) => {
+                setRadiusMeters(Number(event.target.value));
+                setNearbyItems(null);
+                setNearbyHasMore(false);
+              }}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+            >
+              <option value={500}>500 m</option>
+              <option value={1000}>1 km</option>
+              <option value={2000}>2 km</option>
+            </select>
+            <button
+              type="button"
+              onClick={searchNearby}
+              disabled={nearbyLoading || !nearbyCenter}
+              className="rounded-lg bg-brand-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {nearbyLoading ? 'Searching…' : 'Search nearby'}
+            </button>
+            {nearbyItems && (
+              <button
+                type="button"
+                onClick={() => {
+                  setNearbyItems(null);
+                  setNearbyHasMore(false);
+                }}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
+        {nearbyError && <div className="mb-3"><Alert>{nearbyError}</Alert></div>}
+        {nearbyItems && (
+          <p role="status" className="mb-3 px-2 text-xs text-slate-600">
+            Showing {nearbyItems.length} located {nearbyItems.length === 1 ? 'post' : 'posts'} within {radiusMeters >= 1000 ? `${radiusMeters / 1000} km` : `${radiusMeters} m`}.
+            {nearbyHasMore && ' Showing the nearest 200 posts.'}
+          </p>
+        )}
         
         <div className="map-fullscreen-container relative w-full h-[450px] rounded-xl overflow-hidden z-0">
           <MapContainer center={defaultCenter} zoom={16} zoomControl={false} scrollWheelZoom={true} className="lost-found-map w-full h-full z-0">
@@ -602,30 +705,52 @@ export default function LostFound() {
                 : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'}
             />
             <ZoomControl position="bottomleft" />
-            <SearchField />
+            <SearchField onSelect={selectNearbyCenter} />
             <MapLayerControl selectedLayer={selectedLayer} onSelectLayer={setSelectedLayer} />
             <FullscreenButton />
-            <LocateUserButton />
+            <LocateUserButton onLocationFound={selectNearbyCenter} />
+            <RadiusCenterPicker onSelect={selectNearbyCenter} />
+            {nearbyCenter && (
+              <>
+                <Circle
+                  center={nearbyCenter}
+                  radius={radiusMeters}
+                  interactive={false}
+                  pathOptions={{ color: '#175a6d', weight: 2, fillColor: '#4fa8b3', fillOpacity: 0.12 }}
+                />
+                <CircleMarker
+                  center={nearbyCenter}
+                  radius={6}
+                  interactive={false}
+                  pathOptions={{ color: '#fff', weight: 2, fillColor: '#175a6d', fillOpacity: 1 }}
+                />
+              </>
+            )}
             
-            {items.map((item) => (
-              hasValidCoordinates(item) ? (
-                <Marker
-                  key={item.id}
-                  position={[Number(item.latitude), Number(item.longitude)]}
-                  icon={item.status === 'lost' ? redIcon : greenIcon}
-                >
-                  <Popup>
-                    <div className="p-1 max-w-[180px]">
-                      <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${item.status === 'lost' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {item.status}
-                      </span>
-                      <h4 className="font-bold text-sm mt-1 mb-0.5">{item.title}</h4>
-                      <p className="text-xs text-slate-600 m-0">📍 {item.location_name}</p>
-                    </div>
-                  </Popup>
-                </Marker>
-              ) : null
-            ))}
+            <MarkerClusterGroup chunkedLoading>
+              {(nearbyItems ?? items).map((item) => (
+                hasValidCoordinates(item) ? (
+                  <Marker
+                    key={item.id}
+                    position={[Number(item.latitude), Number(item.longitude)]}
+                    icon={item.status === 'lost' ? redIcon : greenIcon}
+                  >
+                    <Popup>
+                      <div className="p-1 max-w-[180px]">
+                        <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${item.status === 'lost' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {item.status}
+                        </span>
+                        <h4 className="font-bold text-sm mt-1 mb-0.5">{item.title}</h4>
+                        <p className="text-xs text-slate-600 m-0">📍 {item.location_name}</p>
+                        {item.distance_meters != null && (
+                          <p className="mt-1 text-xs font-semibold text-brand-700">{Number(item.distance_meters)} m away</p>
+                        )}
+                      </div>
+                    </Popup>
+                  </Marker>
+                ) : null
+              ))}
+            </MarkerClusterGroup>
           </MapContainer>
         </div>
       </div>

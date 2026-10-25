@@ -140,6 +140,12 @@ export const lostFoundApi = {
     if (search) params.set('search', search)
     return request(`/lost-found?${params.toString()}`)
   },
+  nearby: ({ lat, lng, radius = 1000, status, search }) => {
+    const params = new URLSearchParams({ lat: String(lat), lng: String(lng), radius: String(radius) })
+    if (status && status !== 'all') params.set('status', status)
+    if (search) params.set('search', search)
+    return request(`/lost-found/nearby?${params.toString()}`)
+  },
   create: (formData) => request('/lost-found', { method: 'POST', formData }),
   claim: (id, answerAttempt) =>
     request(`/lost-found/${encodeURIComponent(id)}/claim`, {

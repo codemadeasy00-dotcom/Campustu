@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CircleMarker, MapContainer, Marker, Popup, TileLayer, ZoomControl, useMap, useMapEvents } from 'react-leaflet'
+import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import { OpenStreetMapProvider } from 'leaflet-geosearch'
 import 'leaflet/dist/leaflet.css'
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.css'
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css'
 
 const DEFAULT_CENTER = [18.1678, 73.3364]
 
@@ -314,37 +317,39 @@ export default function CampusMap({ items = [], center = DEFAULT_CENTER, classNa
           <FullscreenControl />
           <LocateControl />
           <FitPins items={visibleItems} />
-          {visibleItems.map((item) => {
-            const position = coordinatesFor(item)
-            const icon = item.type === 'marketplace'
-              ? markerIcons.marketplace
-              : item.status === 'found' ? markerIcons.found : markerIcons.lost
+          <MarkerClusterGroup chunkedLoading>
+            {visibleItems.map((item) => {
+              const position = coordinatesFor(item)
+              const icon = item.type === 'marketplace'
+                ? markerIcons.marketplace
+                : item.status === 'found' ? markerIcons.found : markerIcons.lost
 
-            return (
-              <Marker key={`${item.type}-${item.id}`} position={position} icon={icon}>
-                <Popup>
-                  <div className="max-w-56">
-                    {item.imageUrl && (
-                      <img src={item.imageUrl} alt="" className="mb-2 h-24 w-full rounded-lg object-cover" />
-                    )}
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                      item.type === 'marketplace'
-                        ? 'bg-brand-50 text-brand-700'
-                        : item.status === 'found'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-red-100 text-red-800'
-                    }`}>
-                      {item.type === 'marketplace' ? 'Marketplace' : item.status}
-                    </span>
-                    <h3 className="mb-1 mt-2 font-bold text-slate-900">{item.title}</h3>
-                    {item.description && <p className="text-xs text-slate-600">{item.description}</p>}
-                    {item.price != null && <p className="mt-2 text-sm font-bold text-brand-700">₹{item.price}</p>}
-                    {item.locationName && <p className="mt-2 text-xs text-slate-500">{item.locationName}</p>}
-                  </div>
-                </Popup>
-              </Marker>
-            )
-          })}
+              return (
+                <Marker key={`${item.type}-${item.id}`} position={position} icon={icon}>
+                  <Popup>
+                    <div className="max-w-56">
+                      {item.imageUrl && (
+                        <img src={item.imageUrl} alt="" className="mb-2 h-24 w-full rounded-lg object-cover" />
+                      )}
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                        item.type === 'marketplace'
+                          ? 'bg-brand-50 text-brand-700'
+                          : item.status === 'found'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-red-100 text-red-800'
+                      }`}>
+                        {item.type === 'marketplace' ? 'Marketplace' : item.status}
+                      </span>
+                      <h3 className="mb-1 mt-2 font-bold text-slate-900">{item.title}</h3>
+                      {item.description && <p className="text-xs text-slate-600">{item.description}</p>}
+                      {item.price != null && <p className="mt-2 text-sm font-bold text-brand-700">₹{item.price}</p>}
+                      {item.locationName && <p className="mt-2 text-xs text-slate-500">{item.locationName}</p>}
+                    </div>
+                  </Popup>
+                </Marker>
+              )
+            })}
+          </MarkerClusterGroup>
         </MapContainer>
         {visibleItems.length === 0 && (
           <div className="pointer-events-none absolute inset-x-4 top-1/2 z-[400] -translate-y-1/2 text-center">

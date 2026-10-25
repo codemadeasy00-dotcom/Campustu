@@ -42,6 +42,78 @@ const claimSchema = z.object({
   answer_attempt: z.string().min(1),
 });
 
+const nearbyQuerySchema = z.object({
+  lat: z.coerce.number().finite().min(-90).max(90),
+  lng: z.coerce.number().finite().min(-180).max(180),
+  radius: z.coerce.number().int().min(1).max(50000).default(1000),
+  status: z.enum(['lost', 'found']).optional(),
+  search: z.string().trim().max(120).optional(),
+});
+
+// GET /lost-found/nearby - Search located posts for this college by spherical distance.
+router.get('/nearby', requireCollege, async (req, res, next) => {
+  try {
+    const filters = nearbyQuerySchema.parse(req.query);
+    const params = [filters.lat, filters.lng, req.user.college_id, filters.radius];
+    const conditions = [
+      'lif.college_id = $3',
+      'lif.latitude IS NOT NULL',
+      'lif.longitude IS NOT NULL',
+    ];
+
+    if (filters.status) {
+      params.push(filters.status);
+      conditions.push(`lif.status = $${params.length}`);
+    }
+    if (filters.search) {
+      params.push(`%${filters.search}%`);
+      conditions.push(`(lif.title ILIKE $${params.length} OR lif.description ILIKE $${params.length})`);
+    }
+
+    const { rows } = await query(
+      `WITH located AS (
+         SELECT lif.id, lif.user_id, lif.title, lif.description, lif.category, lif.status,
+                lif.latitude, lif.longitude, lif.location_name, lif.created_at,
+                u.display_name AS poster_name,
+                (SELECT storage_key FROM lost_found_photos
+                  WHERE item_id = lif.id ORDER BY position LIMIT 1) AS photo_key,
+                2 * 6371000 * ASIN(SQRT(LEAST(1.0,
+                  POWER(SIN(RADIANS((lif.latitude::double precision - $1::double precision) / 2)), 2)
+                  + COS(RADIANS($1::double precision))
+                  * COS(RADIANS(lif.latitude::double precision))
+                  * POWER(SIN(RADIANS((lif.longitude::double precision - $2::double precision) / 2)), 2)
+                ))) AS distance_meters
+           FROM lost_found_items lif
+           JOIN users u ON u.id = lif.user_id
+          WHERE ${conditions.join(' AND ')}
+       )
+       SELECT id, title, description, category, status, latitude, longitude,
+              location_name, created_at, poster_name, photo_key, distance_meters
+         FROM located
+        WHERE distance_meters <= $4
+        ORDER BY distance_meters ASC
+        LIMIT 201`,
+      params,
+    );
+    const hasMore = rows.length > 200;
+    const items = rows.slice(0, 200).map(({ photo_key, distance_meters, ...row }) => ({
+      ...row,
+      photo: photo_key ? storage.urlFor(photo_key) : null,
+      distance_meters: Math.round(Number(distance_meters)),
+    }));
+
+    res.json({
+      success: true,
+      count: items.length,
+      has_more: hasMore,
+      radius_meters: filters.radius,
+      items,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /lost-found - Fetch all active lost & found items for the college
 router.get('/', requireCollege, async (req, res, next) => {
   try {
