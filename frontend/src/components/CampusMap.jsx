@@ -416,7 +416,7 @@ export default function CampusMap({
             })}
           </MarkerClusterGroup>
         </MapContainer>
-        {visibleItems.length === 0 && (
+        {visibleItems.length === 0 && !onSelectLocation && (
           <div className="pointer-events-none absolute inset-x-4 top-1/2 z-[400] -translate-y-1/2 text-center">
             <p className="mx-auto max-w-sm rounded-2xl border border-brand-100 bg-cream/95 px-4 py-3 text-sm text-slate-600 shadow">
               {mapItems.length === 0
