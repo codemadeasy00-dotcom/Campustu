@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CircleMarker, MapContainer, Marker, Popup, TileLayer, ZoomControl, useMap, useMapEvents } from 'react-leaflet'
+import { Circle, CircleMarker, MapContainer, Marker, Popup, TileLayer, ZoomControl, useMap, useMapEvents } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import { OpenStreetMapProvider } from 'leaflet-geosearch'
@@ -54,7 +54,7 @@ function FitPins({ items }) {
   return null
 }
 
-function SearchControl() {
+function SearchControl({ onSelectLocation }) {
   const map = useMap()
   const provider = useMemo(() => new OpenStreetMapProvider(), [])
   const [query, setQuery] = useState('')
@@ -118,6 +118,7 @@ function SearchControl() {
                 type="button"
                 onClick={() => {
                   map.setView([result.y, result.x], 17)
+                  onSelectLocation?.({ lat: result.y, lng: result.x })
                   setQuery(result.label)
                   setResults([])
                 }}
@@ -211,7 +212,7 @@ function FullscreenControl() {
   )
 }
 
-function LocateControl() {
+function LocateControl({ onSelectLocation }) {
   const map = useMap()
   const [locating, setLocating] = useState(false)
   const [position, setPosition] = useState(null)
@@ -220,7 +221,9 @@ function LocateControl() {
   useMapEvents({
     locationfound(event) {
       setLocating(false)
-      setPosition([event.latlng.lat, event.latlng.lng])
+      const coords = [event.latlng.lat, event.latlng.lng]
+      setPosition(coords)
+      onSelectLocation?.({ lat: coords[0], lng: coords[1] })
       setError('')
     },
     locationerror() {
@@ -254,9 +257,55 @@ function LocateControl() {
   )
 }
 
-export default function CampusMap({ items = [], center = DEFAULT_CENTER, className = '' }) {
+function LocationPicker({ onSelectLocation }) {
+  useMapEvents({
+    click(event) {
+      onSelectLocation({ lat: event.latlng.lat, lng: event.latlng.lng })
+    },
+  })
+  return null
+}
+
+function SelectedLocation({ coords, radiusMeters }) {
+  if (!coords) return null
+  const position = [coords.lat, coords.lng]
+
+  return (
+    <>
+      <Marker position={position} />
+      {radiusMeters > 0 && (
+        <Circle
+          center={position}
+          radius={radiusMeters}
+          pathOptions={{ color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.16, weight: 2 }}
+        />
+      )}
+    </>
+  )
+}
+
+function MapCenter({ center, zoom }) {
+  const map = useMap()
+  useEffect(() => {
+    map.setView(center, zoom)
+  }, [center, map, zoom])
+  return null
+}
+
+export default function CampusMap({
+  items = [],
+  center = DEFAULT_CENTER,
+  className = '',
+  onSelectLocation,
+  selectedCoords = null,
+  radiusMeters = 0,
+}) {
   const [filter, setFilter] = useState('all')
   const [selectedLayer, setSelectedLayer] = useState('standard')
+  const pickerCenter = useMemo(
+    () => selectedCoords ? [selectedCoords.lat, selectedCoords.lng] : center,
+    [center, selectedCoords?.lat, selectedCoords?.lng],
+  )
   const mapItems = useMemo(() => items.filter((item) => coordinatesFor(item)), [items])
   const visibleItems = useMemo(
     () => mapItems.filter((item) => filter === 'all' || item.type === filter),
@@ -302,6 +351,7 @@ export default function CampusMap({ items = [], center = DEFAULT_CENTER, classNa
           zoomControl={false}
           className="h-full w-full"
         >
+          {onSelectLocation && <MapCenter center={pickerCenter} zoom={selectedCoords ? 17 : 14} />}
           <TileLayer
             key={selectedLayer}
             attribution={selectedLayer === 'standard'
@@ -312,11 +362,26 @@ export default function CampusMap({ items = [], center = DEFAULT_CENTER, classNa
               : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'}
           />
           <ZoomControl position="bottomleft" />
-          <SearchControl />
+          <SearchControl onSelectLocation={onSelectLocation} />
           <LayerControl selectedLayer={selectedLayer} onSelectLayer={setSelectedLayer} />
           <FullscreenControl />
-          <LocateControl />
+          <LocateControl onSelectLocation={onSelectLocation} />
+          {onSelectLocation && <LocationPicker onSelectLocation={onSelectLocation} />}
+          {onSelectLocation && <SelectedLocation coords={selectedCoords} radiusMeters={radiusMeters} />}
           <FitPins items={visibleItems} />
+          {visibleItems.map((item) => {
+            const position = coordinatesFor(item)
+            const radius = Number(item.radius_meters)
+            if (item.type !== 'lost-found' || item.status !== 'lost' || !position || !Number.isFinite(radius) || radius <= 0) return null
+            return (
+              <Circle
+                key={`radius-${item.id}`}
+                center={position}
+                radius={radius}
+                pathOptions={{ color: '#dc2626', fillColor: '#ef4444', fillOpacity: 0.08, weight: 1 }}
+              />
+            )
+          })}
           <MarkerClusterGroup chunkedLoading>
             {visibleItems.map((item) => {
               const position = coordinatesFor(item)

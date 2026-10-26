@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Circle, CircleMarker, MapContainer, TileLayer, Marker, Popup, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
@@ -579,15 +580,12 @@ export default function LostFound() {
             Pinpoint lost items on the campus map and submit answers to claim your belongings safely.
           </p>
         </div>
-        <button
-          onClick={() => {
-            setModalPin(null);
-            setShowPostModal(true);
-          }}
+        <Link
+          to="/lost-found/report"
           className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold px-6 py-3 rounded-2xl transition-all shadow-lg active:scale-95"
         >
           + Report Lost / Found Item
-        </button>
+        </Link>
       </div>
 
       {potentialMatches.length > 0 && (

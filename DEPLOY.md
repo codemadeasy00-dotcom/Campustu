@@ -73,7 +73,8 @@ A paused project means your site is down until you un-pause it in the dashboard.
    enables it and adds the private image-embedding column and index; apply migrations before deploying
    the backend update. Existing lost-and-found posts are not backfilled; only posts with a photo and an
    embedding generated after this update can appear as visual matches. The first image submission in a
-   browser downloads the CLIP model for local inference.
+   browser downloads the CLIP model for local inference. Migration `008_lost_found_report_details.sql`
+   adds the optional report metadata used by the dedicated lost-and-found report page.
 3. Add your first college (the platform is multi-college; students pick theirs at sign-up). In the Neon SQL editor:
    ```sql
    INSERT INTO colleges (name, city, state, email_domain, status)
