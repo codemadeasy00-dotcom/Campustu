@@ -152,12 +152,11 @@ textarea {
 
 .wordmark-hover .wordmark {
   display: inline-block;
-  transition: transform 220ms cubic-bezier(0.2, 0.75, 0.25, 1), filter 220ms ease;
+  transform-style: preserve-3d;
 }
 
 .wordmark-hover:hover .wordmark {
-  transform: rotate(-4deg) scale(1.06);
-  filter: drop-shadow(0 3px 4px rgb(23 90 109 / 20%));
+  animation: logoFlip 750ms ease-in-out 1;
 }
 
 @keyframes fadeIn {
