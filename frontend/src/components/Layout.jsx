@@ -55,13 +55,22 @@ export default function Layout() {
           {user ? (
             <div className="flex items-center gap-3 text-sm">
               <Link to="/sell" className="rounded-full bg-brand-600 px-3.5 py-1.5 font-semibold text-white shadow hover:bg-brand-700">Sell</Link>
-              <div className="text-right leading-tight">
-                <Link to="/profile" className="font-semibold text-slate-800 hover:underline">
-                  {user.display_name}
-                  {user.is_trusted && <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">Trusted</span>}
-                </Link>
-                {user.college && <div className="max-w-40 truncate text-xs text-slate-500">{user.college.name}</div>}
-              </div>
+              <Link to="/profile" aria-label="Open your profile" className="flex items-center gap-2 rounded-full p-1 pr-2 transition hover:bg-brand-50">
+                {user.avatar_url ? (
+                  <img src={user.avatar_url} alt="" className="h-9 w-9 rounded-full border border-brand-200 bg-white object-cover" />
+                ) : (
+                  <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-800">
+                    {(user.display_name || 'U').trim().charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <span className="text-right leading-tight">
+                  <span className="block font-semibold text-slate-800 hover:underline">
+                    {user.display_name}
+                    {user.is_trusted && <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">Trusted</span>}
+                  </span>
+                  {user.college && <span className="block max-w-40 truncate text-xs text-slate-500">{user.college.name}</span>}
+                </span>
+              </Link>
               <button className="text-xs text-slate-500 underline hover:text-slate-800" onClick={() => { signOut(); navigate('/') }}>
                 Log out
               </button>

@@ -78,7 +78,8 @@ A paused project means your site is down until you un-pause it in the dashboard.
    Migration `009_lost_found_lifecycle_claims.sql` adds the eight-hour deletion rule, closed/resolved
    lifecycle states, pending owner-reviewed claims, private claimant handover codes, and a retryable
    photo-cleanup queue. It resets legacy auto-approved claims to pending review and clears their old
-   handover codes; deploy the backend so its startup migration runner applies the update.
+   handover codes. Migration `010_user_profile_avatar.sql` adds the stored profile-photo reference;
+   deploy the backend so its startup migration runner applies both updates.
 3. Add your first college (the platform is multi-college; students pick theirs at sign-up). In the Neon SQL editor:
    ```sql
    INSERT INTO colleges (name, city, state, email_domain, status)

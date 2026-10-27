@@ -85,6 +85,9 @@ export const authApi = {
   login: (payload) => request('/auth/login', { method: 'POST', json: payload }),
   verify: (payload) => request('/auth/verify', { method: 'POST', json: payload }),
   getMe: () => request('/auth/me'),
+  setCollege: (collegeId) => request('/auth/profile/college', { method: 'PATCH', json: { college_id: collegeId } }),
+  updateAvatar: (formData) => request('/auth/profile/avatar', { method: 'PATCH', formData }),
+  removeAvatar: () => request('/auth/profile/avatar', { method: 'DELETE' }),
 }
 
 export const metaApi = {

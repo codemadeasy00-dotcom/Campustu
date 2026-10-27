@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import CollegePicker from '../components/CollegePicker.jsx'
 import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
-import { errorMessage, lostFoundApi } from '../services/api.js'
+import { authApi, errorMessage, lostFoundApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 
 const DELETE_WINDOW_MS = 8 * 60 * 60 * 1000
@@ -24,8 +25,19 @@ function statusLabel(value) {
   return String(value || 'active').replaceAll('_', ' ')
 }
 
+function ProfileAvatar({ user, className = '' }) {
+  if (user?.avatar_url) {
+    return <img src={user.avatar_url} alt={`${user.display_name || 'Profile'} avatar`} className={`rounded-full bg-white object-cover ${className}`} />
+  }
+  return (
+    <span aria-label={`${user?.display_name || 'User'} profile avatar`} className={`flex items-center justify-center rounded-full bg-gradient-to-br from-brand-100 to-sky-100 font-bold text-brand-700 ${className}`}>
+      {(user?.display_name || 'U').trim().charAt(0).toUpperCase()}
+    </span>
+  )
+}
+
 export default function ProfileDashboard() {
-  const { user } = useAuth()
+  const { user, updateUser } = useAuth()
   const showToast = useToast()
   const [activeTab, setActiveTab] = useState('listings')
   const [items, setItems] = useState(null)
@@ -41,8 +53,20 @@ export default function ProfileDashboard() {
   const [managedClaims, setManagedClaims] = useState([])
   const [claimsLoading, setClaimsLoading] = useState(false)
   const [claimsError, setClaimsError] = useState('')
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  const [avatarError, setAvatarError] = useState('')
+  const [collegeError, setCollegeError] = useState('')
+  const [collegeBusy, setCollegeBusy] = useState(false)
+  const [pendingCollege, setPendingCollege] = useState(null)
 
   async function loadDashboard() {
+    if (!user?.college) {
+      setItems([])
+      setMyClaims([])
+      setPageError('')
+      setRefreshing(false)
+      return
+    }
     setRefreshing(true)
     setPageError('')
     try {
@@ -61,7 +85,7 @@ export default function ProfileDashboard() {
 
   useEffect(() => {
     loadDashboard()
-  }, [])
+  }, [user?.college?.id])
 
   useEffect(() => {
     const timer = window.setInterval(() => setClockNow(Date.now()), 1000)
@@ -121,6 +145,120 @@ export default function ProfileDashboard() {
     }
   }
 
+  async function uploadAvatar(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setAvatarError('')
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setAvatarError('Choose a JPEG, PNG, or WebP image.')
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setAvatarError('Choose an image smaller than 8 MB.')
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('avatar', file)
+    setAvatarBusy(true)
+    try {
+      const result = await authApi.updateAvatar(formData)
+      updateUser(result.user)
+      showToast('Profile photo updated.')
+    } catch (error) {
+      setAvatarError(errorMessage(error))
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
+  async function removeAvatar() {
+    setAvatarError('')
+    setAvatarBusy(true)
+    try {
+      const result = await authApi.removeAvatar()
+      updateUser(result.user)
+      showToast('Profile photo removed.')
+    } catch (error) {
+      setAvatarError(errorMessage(error))
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
+  async function saveCollege() {
+    if (!pendingCollege) return
+    setCollegeBusy(true)
+    setCollegeError('')
+    try {
+      const result = await authApi.setCollege(pendingCollege.id)
+      updateUser(result.user)
+      setPendingCollege(null)
+      showToast('Campus selected. Your dashboard is ready.')
+    } catch (error) {
+      setCollegeError(errorMessage(error))
+    } finally {
+      setCollegeBusy(false)
+    }
+  }
+
+  if (!user?.college) {
+    return (
+      <div className="mx-auto max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10">
+        <div className="h-32 bg-gradient-to-r from-brand-700 via-sky-700 to-cyan-600 sm:h-40" />
+        <section className="px-5 pb-8 sm:px-10">
+          <div className="-mt-12 flex flex-col gap-5 sm:-mt-14 sm:flex-row sm:items-end">
+            <ProfileAvatar user={user} className="h-24 w-24 border-4 border-white text-3xl shadow-lg sm:h-28 sm:w-28" />
+            <div className="pb-1">
+              <p className="text-sm font-semibold text-cyan-100">CAMPUSTU · YOUR ACCOUNT</p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{user?.display_name || 'Your profile'}</h1>
+              <p className="mt-1 text-sm text-slate-500">Choose your campus to finish setting up your dashboard.</p>
+            </div>
+          </div>
+          <div className="mt-8 grid gap-6 border-t border-slate-100 pt-7 md:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)]">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-700">One last step</p>
+              <h2 className="mt-2 text-xl font-bold text-slate-900">Which campus are you part of?</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Campustu keeps listings and Lost &amp; Found reports within your college community. Select your college to see your dashboard and campus activity.
+              </p>
+              <div className="mt-5">
+                <CollegePicker onSelect={setPendingCollege} />
+              </div>
+              {collegeError && <div className="mt-4"><Alert>{collegeError}</Alert></div>}
+              <p className="mt-3 text-xs leading-5 text-slate-500">Can’t find your college? Choose “I can’t find my college” in the selector to submit it for review.</p>
+            </div>
+            <aside className="rounded-2xl bg-slate-50 p-5">
+              <h3 className="font-semibold text-slate-900">Your profile photo</h3>
+              <p className="mt-1 text-sm leading-6 text-slate-600">Add a clear photo so other students can recognize your profile. You can change or remove it any time.</p>
+              <label className={`mt-4 inline-flex cursor-pointer items-center justify-center rounded-full bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 ${avatarBusy ? 'pointer-events-none opacity-60' : ''}`}>
+                {avatarBusy ? 'Uploading…' : user?.avatar_url ? 'Change photo' : 'Add a profile photo'}
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={uploadAvatar} disabled={avatarBusy} />
+              </label>
+              {user?.avatar_url && (
+                <button type="button" onClick={removeAvatar} disabled={avatarBusy} className="ml-3 text-sm font-semibold text-slate-600 underline disabled:opacity-50">
+                  Remove
+                </button>
+              )}
+              {avatarError && <p role="alert" className="mt-3 text-xs text-red-700">{avatarError}</p>}
+              <p className="mt-2 text-xs text-slate-500">JPEG, PNG, or WebP · up to 8 MB</p>
+            </aside>
+          </div>
+        </section>
+        <ConfirmDialog
+          open={Boolean(pendingCollege)}
+          title="Select this campus?"
+          confirmLabel={collegeBusy ? 'Saving…' : 'Confirm campus'}
+          onCancel={() => setPendingCollege(null)}
+          onConfirm={saveCollege}
+        >
+          Set {pendingCollege?.name} as your Campustu campus? You’ll be able to browse its marketplace and Lost &amp; Found.
+        </ConfirmDialog>
+      </div>
+    )
+  }
+
   if (items === null || myClaims === null) {
     if (pageError) {
       return (
@@ -165,7 +303,7 @@ export default function ProfileDashboard() {
             <p className="mt-2 text-xs text-slate-500">📍 {item.location_name} · Posted {formatDate(item.created_at)}</p>
           </div>
           <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
-            <button type="button" onClick={() => openClaims(item)} className="col-span-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800 hover:bg-brand-100">
+            <button type="button" onClick={() => openClaims(item)} className="col-span-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-100">
               Manage claims ({claimCount}){pendingCount > 0 ? ` · ${pendingCount} pending` : ''}
             </button>
             {item.lifecycle_status === 'active' && (
@@ -204,7 +342,7 @@ export default function ProfileDashboard() {
               {claimCount > 0 ? 'Permanent deletion is locked because a claim has been submitted.' : 'Permanent deletion is locked after eight hours.'}
             </p>
           )}
-          <Link to="/lost-found" className="inline-block text-xs font-semibold text-brand-700 underline hover:text-brand-900">
+          <Link to="/lost-found" className="inline-block text-xs font-semibold text-brand-700 underline hover:text-brand-600">
             Open Lost &amp; Found to edit this report
           </Link>
         </div>
@@ -219,27 +357,69 @@ export default function ProfileDashboard() {
   ]
 
   return (
-    <div className="space-y-6">
-      <section className="flex flex-col justify-between gap-4 rounded-3xl border border-brand-100 bg-white p-6 shadow-sm sm:flex-row sm:items-center">
-        <div>
-          <p className="text-sm font-semibold text-brand-700">{user?.college?.name || 'Your campus'}</p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">Your dashboard, {user?.display_name || 'there'}</h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-600">Manage Lost &amp; Found reports, review incoming proofs, and track your claim requests.</p>
+    <div className="mx-auto max-w-5xl overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 shadow-xl shadow-slate-900/10">
+      <section className="relative overflow-hidden bg-gradient-to-r from-slate-950 via-brand-700 to-sky-700 px-5 pb-6 pt-7 text-white sm:px-8 sm:pb-8">
+        <div aria-hidden="true" className="absolute -right-10 -top-24 h-72 w-72 rounded-full border-[36px] border-white/5" />
+        <div className="relative flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
+          <div className="flex items-end gap-4 sm:gap-5">
+            <div className="rounded-full bg-white p-1 shadow-xl">
+              <ProfileAvatar user={user} className="h-20 w-20 text-2xl sm:h-24 sm:w-24" />
+            </div>
+            <div className="pb-1">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-100">Student profile</p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{user?.display_name || 'Your dashboard'}</h1>
+              <p className="mt-1 text-sm text-white/75">{user?.college?.name}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <label className={`inline-flex cursor-pointer items-center justify-center rounded-full border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20 ${avatarBusy ? 'pointer-events-none opacity-60' : ''}`}>
+              {avatarBusy ? 'Uploading…' : 'Change photo'}
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={uploadAvatar} disabled={avatarBusy} />
+            </label>
+            {user?.avatar_url && (
+              <button type="button" onClick={removeAvatar} disabled={avatarBusy} className="rounded-full border border-white/25 px-4 py-2.5 text-sm font-semibold text-white/90 hover:bg-white/10 disabled:opacity-50">
+                Remove photo
+              </button>
+            )}
+            <Link to="/lost-found/report" className="rounded-full bg-white px-4 py-2.5 text-sm font-bold text-brand-700 shadow-sm transition hover:bg-cyan-50">
+              Report an item
+            </Link>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={loadDashboard} disabled={refreshing} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
-          <Link to="/lost-found/report" className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            Report an item
-          </Link>
-        </div>
+        {(avatarError || actionError || pageError) && (
+          <div className="relative mt-5 space-y-2">
+            {avatarError && <p role="alert" className="rounded-xl border border-red-200/50 bg-red-950/30 px-3 py-2 text-sm text-white">{avatarError}</p>}
+            {actionError && <Alert>{actionError}</Alert>}
+            {pageError && <Alert>{pageError}</Alert>}
+          </div>
+        )}
       </section>
 
-      {pageError && <Alert>{pageError}</Alert>}
-      {actionError && <Alert>{actionError}</Alert>}
+      <div className="space-y-6 p-4 sm:p-7">
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          { label: 'My reports', value: items.length, detail: 'Lost & Found posts' },
+          { label: 'Incoming claims', value: pendingClaimCount, detail: 'Waiting for your review' },
+          { label: 'My claims', value: myClaims.length, detail: 'Requests you submitted' },
+        ].map((stat) => (
+          <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{stat.label}</p>
+            <div className="mt-2 flex items-end justify-between gap-2">
+              <span className="text-3xl font-bold tracking-tight text-slate-900">{stat.value}</span>
+              <span className="text-right text-xs text-slate-500">{stat.detail}</span>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      <div role="tablist" aria-label="Profile dashboard sections" className="flex gap-2 overflow-x-auto border-b border-slate-200">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-slate-500">Your account and campus activity</p>
+        <button type="button" onClick={loadDashboard} disabled={refreshing} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50">
+          {refreshing ? 'Refreshing…' : 'Refresh dashboard'}
+        </button>
+      </div>
+
+      <div role="tablist" aria-label="Profile dashboard sections" className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -247,8 +427,8 @@ export default function ProfileDashboard() {
             role="tab"
             aria-selected={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`shrink-0 border-b-2 px-3 py-3 text-sm font-semibold ${
-              activeTab === tab.id ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'
+            className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+              activeTab === tab.id ? 'bg-brand-700 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`}
           >
             {tab.label}
@@ -377,6 +557,16 @@ export default function ProfileDashboard() {
         {pendingAction?.action === 'delete'
           ? 'This permanently deletes the report and its claim history. This action cannot be undone.'
           : 'This removes the report from active search, removes its photos, and rejects any pending claims. The report history will remain available to you.'}
+      </ConfirmDialog>
+      </div>
+      <ConfirmDialog
+        open={Boolean(pendingCollege)}
+        title="Select this campus?"
+        confirmLabel={collegeBusy ? 'Saving…' : 'Confirm campus'}
+        onCancel={() => setPendingCollege(null)}
+        onConfirm={saveCollege}
+      >
+        Set {pendingCollege?.name} as your Campustu campus?
       </ConfirmDialog>
     </div>
   )

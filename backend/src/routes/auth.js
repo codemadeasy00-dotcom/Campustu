@@ -1,10 +1,12 @@
 const router = require('express').Router();
 
+const crypto = require('crypto');
+const multer = require('multer');
 const { z } = require('zod');
 
 const config = require('../config');
 
-const { query } = require('../db');
+const { query, tx } = require('../db');
 
 const { AppError } = require('../utils/errors');
 
@@ -12,9 +14,21 @@ const { generateCode, hashCode, safeEqual } = require('../utils/otp');
 
 const { sendOtpEmail } = require('../email');
 
-const { requireAuth, signToken } = require('../middleware/auth');
+const { processPhoto } = require('../utils/images');
+const storage = require('../storage');
+const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
+const { requireAuth, requireActive, signToken } = require('../middleware/auth');
 
 const { currentSemester } = require('../utils/semester');
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+});
+
+const collegeSelectionSchema = z.object({
+  college_id: z.coerce.number().int().positive(),
+});
 
 
 
@@ -372,7 +386,7 @@ async function publicProfile(userId) {
 
     `SELECT u.id, u.email, u.full_name, u.display_name, u.role, u.status, u.branch_id, u.branch_other, u.admission_year,
 
-            u.college_id, c.name AS college_name, c.city AS college_city,
+            u.college_id, u.avatar_key, c.name AS college_name, c.city AS college_city,
 
             t.trust_score::int AS trust_score, t.is_trusted, t.completed_handovers::int AS completed_handovers
 
@@ -388,13 +402,15 @@ async function publicProfile(userId) {
 
   )
 
-  const { college_name, college_city, ...u } = rows[0]
+  const { college_name, college_city, avatar_key, ...u } = rows[0]
 
   return {
 
     ...u,
 
     college: u.college_id ? { id: u.college_id, name: college_name, city: college_city } : null,
+
+    avatar_url: avatar_key ? storage.urlFor(avatar_key) : null,
 
     current_semester: currentSemester(u.admission_year),
 
@@ -412,6 +428,86 @@ router.get('/me', requireAuth, async (req, res) => {
 
 });
 
+// Set a campus for accounts created before college selection was required.
+router.patch('/profile/college', requireAuth, requireActive, async (req, res) => {
+  const { college_id: collegeId } = collegeSelectionSchema.parse(req.body);
+
+  await tx(async (db) => {
+    const { rows: [user] } = await db.query(
+      'SELECT college_id FROM users WHERE id = $1 FOR UPDATE',
+      [req.user.id],
+    );
+    if (!user) throw new AppError(404, 'Account not found.');
+    if (user.college_id) throw new AppError(409, 'Your account already has a campus selected.');
+
+    const { rows: [college] } = await db.query(
+      `SELECT id FROM colleges WHERE id = $1 AND status = 'approved'`,
+      [collegeId],
+    );
+    if (!college) throw new AppError(404, 'That campus is not available.');
+
+    await db.query('UPDATE users SET college_id = $2 WHERE id = $1', [req.user.id, collegeId]);
+  });
+
+  res.json({ success: true, user: await publicProfile(req.user.id) });
+});
+
+router.patch('/profile/avatar', requireAuth, requireActive, avatarUpload.single('avatar'), async (req, res) => {
+  if (!req.file) throw new AppError(400, 'Choose an image to upload.');
+
+  const image = await processPhoto(req.file.buffer);
+  const newKey = `avatars/${req.user.id}/${crypto.randomUUID()}.webp`;
+  const storedKey = await storage.save(newKey, image);
+
+  let oldKey;
+  try {
+    await tx(async (db) => {
+      const { rows: [user] } = await db.query(
+        'SELECT avatar_key FROM users WHERE id = $1 FOR UPDATE',
+        [req.user.id],
+      );
+      if (!user) throw new AppError(404, 'Account not found.');
+      oldKey = user.avatar_key;
+      await db.query('UPDATE users SET avatar_key = $2 WHERE id = $1', [req.user.id, storedKey]);
+      await enqueueCleanup(db, oldKey ? [oldKey] : []);
+    });
+  } catch (error) {
+    try {
+      await storage.remove(storedKey);
+    } catch (cleanupError) {
+      console.error('Could not remove an unlinked profile photo:', cleanupError);
+    }
+    throw error;
+  }
+
+  try {
+    await processQueuedMediaCleanup();
+  } catch (error) {
+    console.error('Profile photo cleanup remains queued:', error);
+  }
+
+  res.json({ success: true, user: await publicProfile(req.user.id) });
+});
+
+router.delete('/profile/avatar', requireAuth, requireActive, async (req, res) => {
+  await tx(async (db) => {
+    const { rows: [user] } = await db.query(
+      'SELECT avatar_key FROM users WHERE id = $1 FOR UPDATE',
+      [req.user.id],
+    );
+    if (!user) throw new AppError(404, 'Account not found.');
+    await db.query('UPDATE users SET avatar_key = NULL WHERE id = $1', [req.user.id]);
+    await enqueueCleanup(db, user.avatar_key ? [user.avatar_key] : []);
+  });
+
+  try {
+    await processQueuedMediaCleanup();
+  } catch (error) {
+    console.error('Profile photo cleanup remains queued:', error);
+  }
+
+  res.json({ success: true, user: await publicProfile(req.user.id) });
+});
 
 
-module.exports = router; 
+module.exports = router;

@@ -11,7 +11,7 @@
 import { Component, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmDialog } from './ui.jsx';
 
-const API = import.meta.env.VITE_API_URL;
+const API = import.meta.env.VITE_API_URL || 'https://campustu-backend.onrender.com';
 
 async function getJson(path, options) {
   const res = await fetch(`${API}${path}`, options);

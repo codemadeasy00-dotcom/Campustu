@@ -11,13 +11,11 @@
   --color-cream: #fbf8ef;
 }
 
-/* Teal gingham background, like the design reference. Two see-through stripe layers
-   cross each other, which makes the darker squares. */
 body {
-  background-color: var(--color-cream);
+  background-color: #f5f8fb;
   background-image:
-    repeating-linear-gradient(0deg, rgba(122, 201, 198, 0.34) 0 34px, transparent 34px 80px),
-    repeating-linear-gradient(90deg, rgba(122, 201, 198, 0.34) 0 34px, transparent 34px 80px);
+    radial-gradient(ellipse at 12% 0%, rgba(31, 111, 133, 0.07), transparent 34rem),
+    radial-gradient(ellipse at 94% 12%, rgba(79, 168, 179, 0.06), transparent 30rem);
   background-attachment: fixed;
   @apply text-slate-900 antialiased;
 }
