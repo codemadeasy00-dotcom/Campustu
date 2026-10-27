@@ -37,53 +37,52 @@ export default function Layout() {
         style={{ width: `${scrollProgress}%` }}
       />
       <header className="sticky top-0 z-10 border-b border-brand-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+        <div className="mx-auto flex w-full max-w-[90rem] flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 sm:gap-x-4 sm:px-5 lg:px-8">
           <Link to="/" aria-label="Home">
-            <span className="animate-logo-flip motion-reduce:animate-none">
-              <Wordmark className="text-2xl" />
+            <span className="animate-logo-flip motion-reduce:animate-none inline-block">
+              <Wordmark className="text-xl sm:text-2xl" />
             </span>
           </Link>
-          <nav className="flex flex-1 flex-wrap items-center gap-1">
+          <nav aria-label="Main navigation" className="order-3 -mx-1 flex w-[calc(100%+0.5rem)] flex-none gap-1 overflow-x-auto overscroll-x-contain px-1 pb-0.5 sm:order-none sm:mx-0 sm:w-auto sm:flex-1 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
             {user && (
               <>
-                <NavLink to="/kits" className={navClass}>Kits</NavLink>
-                <NavLink to="/marketplace" className={navClass}>Marketplace</NavLink>
-                <NavLink to="/lost-found" className={navClass}>Lost &amp; Found</NavLink>
+                <NavLink to="/kits" className={`${navClass} shrink-0`}>Kits</NavLink>
+                <NavLink to="/marketplace" className={`${navClass} shrink-0`}>Marketplace</NavLink>
+                <NavLink to="/lost-found" className={`${navClass} shrink-0`}>Lost &amp; Found</NavLink>
               </>
             )}
           </nav>
           {user ? (
-            <div className="flex items-center gap-3 text-sm">
-              <Link to="/sell" className="rounded-full bg-brand-600 px-3.5 py-1.5 font-semibold text-white shadow hover:bg-brand-700">Sell</Link>
-              <Link to="/profile" aria-label="Open your profile" className="flex items-center gap-2 rounded-full p-1 pr-2 transition hover:bg-brand-50">
+            <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5 text-sm sm:gap-3">
+              <Link to="/sell" className="rounded-full bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-brand-700 sm:px-3.5 sm:text-sm">Sell</Link>
+              <Link to="/profile" aria-label="Open your profile" className="flex min-w-0 items-center gap-2 rounded-full p-1 transition hover:bg-brand-50 sm:pr-2">
                 {user.avatar_url ? (
-                  <img src={user.avatar_url} alt="" className="h-9 w-9 rounded-full border border-brand-200 bg-white object-cover" />
+                  <img src={user.avatar_url} alt="" className="h-8 w-8 shrink-0 rounded-full border border-brand-200 bg-white object-cover sm:h-9 sm:w-9" />
                 ) : (
-                  <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-800">
+                  <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-800 sm:h-9 sm:w-9">
                     {(user.display_name || 'U').trim().charAt(0).toUpperCase()}
                   </span>
-                )}
-                <span className="text-right leading-tight">
-                  <span className="block font-semibold text-slate-800 hover:underline">
+                )}<span className="hidden min-w-0 text-right leading-tight sm:block">
+                  <span className="block truncate font-semibold text-slate-800 hover:underline">
                     {user.display_name}
                     {user.is_trusted && <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">Trusted</span>}
                   </span>
                   {user.college && <span className="block max-w-40 truncate text-xs text-slate-500">{user.college.name}</span>}
                 </span>
               </Link>
-              <button className="text-xs text-slate-500 underline hover:text-slate-800" onClick={() => { signOut(); navigate('/') }}>
+              <button className="whitespace-nowrap px-1 text-[11px] text-slate-500 underline hover:text-slate-800 sm:text-xs" onClick={() => { signOut(); navigate('/') }}>
                 Log out
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-sm">
+            <div className="ml-auto flex shrink-0 items-center gap-1.5 text-xs sm:gap-2 sm:text-sm">
               <NavLink to="/login" className={navClass}>Log in</NavLink>
-              <Link to="/signup" className="rounded-full bg-brand-600 px-3.5 py-1.5 font-semibold text-white shadow hover:bg-brand-700">Sign up</Link>
+              <Link to="/signup" className="rounded-full bg-brand-600 px-3 py-1.5 font-semibold text-white shadow hover:bg-brand-700 sm:px-3.5">Sign up</Link>
             </div>
           )}
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className="mx-auto w-full max-w-[90rem] min-w-0 px-3 py-5 sm:px-5 sm:py-8 lg:px-8">
         <Outlet />
       </main>
     </div>

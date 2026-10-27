@@ -491,7 +491,7 @@ export default function ProfileDashboard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setSelectedItem(null)
         }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="profile-claims-title" className="max-h-[90vh] w-full max-w-2xl space-y-4 overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-labelledby="profile-claims-title" className="max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl space-y-4 overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-3">
               <div>
                 <h2 id="profile-claims-title" className="text-lg font-bold text-slate-900">Claims for {selectedItem.title}</h2>

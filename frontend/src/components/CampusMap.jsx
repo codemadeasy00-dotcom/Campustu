@@ -320,7 +320,7 @@ export default function CampusMap({
           <h2 className="font-bold text-brand-700">Campus map</h2>
           <p className="mt-1 text-xs text-slate-500">Explore listings with a saved campus location.</p>
         </div>
-        <div className="flex gap-2" aria-label="Filter map pins">
+        <div className="flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Filter map pins">
           {[
             { id: 'all', label: 'All', count: mapItems.length },
             { id: 'marketplace', label: 'Marketplace', count: marketplaceCount },
@@ -331,7 +331,7 @@ export default function CampusMap({
               type="button"
               aria-pressed={filter === option.id}
               onClick={() => setFilter(option.id)}
-              className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
+              className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold transition ${
                 filter === option.id
                   ? 'bg-brand-700 text-white shadow-sm'
                   : 'border border-brand-100 bg-cream text-brand-700 hover:bg-brand-50'
@@ -343,7 +343,7 @@ export default function CampusMap({
         </div>
       </div>
 
-      <div className="campus-map-container map-fullscreen-container relative h-[340px] w-full sm:h-[400px]">
+      <div className="campus-map-container map-fullscreen-container relative h-[min(60vh,400px)] min-h-[300px] w-full sm:h-[400px]">
         <MapContainer
           center={center}
           zoom={14}

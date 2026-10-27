@@ -229,7 +229,7 @@ export default function Marketplace() {
 
       <section aria-busy={loading}>
         {items.length === 0 && loading ? (
-          <ul aria-label="Loading marketplace listings" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <ul aria-label="Loading marketplace listings" className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
             {Array.from({ length: 8 }, (_, index) => <ListingSkeleton key={index} />)}
           </ul>
         ) : items.length === 0 && !error ? (
@@ -243,7 +243,7 @@ export default function Marketplace() {
         ) : (
           <>
             {loading && <p role="status" className="mb-3 text-xs text-slate-500">Updating results…</p>}
-            <ul className={`grid grid-cols-2 gap-4 transition-opacity sm:grid-cols-3 lg:grid-cols-4 ${loading ? 'opacity-60' : ''}`}>
+            <ul className={`grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 ${loading ? 'opacity-60' : ''}`}>
               {items.map((item) => (
                 <ListingCard key={item.id} item={item} categoryName={categoryNames.get(item.category_id)} />
               ))}

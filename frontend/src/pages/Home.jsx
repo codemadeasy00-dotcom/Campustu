@@ -252,7 +252,7 @@ function Dashboard() {
             <Link to="/marketplace" className="text-xs font-semibold text-brand-700 underline">Browse all</Link>
           </div>
           {recent === null ? (
-            <ul aria-label="Loading recent listings" className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <ul aria-label="Loading recent listings" className="mt-3 grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 sm:grid-cols-3">
               {Array.from({ length: 6 }, (_, index) => <ListingSkeleton key={index} />)}
             </ul>
           ) : recent.length === 0 ? (
@@ -261,7 +261,7 @@ function Dashboard() {
               <div className="mt-3"><Link to="/sell" className="font-semibold text-brand-700 underline">List the first item</Link></div>
             </div>
           ) : (
-            <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <ul className="mt-3 grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {recent.map((item) => (
                 <li key={item.id}>
                   <Link to={`/items/${item.id}`} className="block overflow-hidden rounded-2xl border border-white/70 bg-white shadow-sm hover:shadow-md">
