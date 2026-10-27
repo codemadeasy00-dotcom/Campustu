@@ -1,9 +1,4 @@
-// frontend/src/lib/api.js
-// If you already have an authenticated fetch helper, use that and delete this file.
-// The token line is a PLACEHOLDER: read your login token/session the way your passwordless login stores it.
-
-const API_BASE_URL = 'http://localhost:4000'
-
+import { API_BASE_URL } from '../services/api.js'
 
 export const collegesApi = {
   list: (q = '') => request(`/api/colleges${q ? `?q=\${encodeURIComponent(q)}` : ''}`),
@@ -13,12 +8,11 @@ export const collegesApi = {
 }
 
 export async function apiFetch(path, options = {}) {
-  const token = localStorage.getItem('campustu_token'); // TODO: replace with your real auth storage
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });
@@ -31,4 +25,3 @@ export async function apiFetch(path, options = {}) {
   }
   return data;
 }
-

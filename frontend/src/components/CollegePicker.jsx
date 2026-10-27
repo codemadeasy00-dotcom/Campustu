@@ -1,6 +1,4 @@
-// frontend/src/components/CollegePicker.jsx   (replaces the earlier version)
 // Usage:  <CollegePicker onSelect={(college) => setCollegeId(college.id)} />
-// Needs in frontend/.env:  VITE_API_URL=https://campustu-backend.onrender.com   (restart `npm run dev` after editing)
 //
 // Exactly options:
 //   1. A dropdown of our approved colleges with a search box inside it.
@@ -10,11 +8,13 @@
 
 import { Component, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmDialog } from './ui.jsx';
-
-const API = import.meta.env.VITE_API_URL || 'https://campustu-backend.onrender.com';
+import { API_BASE_URL } from '../services/api.js'
 
 async function getJson(path, options) {
-  const res = await fetch(`${API}${path}`, options);
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    credentials: 'include',
+  });
   let data = null;
   try {
     data = await res.json();
@@ -63,11 +63,6 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
   const [manualMsg, setManualMsg] = useState('');
 
   function loadColleges() {
-    if (!API) {
-      console.error('CollegePicker: VITE_API_URL is not set');
-      setListState('error');
-      return;
-    }
     setListState('loading');
     getJson('/api/colleges')
       .then((rows) => {
@@ -77,7 +72,7 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
         setListState('ready');
       })
       .catch((err) => {
-        console.error(`CollegePicker: could not load colleges from ${API}/api/colleges`, err);
+        console.error('CollegePicker: could not load colleges', err);
         setListState('error');
       });
   }
@@ -241,7 +236,7 @@ function Picker({ onSelect, placeholder = 'Select your college' }) {
                 )}
                 {listState === 'error' && (
                   <p className="px-3 py-2 text-sm text-red-600">
-                    {API ? 'Could not load colleges.' : 'VITE_API_URL is not set (see frontend/.env).'}{' '}
+                    Could not load colleges.{' '}
                     <button type="button" onClick={loadColleges} className="underline">Try again</button>
                   </p>
                 )}

@@ -1,7 +1,12 @@
 const { Pool } = require('pg');
 const config = require('./config');
 
-const pool = new Pool({ ...require('./dbConfig')(), max: 10 });
+const pool = new Pool({
+  ...require('./dbConfig')(),
+  max: 5,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+});
 pool.on('error', (err) => console.error('Unexpected Postgres pool error', err));
 
 const query = (text, params) => pool.query(text, params);

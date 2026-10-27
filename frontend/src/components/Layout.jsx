@@ -12,6 +12,17 @@ export default function Layout() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const [scrollProgress, setScrollProgress] = useState(0)
+  const [logoutError, setLogoutError] = useState('')
+
+  async function handleLogout() {
+    setLogoutError('')
+    try {
+      await signOut()
+      navigate('/')
+    } catch (error) {
+      setLogoutError(error.message || 'Could not log out. Please try again.')
+    }
+  }
 
   useEffect(() => {
     const updateScrollProgress = () => {
@@ -70,7 +81,7 @@ export default function Layout() {
                   {user.college && <span className="block max-w-40 truncate text-xs text-slate-500">{user.college.name}</span>}
                 </span>
               </Link>
-              <button className="whitespace-nowrap px-1 text-[11px] text-slate-500 underline hover:text-slate-800 sm:text-xs" onClick={() => { signOut(); navigate('/') }}>
+              <button className="whitespace-nowrap px-1 text-[11px] text-slate-500 underline hover:text-slate-800 sm:text-xs" onClick={handleLogout}>
                 Log out
               </button>
             </div>
@@ -81,6 +92,7 @@ export default function Layout() {
             </div>
           )}
         </div>
+        {logoutError && <p role="alert" className="mx-auto max-w-[90rem] px-3 pb-2 text-sm text-red-700 sm:px-5 lg:px-8">{logoutError}</p>}
       </header>
       <main className="mx-auto w-full max-w-[90rem] min-w-0 px-3 py-5 sm:px-5 sm:py-8 lg:px-8">
         <Outlet />

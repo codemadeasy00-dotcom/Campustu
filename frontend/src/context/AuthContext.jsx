@@ -1,20 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { authApi, tokenStore, LOGOUT_EVENT } from '../services/api.js'
+import { authApi, LOGOUT_EVENT } from '../services/api.js'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
-  // If there is a saved token we must ask the server who it belongs to before showing pages.
-  const [loading, setLoading] = useState(Boolean(tokenStore.get()))
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!tokenStore.get()) return
+    localStorage.removeItem('campustu_token')
     let cancelled = false
     authApi
       .getMe()
       .then(({ user }) => !cancelled && setUser(user))
-      .catch(() => {})
+      .catch((error) => {
+        if (error.status !== 401) console.error('Could not restore the signed-in session:', error)
+      })
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
@@ -28,13 +29,12 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener(LOGOUT_EVENT, onLogout)
   }, [])
 
-  const signIn = useCallback((token, nextUser) => {
-    tokenStore.set(token)
+  const signIn = useCallback((nextUser) => {
     setUser(nextUser)
   }, [])
 
-  const signOut = useCallback(() => {
-    tokenStore.clear()
+  const signOut = useCallback(async () => {
+    await authApi.logout()
     setUser(null)
   }, [])
 

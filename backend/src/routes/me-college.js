@@ -6,29 +6,11 @@
 //   tables users, items, reservations, handovers, lost_found_posts as in schema.sql (rename in
 //   activityCounts() if yours differ).
 const express = require('express');
-const jwt = require('jsonwebtoken');
-const pool = require('../db');
+const { pool } = require('../db');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Robust middleware definition directly inside the file to prevent undefined errors
-const requireAuth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // Sets user id from token payload
-    next();
-  } catch (err) {
-    return res.status(401).json({ error: 'invalid_token' });
-  }
-};
-
-// Now this is guaranteed to be a valid function handler
 router.use(requireAuth);
 
 const COOLDOWN_DAYS = Number(process.env.COLLEGE_CHANGE_COOLDOWN_DAYS) || 7;

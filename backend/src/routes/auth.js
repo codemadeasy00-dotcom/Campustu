@@ -17,7 +17,13 @@ const { sendOtpEmail } = require('../email');
 const { processPhoto } = require('../utils/images');
 const storage = require('../storage');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
-const { requireAuth, requireActive, signToken } = require('../middleware/auth');
+const {
+  requireAuth,
+  requireActive,
+  signToken,
+  setSessionCookie,
+  clearSessionCookie,
+} = require('../middleware/auth');
 
 const { currentSemester } = require('../utils/semester');
 
@@ -374,10 +380,14 @@ router.post('/verify', async (req, res) => {
 
 
 
-  res.json({ token: signToken(u.rows[0].id), user: await publicProfile(u.rows[0].id) });
-
+  setSessionCookie(res, signToken(u.rows[0].id));
+  res.json({ user: await publicProfile(u.rows[0].id) });
 });
 
+router.post('/logout', (_req, res) => {
+  clearSessionCookie(res);
+  res.json({ success: true });
+});
 
 
 async function publicProfile(userId) {

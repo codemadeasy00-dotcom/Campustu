@@ -4,4 +4,15 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    proxy: {
+      '/auth': 'http://localhost:4000',
+      '/meta': 'http://localhost:4000',
+      '/items': 'http://localhost:4000',
+      '/kits': 'http://localhost:4000',
+      '/wishlist': 'http://localhost:4000',
+      '/lost-found': 'http://localhost:4000',
+      '/api': 'http://localhost:4000',
+    },
+  },
 })

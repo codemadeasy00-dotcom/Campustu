@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const multer = require('multer');
+const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const { z } = require('zod');
 const config = require('../config');
@@ -10,6 +11,18 @@ const { processPhoto } = require('../utils/images');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
 
+const createRateLimiter = (limit) => rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: config.isProd ? limit : 1000,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.' },
+});
+
+router.use(createRateLimiter(300));
+router.post('/', createRateLimiter(10));
+router.get('/nearby', createRateLimiter(60));
+router.post('/:id/claim', createRateLimiter(20));
 router.use(requireAuth);
 
 const upload = multer({

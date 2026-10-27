@@ -30,6 +30,9 @@ function errorHandler(err, _req, res, _next) {
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ error: 'Request body is not valid JSON' });
   }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request body exceeds the 10 MB limit' });
+  }
   // Postgres errors we can explain safely
   if (err.code === '23503') return res.status(400).json({ error: 'A referenced record does not exist' });
   if (err.code === '23505') return res.status(409).json({ error: 'That already exists' });

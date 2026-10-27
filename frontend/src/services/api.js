@@ -1,18 +1,7 @@
 // All talking to the backend happens here. Pages never call fetch() directly.
 
-const API_BASE_URL =
-  (import.meta.env && import.meta.env.VITE_API_URL) || 'https://campustu-backend.onrender.com'
-
-const TOKEN_KEY = 'campustu_token'
+export const API_BASE_URL = ''
 export const LOGOUT_EVENT = 'campustu:logout'
-
-// The login token lives in localStorage. Trade-off: any script injected into the page (XSS)
-// could read it. Fine for now; revisit (httpOnly cookies) before launch.
-export const tokenStore = {
-  get: () => localStorage.getItem(TOKEN_KEY),
-  set: (t) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
-}
 
 export class ApiError extends Error {
   constructor(message, status = 0, details = null, code = null) {
@@ -35,8 +24,6 @@ const TIMEOUT_MS = 70_000 // the free server can take about a minute to wake up
 
 async function request(endpoint, { method = 'GET', json, formData } = {}) {
   const headers = {}
-  const token = tokenStore.get()
-  if (token) headers.Authorization = `Bearer ${token}`
 
   let body
   if (formData) {
@@ -50,7 +37,7 @@ async function request(endpoint, { method = 'GET', json, formData } = {}) {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   let res
   try {
-    const init = { method, headers, signal: controller.signal }
+    const init = { method, headers, signal: controller.signal, credentials: 'include' }
     if (body !== undefined) init.body = body
     res = await fetch(`${API_BASE_URL}${endpoint}`, init)
   } catch (e) {
@@ -71,8 +58,7 @@ async function request(endpoint, { method = 'GET', json, formData } = {}) {
   }
 
   if (!res.ok) {
-    if (res.status === 401 && token) {
-      tokenStore.clear() // expired or invalid session
+    if (res.status === 401) {
       window.dispatchEvent(new Event(LOGOUT_EVENT))
     }
     throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data?.details, data?.code)
@@ -84,6 +70,7 @@ export const authApi = {
   signup: (payload) => request('/auth/signup', { method: 'POST', json: payload }),
   login: (payload) => request('/auth/login', { method: 'POST', json: payload }),
   verify: (payload) => request('/auth/verify', { method: 'POST', json: payload }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
   getMe: () => request('/auth/me'),
   setCollege: (collegeId) => request('/auth/profile/college', { method: 'PATCH', json: { college_id: collegeId } }),
   updateAvatar: (formData) => request('/auth/profile/avatar', { method: 'PATCH', formData }),

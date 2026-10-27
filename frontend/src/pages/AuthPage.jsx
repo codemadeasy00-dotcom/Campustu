@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { authApi, metaApi, errorMessage, tokenStore } from '../services/api.js'
+import { authApi, metaApi, errorMessage } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { Alert, Button, Field, Icons, PillInput, inputClass } from '../components/ui.jsx'
 import CollegePicker from '../components/CollegePicker.jsx'
@@ -84,18 +84,12 @@ export default function AuthPage({ mode }) {
   const onVerify = (e) => {
     e.preventDefault()
     return run(async () => {
-      const { token, user: signedInUser } = await authApi.verify({ email, code })
+      const { user: signedInUser } = await authApi.verify({ email, code })
       let me = signedInUser
       if (isSignup && college?.id && !me.college) {
-        tokenStore.set(token)
-        try {
-          ({ user: me } = await authApi.setCollege(college.id))
-        } catch (error) {
-          tokenStore.clear()
-          throw error
-        }
+        ({ user: me } = await authApi.setCollege(college.id))
       }
-      signIn(token, me)
+      signIn(me)
       navigate(redirectTo, { replace: true })
     })
   }

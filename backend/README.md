@@ -42,10 +42,11 @@ See `../DEPLOY.md` (free-tier plan: Supabase + Render + Brevo).
 | GET | /colleges?q= | no | approved colleges for the sign-up picker |
 | POST | /auth/signup | no | JSON: email, full_name, display_name, **college_id or new_college{name,city,state?}**, branch_id or branch_other, admission_year? |
 | POST | /auth/login | no | JSON: email |
-| POST | /auth/verify | no | JSON: email, code -> `{ token, user }` |
-| GET | /auth/me | Bearer | profile, college, trust, derived current_semester |
+| POST | /auth/verify | no | JSON: email, code -> `{ user }`; sets an HttpOnly session cookie |
+| POST | /auth/logout | no | Clears the HttpOnly session cookie |
+| GET | /auth/me | session cookie | profile, college, trust, derived current_semester |
 | GET | /items?limit= | Bearer | newest available listings at YOUR college |
-| POST | /items | Bearer, active | multipart: title, condition, price, item_type_id or category_id, optional description/branch_id/semester/preferred_place, 1-5 files in `photos` |
+| POST | /items | session cookie, active | multipart: title, condition, price, item_type_id or category_id, optional description/branch_id/semester/preferred_place, 1-5 files in `photos` |
 | GET | /items/mine | Bearer | |
 | GET | /items/:id | Bearer | 404 if the item belongs to another college |
 

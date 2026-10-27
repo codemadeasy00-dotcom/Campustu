@@ -4,17 +4,40 @@ const { query } = require('../db');
 const { AppError } = require('../utils/errors');
 
 const USER_COLUMNS = 'id, email, full_name, display_name, role, status, branch_id, admission_year, college_id';
+const SESSION_COOKIE_NAME = 'campustu_session';
+const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: config.isProd,
+  sameSite: 'lax',
+  path: '/',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+};
 
-// Reads "Authorization: Bearer <token>", then loads the user FRESH from the database,
+function setSessionCookie(res, token) {
+  res.cookie(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS);
+}
+
+function clearSessionCookie(res) {
+  const { maxAge: _maxAge, ...options } = SESSION_COOKIE_OPTIONS;
+  res.clearCookie(SESSION_COOKIE_NAME, options);
+}
+
+// Reads the HttpOnly session cookie and loads the user fresh from the database,
 // so a frozen/banned account is blocked immediately, not when the token expires.
-async function requireAuth(req, _res, next) {
-  const [scheme, token] = (req.headers.authorization || '').split(' ');
-  if (scheme !== 'Bearer' || !token) throw new AppError(401, 'Please log in');
+async function requireAuth(req, res, next) {
+  const origin = req.get('origin');
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && origin && !config.corsOrigins.includes(origin)) {
+    throw new AppError(403, 'Request origin is not allowed');
+  }
+
+  const token = req.cookies?.[SESSION_COOKIE_NAME];
+  if (!token) throw new AppError(401, 'Please log in');
 
   let payload;
   try {
     payload = jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] });
   } catch {
+    clearSessionCookie(res);
     throw new AppError(401, 'Your session is invalid or has expired. Please log in again');
   }
 
@@ -24,7 +47,10 @@ async function requireAuth(req, _res, next) {
     [payload.sub]
   );
   const user = rows[0];
-  if (!user || user.status === 'banned') throw new AppError(401, 'Please log in');
+  if (!user || user.status === 'banned') {
+    clearSessionCookie(res);
+    throw new AppError(401, 'Please log in');
+  }
   req.user = user;
   next();
 }
@@ -57,4 +83,12 @@ function signToken(userId) {
   });
 }
 
-module.exports = { requireAuth, requireActive, requireCollege, requireAdmin, signToken };
+module.exports = {
+  requireAuth,
+  requireActive,
+  requireCollege,
+  requireAdmin,
+  signToken,
+  setSessionCookie,
+  clearSessionCookie,
+};

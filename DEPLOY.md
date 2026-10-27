@@ -115,6 +115,12 @@ CLOUDINARY_CLOUD_NAME=...  CLOUDINARY_API_KEY=...  CLOUDINARY_API_SECRET=...
 Configure either the S3 variables or all three Cloudinary variables for persistent photo storage. When both are configured, new photos use Cloudinary and existing untagged S3 keys continue to use S3. The API refuses to start in production if email, persistent photo storage or strong secrets are missing. That is deliberate:
 read the Render log for the exact missing name.
 
+### Browser sessions and the Vercel API proxy
+
+The browser uses an HttpOnly, SameSite=Lax session cookie. Keep API calls same-origin by deploying the frontend with the included Vercel rewrites, which proxy `/auth`, `/items`, `/kits`, `/wishlist`, `/lost-found`, `/meta`, and `/api` to `https://campustu-backend.onrender.com`. If the Render service hostname changes, update the destinations in `frontend/vercel.json`.
+
+On Render, set `CORS_ORIGIN=https://campustu.vercel.app` (add any other exact frontend origins as comma-separated values). Do not set `VITE_API_URL` to the Render hostname for API requests; the frontend uses relative URLs so the browser sends its HttpOnly cookie to the Vercel origin. Existing users will need to sign in again after deployment because the old localStorage token is cleared and no longer accepted.
+
 ## Step 6 - Check it works
 1. Open `https://<your-render-name>.onrender.com/health` -> `{"ok":true}` (first load may take ~1 minute).
 2. Open `/meta` -> your real branches/categories/spots.
