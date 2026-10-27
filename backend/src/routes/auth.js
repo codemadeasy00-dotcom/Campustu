@@ -441,10 +441,13 @@ router.patch('/profile/college', requireAuth, requireActive, async (req, res) =>
     if (user.college_id) throw new AppError(409, 'Your account already has a campus selected.');
 
     const { rows: [college] } = await db.query(
-      `SELECT id FROM colleges WHERE id = $1 AND status = 'approved'`,
+      `SELECT id, email_domain FROM colleges WHERE id = $1 AND status = 'approved'`,
       [collegeId],
     );
     if (!college) throw new AppError(404, 'That campus is not available.');
+    if (!emailMatchesDomain(req.user.email, college.email_domain)) {
+      throw new AppError(400, `Please use your college email (@${college.email_domain})`);
+    }
 
     await db.query('UPDATE users SET college_id = $2 WHERE id = $1', [req.user.id, collegeId]);
   });

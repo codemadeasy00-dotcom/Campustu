@@ -205,8 +205,8 @@ export default function ProfileDashboard() {
 
   if (!user?.college) {
     return (
-      <div className="mx-auto max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10">
-        <div className="h-32 bg-gradient-to-r from-brand-700 via-sky-700 to-cyan-600 sm:h-40" />
+      <div className="relative mx-auto max-w-4xl rounded-3xl border border-brand-100 bg-white shadow-xl shadow-brand-700/10">
+        <div className="h-32 rounded-t-3xl bg-gradient-to-r from-brand-700 via-brand-600 to-brand-400 sm:h-40" />
         <section className="px-5 pb-8 sm:px-10">
           <div className="-mt-12 flex flex-col gap-5 sm:-mt-14 sm:flex-row sm:items-end">
             <ProfileAvatar user={user} className="h-24 w-24 border-4 border-white text-3xl shadow-lg sm:h-28 sm:w-28" />
@@ -217,7 +217,7 @@ export default function ProfileDashboard() {
             </div>
           </div>
           <div className="mt-8 grid gap-6 border-t border-slate-100 pt-7 md:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)]">
-            <div>
+            <div className="relative z-20">
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-700">One last step</p>
               <h2 className="mt-2 text-xl font-bold text-slate-900">Which campus are you part of?</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -229,7 +229,7 @@ export default function ProfileDashboard() {
               {collegeError && <div className="mt-4"><Alert>{collegeError}</Alert></div>}
               <p className="mt-3 text-xs leading-5 text-slate-500">Can’t find your college? Choose “I can’t find my college” in the selector to submit it for review.</p>
             </div>
-            <aside className="rounded-2xl bg-slate-50 p-5">
+            <aside className="rounded-2xl bg-cream p-5">
               <h3 className="font-semibold text-slate-900">Your profile photo</h3>
               <p className="mt-1 text-sm leading-6 text-slate-600">Add a clear photo so other students can recognize your profile. You can change or remove it any time.</p>
               <label className={`mt-4 inline-flex cursor-pointer items-center justify-center rounded-full bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 ${avatarBusy ? 'pointer-events-none opacity-60' : ''}`}>
@@ -357,8 +357,8 @@ export default function ProfileDashboard() {
   ]
 
   return (
-    <div className="mx-auto max-w-5xl overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 shadow-xl shadow-slate-900/10">
-      <section className="relative overflow-hidden bg-gradient-to-r from-slate-950 via-brand-700 to-sky-700 px-5 pb-6 pt-7 text-white sm:px-8 sm:pb-8">
+    <div className="mx-auto max-w-5xl overflow-hidden rounded-3xl border border-brand-200 bg-cream shadow-xl shadow-brand-700/10">
+      <section className="relative overflow-hidden bg-gradient-to-r from-brand-700 via-brand-600 to-brand-400 px-5 pb-6 pt-7 text-white sm:px-8 sm:pb-8">
         <div aria-hidden="true" className="absolute -right-10 -top-24 h-72 w-72 rounded-full border-[36px] border-white/5" />
         <div className="relative flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
           <div className="flex items-end gap-4 sm:gap-5">
@@ -395,14 +395,14 @@ export default function ProfileDashboard() {
         )}
       </section>
 
-      <div className="space-y-6 p-4 sm:p-7">
+      <div className="space-y-6 bg-cream p-4 sm:p-7">
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           { label: 'My reports', value: items.length, detail: 'Lost & Found posts' },
           { label: 'Incoming claims', value: pendingClaimCount, detail: 'Waiting for your review' },
           { label: 'My claims', value: myClaims.length, detail: 'Requests you submitted' },
         ].map((stat) => (
-          <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div key={stat.label} className="rounded-2xl border border-brand-100 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{stat.label}</p>
             <div className="mt-2 flex items-end justify-between gap-2">
               <span className="text-3xl font-bold tracking-tight text-slate-900">{stat.value}</span>
