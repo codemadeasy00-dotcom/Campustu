@@ -156,7 +156,7 @@ router.get('/mine', requireCollege, async (req, res, next) => {
 router.get('/my-claims', requireCollege, async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT c.id, c.item_id, c.status, c.created_at, c.reviewed_at,
+      `SELECT c.id, c.item_id, c.claim_text, c.status, c.created_at, c.reviewed_at,
               CASE WHEN c.status = 'approved' THEN c.handover_code ELSE NULL END AS handover_code,
               lif.title, lif.status AS item_status, lif.lifecycle_status, lif.location_name
          FROM item_claims c

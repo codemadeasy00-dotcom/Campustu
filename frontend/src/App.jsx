@@ -11,6 +11,7 @@ import Kits from './pages/Kits.jsx'
 import Wishlist from './pages/Wishlist.jsx'
 import LostFound from './pages/LostFound.jsx'
 import LostFoundNew from './pages/LostFoundNew.jsx'
+import ProfileDashboard from './pages/ProfileDashboard.jsx'
 
 function NotFound() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/marketplace" element={guard(<Marketplace />)} />
         <Route path="/lost-found" element={guard(<LostFound />)} />
         <Route path="/lost-found/report" element={guard(<LostFoundNew />)} />
+        <Route path="/profile" element={guard(<ProfileDashboard />)} />
         <Route path="/wishlist" element={guard(<Wishlist />)} />
         <Route path="*" element={<NotFound />} />
       </Route>

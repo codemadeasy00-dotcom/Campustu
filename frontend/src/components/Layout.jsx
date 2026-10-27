@@ -56,7 +56,7 @@ export default function Layout() {
             <div className="flex items-center gap-3 text-sm">
               <Link to="/sell" className="rounded-full bg-brand-600 px-3.5 py-1.5 font-semibold text-white shadow hover:bg-brand-700">Sell</Link>
               <div className="text-right leading-tight">
-                <Link to="/my-listings" className="font-semibold text-slate-800 hover:underline">
+                <Link to="/profile" className="font-semibold text-slate-800 hover:underline">
                   {user.display_name}
                   {user.is_trusted && <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">Trusted</span>}
                 </Link>
