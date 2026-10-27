@@ -6,6 +6,7 @@ const storage = require('./storage');
 const { pool } = require('./db');
 const app = require('./app');
 const { migrate } = require('../scripts/migrate');
+const { processQueuedMediaCleanup } = require('./utils/lost-found-media-cleanup');
 
 if (!storage.useS3) fs.mkdirSync(storage.root, { recursive: true });
 
@@ -22,6 +23,7 @@ async function ensureDatabaseReady() {
 }
 
 let server;
+let mediaCleanupTimer;
 
 async function startServer() {
   try {
@@ -29,6 +31,15 @@ async function startServer() {
     server = app.listen(PORT, () => {
       console.log(`CampusKit API listening on port ${PORT} (${config.env || 'development'})`);
     });
+    processQueuedMediaCleanup().catch((error) => {
+      console.error('Could not process lost-and-found media cleanup queue:', error);
+    });
+    mediaCleanupTimer = setInterval(() => {
+      processQueuedMediaCleanup().catch((error) => {
+        console.error('Could not process lost-and-found media cleanup queue:', error);
+      });
+    }, 60_000);
+    mediaCleanupTimer.unref();
 
     const collegeRoutes = require('./routes/colleges');
     app.use('/api/colleges', collegeRoutes);
@@ -40,6 +51,7 @@ async function startServer() {
 
 function shutdown() {
   if (!server) return;
+  clearInterval(mediaCleanupTimer);
   server.close(() => pool.end().then(() => process.exit(0)));
 }
 

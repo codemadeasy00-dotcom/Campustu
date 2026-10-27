@@ -7,11 +7,22 @@ import { OpenStreetMapProvider } from 'leaflet-geosearch';
 import { lostFoundApi, errorMessage } from '../services/api.js';
 import { Alert, useToast } from '../components/ui.jsx';
 import { processAndCompressImage } from '../utils/imageCompressor.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 
 const MAX_PHOTOS = 5;
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+const DELETE_WINDOW_MS = 8 * 60 * 60 * 1000;
+
+function deleteTimeRemaining(item, now) {
+  const remaining = DELETE_WINDOW_MS - (now - new Date(item.created_at).getTime());
+  if (!Number.isFinite(remaining) || remaining <= 0) return null;
+  const hours = Math.floor(remaining / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  const seconds = Math.floor((remaining % 60_000) / 1000);
+  return `${hours}h ${minutes}m ${seconds}s`;
+}
 
 function hasValidCoordinates(item) {
   if (item.latitude == null || item.longitude == null || item.latitude === '' || item.longitude === '') return false;
@@ -323,11 +334,14 @@ function FullscreenButton() {
 
 export default function LostFound() {
   const showToast = useToast();
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [itemsError, setItemsError] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [showMine, setShowMine] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now());
   const [nearbyCenter, setNearbyCenter] = useState(null);
   const [radiusMeters, setRadiusMeters] = useState(1000);
   const [nearbyItems, setNearbyItems] = useState(null);
@@ -342,6 +356,19 @@ export default function LostFound() {
   const [claimAnswer, setClaimAnswer] = useState('');
   const [claimResult, setClaimResult] = useState(null);
   const [submittingClaim, setSubmittingClaim] = useState(false);
+  const [claimsModalItem, setClaimsModalItem] = useState(null);
+  const [managedClaims, setManagedClaims] = useState([]);
+  const [claimsLoading, setClaimsLoading] = useState(false);
+  const [claimsError, setClaimsError] = useState('');
+  const [reviewingClaimId, setReviewingClaimId] = useState(null);
+  const [myClaimsOpen, setMyClaimsOpen] = useState(false);
+  const [myClaims, setMyClaims] = useState([]);
+  const [myClaimsLoading, setMyClaimsLoading] = useState(false);
+  const [myClaimsError, setMyClaimsError] = useState('');
+  const [editingItem, setEditingItem] = useState(null);
+  const [editFields, setEditFields] = useState(null);
+  const [editError, setEditError] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
   const [postError, setPostError] = useState('');
   const [postingItem, setPostingItem] = useState(false);
   const [photos, setPhotos] = useState([]);
@@ -433,8 +460,17 @@ export default function LostFound() {
     setLoading(true);
     setItemsError('');
     try {
-      const data = await lostFoundApi.list({ status: statusFilter, search });
-      setItems(data.items || []);
+      const data = showMine
+        ? await lostFoundApi.mine()
+        : await lostFoundApi.list({ status: statusFilter, search });
+      const receivedItems = data.items || [];
+      setItems(showMine
+        ? receivedItems.filter((item) => {
+          const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
+          const term = search.trim().toLowerCase();
+          return matchesStatus && (!term || `${item.title} ${item.description}`.toLowerCase().includes(term));
+        })
+        : receivedItems);
     } catch (err) {
       console.error("Failed to fetch items:", err);
       setItemsError(errorMessage(err));
@@ -448,7 +484,52 @@ export default function LostFound() {
     setNearbyHasMore(false);
     setNearbyError('');
     fetchItems();
-  }, [statusFilter, search]);
+  }, [statusFilter, search, showMine]);
+
+  useEffect(() => {
+    if (!showMine) return undefined;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [showMine]);
+
+  useEffect(() => {
+    if (!showMine) return undefined;
+    let cancelled = false;
+    let previousPendingCount = null;
+    const refreshMyReports = async () => {
+      try {
+        const result = await lostFoundApi.mine();
+        if (cancelled) return;
+        const reports = result.items || [];
+        const pendingCount = reports.reduce(
+          (total, item) => total + (Number(item.pending_claim_count) || 0),
+          0,
+        );
+        if (previousPendingCount !== null && pendingCount > previousPendingCount) {
+          const newClaims = pendingCount - previousPendingCount;
+          showToast(`${newClaims} new claim${newClaims === 1 ? '' : 's'} received. Review it in My reports.`);
+        }
+        previousPendingCount = pendingCount;
+        const term = search.trim().toLowerCase();
+        setItems(reports.filter((item) =>
+          (statusFilter === 'all' || item.status === statusFilter)
+          && (!term || `${item.title} ${item.description}`.toLowerCase().includes(term)),
+        ));
+        setItemsError('');
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Could not refresh pending lost-and-found claims:', err);
+        setItemsError(errorMessage(err));
+      }
+    };
+
+    refreshMyReports();
+    const timer = window.setInterval(refreshMyReports, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [showMine, statusFilter, search, showToast]);
 
   const selectNearbyCenter = (coords) => {
     setNearbyCenter(coords);
@@ -567,6 +648,134 @@ export default function LostFound() {
     }
   };
 
+  const openManagedClaims = async (item) => {
+    setClaimsModalItem(item);
+    setManagedClaims([]);
+    setClaimsError('');
+    setClaimsLoading(true);
+    try {
+      const result = await lostFoundApi.claims(item.id);
+      setManagedClaims(result.claims || []);
+    } catch (err) {
+      console.error('Could not load report claims:', err);
+      setClaimsError(errorMessage(err));
+    } finally {
+      setClaimsLoading(false);
+    }
+  };
+
+  const handleClaimReview = async (claim, action) => {
+    if (!claimsModalItem) return;
+    setReviewingClaimId(claim.id);
+    setClaimsError('');
+    try {
+      await lostFoundApi.reviewClaim(claimsModalItem.id, claim.id, action);
+      showToast(action === 'approve'
+        ? 'Claim approved. The claimant can now view their handover code.'
+        : 'Claim rejected.');
+      const [claimsResult] = await Promise.all([
+        lostFoundApi.claims(claimsModalItem.id),
+        fetchItems(),
+      ]);
+      setManagedClaims(claimsResult.claims || []);
+    } catch (err) {
+      console.error('Could not review lost-and-found claim:', err);
+      setClaimsError(errorMessage(err));
+    } finally {
+      setReviewingClaimId(null);
+    }
+  };
+
+  const openMyClaims = async () => {
+    setMyClaimsOpen(true);
+    setMyClaims([]);
+    setMyClaimsError('');
+    setMyClaimsLoading(true);
+    try {
+      const result = await lostFoundApi.myClaims();
+      setMyClaims(result.claims || []);
+    } catch (err) {
+      console.error('Could not load your claims:', err);
+      setMyClaimsError(errorMessage(err));
+    } finally {
+      setMyClaimsLoading(false);
+    }
+  };
+
+  const openEditItem = (item) => {
+    setEditingItem(item);
+    setEditFields({
+      title: item.title,
+      description: item.description,
+      category: item.category,
+      brand: item.brand || '',
+      colour: item.colour || '',
+      radius_meters: Number(item.radius_meters) || 0,
+      location_name: item.location_name,
+      location_note: item.location_note || '',
+    });
+    setEditError('');
+  };
+
+  const handleEditSubmit = async (event) => {
+    event.preventDefault();
+    if (!editingItem || !editFields) return;
+    setSavingEdit(true);
+    setEditError('');
+    try {
+      await lostFoundApi.update(editingItem.id, {
+        ...editFields,
+        radius_meters: Number(editFields.radius_meters),
+      });
+      setEditingItem(null);
+      showToast('Lost-and-found report updated.');
+      await fetchItems();
+    } catch (err) {
+      console.error('Could not update lost-and-found report:', err);
+      setEditError(errorMessage(err));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleLifecycleAction = async (item, action) => {
+    const message = action === 'resolve'
+      ? 'Mark this report as returned? It will leave active search and its photos will be removed.'
+      : 'Close this report? It will leave active search and its photos will be removed.';
+    if (!window.confirm(message)) return;
+    try {
+      const result = await lostFoundApi.setLifecycle(item.id, action);
+      showToast(result.media_cleanup_pending
+        ? 'Report updated. Photo cleanup is queued and will retry automatically.'
+        : action === 'resolve' ? 'Report marked returned.' : 'Report closed.');
+      setNearbyItems(null);
+      await fetchItems();
+    } catch (err) {
+      console.error('Could not update lost-and-found lifecycle:', err);
+      setItemsError(errorMessage(err));
+    }
+  };
+
+  const handleDeleteItem = async (item) => {
+    if (!window.confirm(`Permanently delete "${item.title}"? This cannot be undone.`)) return;
+    try {
+      const result = await lostFoundApi.remove(item.id);
+      showToast(result.media_cleanup_pending
+        ? 'Report deleted. Photo cleanup is queued and will retry automatically.'
+        : 'Report permanently deleted.');
+      setNearbyItems(null);
+      await fetchItems();
+    } catch (err) {
+      console.error('Could not delete lost-and-found report:', err);
+      setItemsError(errorMessage(err));
+    }
+  };
+
+  const pendingReviewCount = items.reduce(
+    (total, item) => total + (Number(item.pending_claim_count) || 0),
+    0,
+  );
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
@@ -580,12 +789,29 @@ export default function LostFound() {
             Pinpoint lost items on the campus map and submit answers to claim your belongings safely.
           </p>
         </div>
-        <Link
-          to="/lost-found/report"
-          className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold px-6 py-3 rounded-2xl transition-all shadow-lg active:scale-95"
-        >
-          + Report Lost / Found Item
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            aria-pressed={showMine}
+            onClick={() => setShowMine((value) => !value)}
+            className="rounded-2xl border border-white/40 px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
+          >
+            {showMine ? 'Browse active reports' : 'My reports'}
+          </button>
+          <button
+            type="button"
+            onClick={openMyClaims}
+            className="rounded-2xl border border-white/40 px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
+          >
+            My claims
+          </button>
+          <Link
+            to="/lost-found/report"
+            className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold px-6 py-3 rounded-2xl transition-all shadow-lg active:scale-95"
+          >
+            + Report Lost / Found Item
+          </Link>
+        </div>
       </div>
 
       {potentialMatches.length > 0 && (
@@ -726,7 +952,7 @@ export default function LostFound() {
             )}
             
             <MarkerClusterGroup chunkedLoading>
-              {(nearbyItems ?? items).map((item) => (
+              {(nearbyItems ?? items).filter((item) => item.lifecycle_status === 'active' && ['lost', 'found'].includes(item.status)).map((item) => (
                 hasValidCoordinates(item) ? (
                   <Marker
                     key={item.id}
@@ -778,50 +1004,138 @@ export default function LostFound() {
         </div>
       </div>
 
+      {showMine && pendingReviewCount > 0 && (
+        <div className="mb-6">
+          <Alert kind="warn">
+            You have {pendingReviewCount} pending {pendingReviewCount === 1 ? 'claim' : 'claims'} to review. Open Manage claims on the relevant report.
+          </Alert>
+        </div>
+      )}
+
       {/* Item List */}
       {itemsError && <div className="mb-6"><Alert>{itemsError}</Alert></div>}
       {loading ? (
         <div className="text-center py-12 text-slate-500">Loading lost & found items...</div>
       ) : items.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
-          <p className="text-slate-500 font-medium">No items reported yet.</p>
+          <p className="text-slate-500 font-medium">{showMine ? 'You have not reported any items yet.' : 'No active items reported yet.'}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {items.map((item) => (
-            <div key={item.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-              {item.photo && (
-                <img
-                  src={item.photo}
-                  alt={item.title}
-                  className="mb-4 h-40 w-full rounded-xl bg-slate-100 object-cover"
-                />
-              )}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                    item.status === 'lost' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
-                  }`}>
-                    {item.status}
-                  </span>
-                  <span className="text-xs text-slate-400 truncate max-w-[120px]">📍 {item.location_name}</span>
-                </div>
-                <h3 className="font-bold text-slate-900 mb-1 line-clamp-1">{item.title}</h3>
-                <p className="text-xs text-slate-600 line-clamp-2 mb-4">{item.description}</p>
-              </div>
+          {items.map((item) => {
+            const isOwner = item.user_id === user?.id;
+            const isAdmin = user?.role === 'admin';
+            const remainingDeleteTime = deleteTimeRemaining(item, clockNow);
+            const claimCount = Number(item.claim_count) || 0;
+            const canDelete = isAdmin || (isOwner && remainingDeleteTime && claimCount === 0);
 
-              <button
-                onClick={() => {
-                  setClaimModalItem(item);
-                  setClaimAnswer('');
-                  setClaimResult(null);
-                }}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 rounded-xl transition-all"
-              >
-                Claim Item
-              </button>
-            </div>
-          ))}
+            return (
+              <div key={item.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                {item.photo && (
+                  <img
+                    src={item.photo}
+                    alt={item.title}
+                    className="mb-4 h-40 w-full rounded-xl bg-slate-100 object-cover"
+                  />
+                )}
+                <div>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                      item.status === 'lost' ? 'bg-red-100 text-red-700' : item.status === 'found' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'
+                    }`}>
+                      {item.status.replace('_', ' ')}
+                    </span>
+                    {item.lifecycle_status !== 'active' && (
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">
+                        {item.lifecycle_status.replace('_', ' ')}
+                      </span>
+                    )}
+                    <span className="text-xs text-slate-400 truncate max-w-[120px]">📍 {item.location_name}</span>
+                  </div>
+                  <h3 className="font-bold text-slate-900 mb-1 line-clamp-1">{item.title}</h3>
+                  <p className="text-xs text-slate-600 line-clamp-2 mb-4">{item.description}</p>
+                </div>
+
+                {showMine && isOwner ? (
+                  <div className="space-y-2 border-t border-slate-100 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => openManagedClaims(item)}
+                      className="w-full rounded-xl border border-brand-200 bg-brand-50 py-2.5 text-xs font-bold text-brand-800 hover:bg-brand-100"
+                    >
+                      Manage claims ({Number(item.pending_claim_count) || 0} pending)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openEditItem(item)}
+                      className="w-full rounded-xl border border-slate-300 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Edit report
+                    </button>
+                    {canDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteItem(item)}
+                        className="w-full rounded-xl border border-red-200 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+                      >
+                        {isAdmin ? 'Admin: purge report' : `Delete permanently · ${remainingDeleteTime} left`}
+                      </button>
+                    ) : (
+                      <p className="text-center text-[11px] text-slate-500">
+                        {claimCount > 0 ? 'Permanent deletion is locked because claims exist.' : 'Permanent deletion is locked after 8 hours.'}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleLifecycleAction(item, 'close')}
+                        className="rounded-xl bg-slate-700 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                      >
+                        Close post
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleLifecycleAction(item, 'resolve')}
+                        className="rounded-xl bg-emerald-700 py-2 text-xs font-semibold text-white hover:bg-emerald-800"
+                      >
+                        Mark returned
+                      </button>
+                    </div>
+                  </div>
+                ) : isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteItem(item)}
+                    className="w-full rounded-xl border border-red-200 py-2.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                  >
+                    Admin: purge report
+                  </button>
+                ) : isOwner ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowMine(true)}
+                    className="w-full rounded-xl border border-brand-200 bg-brand-50 py-2.5 text-xs font-bold text-brand-800 hover:bg-brand-100"
+                  >
+                    Manage your report
+                  </button>
+                ) : item.lifecycle_status === 'active' && ['lost', 'found'].includes(item.status) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClaimModalItem(item);
+                      setClaimAnswer('');
+                      setClaimResult(null);
+                    }}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 rounded-xl transition-all"
+                  >
+                    Claim Item
+                  </button>
+                ) : (
+                  <p className="text-center text-xs text-slate-500">This report is not accepting claims.</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -831,26 +1145,14 @@ export default function LostFound() {
           <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-slate-900 mb-1">Claim Item: {claimModalItem.title}</h3>
             <p className="text-xs text-slate-500 mb-4">
-              {claimModalItem.security_question 
-                ? `Answer the security question to verify ownership.`
-                : `Submit proof details to verify ownership.`}
+              Submitting creates a verification request. The report owner reviews it; no handover code is issued until they approve.
             </p>
 
             {claimResult ? (
               <div className="space-y-4">
-                <div className={`p-4 rounded-2xl text-sm font-medium ${claimResult.success && claimResult.claim?.status === 'approved' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+                <div className={`p-4 rounded-2xl text-sm font-medium ${claimResult.success ? 'bg-sky-50 text-sky-800 border border-sky-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
                   {claimResult.message}
                 </div>
-
-                {claimResult.claim?.handover_pass_code && (
-                  <div className="bg-teal-50 border border-teal-200 p-4 rounded-2xl text-center">
-                    <span className="text-[10px] uppercase font-bold text-teal-700 tracking-wider">Campus Security Handover Pass</span>
-                    <div className="text-2xl font-mono font-extrabold text-teal-900 my-1">
-                      {claimResult.claim.handover_pass_code}
-                    </div>
-                  </div>
-                )}
-
                 <button
                   onClick={() => setClaimModalItem(null)}
                   className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2.5 rounded-xl text-xs"
@@ -862,19 +1164,23 @@ export default function LostFound() {
               <form onSubmit={handleClaimSubmit} className="space-y-4">
                 {claimModalItem.security_question && (
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs font-medium text-slate-700">
-                    ❓ <strong>Question:</strong> {claimModalItem.security_question}
+                    <strong>Owner's security question:</strong> {claimModalItem.security_question}
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Your Answer / Proof</label>
-                  <input
-                    type="text"
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    {claimModalItem.security_question ? 'Your answer' : 'Describe proof of ownership'}
+                  </label>
+                  <textarea
                     required
-                    placeholder="Enter answer..."
+                    minLength={5}
+                    maxLength={2000}
+                    rows={4}
+                    placeholder={claimModalItem.security_question ? 'Answer the owner’s question' : 'Describe where and when you lost it, or a detail that helps identify it'}
                     value={claimAnswer}
                     onChange={(e) => setClaimAnswer(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full resize-y rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
@@ -891,12 +1197,166 @@ export default function LostFound() {
                     disabled={submittingClaim}
                     className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs py-2.5 rounded-xl"
                   >
-                    {submittingClaim ? 'Verifying...' : 'Submit Claim'}
+                    {submittingClaim ? 'Sending…' : 'Send for review'}
                   </button>
                 </div>
               </form>
             )}
           </div>
+        </div>
+      )}
+
+      {claimsModalItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="manage-claims-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="manage-claims-title" className="text-xl font-bold text-slate-900">Claims for {claimsModalItem.title}</h2>
+                <p className="mt-1 text-xs text-slate-500">Review each answer or proof privately. Approval creates one handover code and rejects other pending claims.</p>
+              </div>
+              <button type="button" onClick={() => setClaimsModalItem(null)} className="rounded-lg px-2 py-1 text-lg font-bold text-slate-500 hover:bg-slate-100" aria-label="Close claims">×</button>
+            </div>
+            {claimsError && <div className="mt-4"><Alert>{claimsError}</Alert></div>}
+            {claimsLoading ? (
+              <p className="py-8 text-center text-sm text-slate-500">Loading claims…</p>
+            ) : managedClaims.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-500">No claims have been submitted for this report.</p>
+            ) : (
+              <ul className="mt-5 space-y-3">
+                {managedClaims.map((claim) => (
+                  <li key={claim.id} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold text-slate-900">{claim.claimant_name}</p>
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
+                        claim.status === 'pending' ? 'bg-amber-100 text-amber-900' : claim.status === 'approved' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-600'
+                      }`}>{claim.status}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">{new Date(claim.created_at).toLocaleString()}</p>
+                    <p className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{claim.claim_text}</p>
+                    {claim.status === 'pending' && claimsModalItem.lifecycle_status === 'active' && (
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleClaimReview(claim, 'approve')}
+                          disabled={reviewingClaimId !== null}
+                          className="flex-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:opacity-60"
+                        >
+                          {reviewingClaimId === claim.id ? 'Saving…' : 'Approve'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleClaimReview(claim, 'reject')}
+                          disabled={reviewingClaimId !== null}
+                          className="flex-1 rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button type="button" onClick={() => setClaimsModalItem(null)} className="mt-5 w-full rounded-xl bg-slate-100 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200">Close</button>
+          </section>
+        </div>
+      )}
+
+      {myClaimsOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="my-claims-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="my-claims-title" className="text-xl font-bold text-slate-900">My claims</h2>
+                <p className="mt-1 text-xs text-slate-500">Only you can see your submitted proof and approved handover codes.</p>
+              </div>
+              <button type="button" onClick={() => setMyClaimsOpen(false)} className="rounded-lg px-2 py-1 text-lg font-bold text-slate-500 hover:bg-slate-100" aria-label="Close my claims">×</button>
+            </div>
+            {myClaimsError && <div className="mt-4"><Alert>{myClaimsError}</Alert></div>}
+            {myClaimsLoading ? (
+              <p className="py-8 text-center text-sm text-slate-500">Loading your claims…</p>
+            ) : myClaims.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-500">You have not submitted any claims yet.</p>
+            ) : (
+              <ul className="mt-5 space-y-3">
+                {myClaims.map((claim) => (
+                  <li key={claim.id} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="font-bold text-slate-900">{claim.title}</h3>
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
+                        claim.status === 'pending' ? 'bg-amber-100 text-amber-900' : claim.status === 'approved' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-600'
+                      }`}>{claim.status}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">{claim.location_name} · {new Date(claim.created_at).toLocaleString()}</p>
+                    {claim.status === 'pending' && <p className="mt-3 text-sm text-amber-800">Waiting for the report owner to review your proof.</p>}
+                    {claim.status === 'approved' && claim.handover_code && (
+                      <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+                        <p className="text-xs font-semibold text-emerald-900">Show this code at the handover</p>
+                        <p className="mt-1 font-mono text-2xl font-extrabold tracking-widest text-emerald-950">{claim.handover_code}</p>
+                      </div>
+                    )}
+                    {claim.status === 'rejected' && <p className="mt-3 text-sm text-slate-600">The report owner did not approve this claim.</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button type="button" onClick={() => setMyClaimsOpen(false)} className="mt-5 w-full rounded-xl bg-slate-100 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200">Close</button>
+          </section>
+        </div>
+      )}
+
+      {editingItem && editFields && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4">
+          <form onSubmit={handleEditSubmit} className="max-h-[90vh] w-full max-w-xl space-y-4 overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Edit report</h2>
+                <p className="mt-1 text-xs text-slate-500">You can edit your report even after it is closed or resolved.</p>
+              </div>
+              <button type="button" onClick={() => setEditingItem(null)} className="rounded-lg px-2 py-1 text-lg font-bold text-slate-500 hover:bg-slate-100" aria-label="Close edit form">×</button>
+            </div>
+            {editError && <Alert>{editError}</Alert>}
+            <label className="block text-sm font-semibold text-slate-700">
+              Title
+              <input required minLength={3} maxLength={255} value={editFields.title} onChange={(event) => setEditFields({ ...editFields, title: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-sm font-semibold text-slate-700">
+              Description
+              <textarea required minLength={5} maxLength={2000} rows={4} value={editFields.description} onChange={(event) => setEditFields({ ...editFields, description: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm font-semibold text-slate-700">
+                Category
+                <select value={editFields.category} onChange={(event) => setEditFields({ ...editFields, category: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm">
+                  {['Electronics & Gadgets', 'Books & Study Materials', 'Clothing & Accessories', 'Keys & ID Cards', 'Bags & Personal Items', 'Other'].map((category) => <option key={category}>{category}</option>)}
+                </select>
+              </label>
+              <label className="block text-sm font-semibold text-slate-700">
+                Search radius (metres)
+                <input type="number" min={0} max={5000} value={editFields.radius_meters} onChange={(event) => setEditFields({ ...editFields, radius_meters: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </label>
+              <label className="block text-sm font-semibold text-slate-700">
+                Brand
+                <input maxLength={100} value={editFields.brand} onChange={(event) => setEditFields({ ...editFields, brand: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </label>
+              <label className="block text-sm font-semibold text-slate-700">
+                Colour
+                <input maxLength={100} value={editFields.colour} onChange={(event) => setEditFields({ ...editFields, colour: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </label>
+            </div>
+            <label className="block text-sm font-semibold text-slate-700">
+              Spot name
+              <input required minLength={2} maxLength={255} value={editFields.location_name} onChange={(event) => setEditFields({ ...editFields, location_name: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-sm font-semibold text-slate-700">
+              Location note
+              <input maxLength={255} value={editFields.location_note} onChange={(event) => setEditFields({ ...editFields, location_note: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            </label>
+            <div className="flex gap-2 pt-2">
+              <button type="button" onClick={() => setEditingItem(null)} disabled={savingEdit} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-sm font-semibold text-slate-700">Cancel</button>
+              <button type="submit" disabled={savingEdit} className="flex-1 rounded-xl bg-brand-700 py-2.5 text-sm font-bold text-white disabled:opacity-60">{savingEdit ? 'Saving…' : 'Save changes'}</button>
+            </div>
+          </form>
         </div>
       )}
 

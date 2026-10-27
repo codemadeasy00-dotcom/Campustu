@@ -140,6 +140,8 @@ export const lostFoundApi = {
     if (search) params.set('search', search)
     return request(`/lost-found?${params.toString()}`)
   },
+  mine: () => request('/lost-found/mine'),
+  myClaims: () => request('/lost-found/my-claims'),
   nearby: ({ lat, lng, radius = 1000, status, search }) => {
     const params = new URLSearchParams({ lat: String(lat), lng: String(lng), radius: String(radius) })
     if (status && status !== 'all') params.set('status', status)
@@ -147,9 +149,19 @@ export const lostFoundApi = {
     return request(`/lost-found/nearby?${params.toString()}`)
   },
   create: (formData) => request('/lost-found', { method: 'POST', formData }),
+  update: (id, fields) => request(`/lost-found/${encodeURIComponent(id)}`, { method: 'PATCH', json: fields }),
+  setLifecycle: (id, action) =>
+    request(`/lost-found/${encodeURIComponent(id)}/lifecycle`, { method: 'PATCH', json: { action } }),
+  remove: (id) => request(`/lost-found/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  claims: (id) => request(`/lost-found/${encodeURIComponent(id)}/claims`),
+  reviewClaim: (itemId, claimId, action) =>
+    request(`/lost-found/${encodeURIComponent(itemId)}/claims/${encodeURIComponent(claimId)}`, {
+      method: 'PATCH',
+      json: { action },
+    }),
   claim: (id, answerAttempt) =>
     request(`/lost-found/${encodeURIComponent(id)}/claim`, {
       method: 'POST',
-      json: { answer_attempt: answerAttempt },
+      json: { claim_text: answerAttempt },
     }),
 }
