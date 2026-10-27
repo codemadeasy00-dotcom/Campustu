@@ -30,7 +30,7 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={setMessage}>
       {children}
       {message && (
-        <div role="status" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm font-medium text-emerald-800 shadow-lg">
+        <div role="status" className="animate-fade-in fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm font-medium text-emerald-800 shadow-lg">
           {message}
         </div>
       )}
@@ -79,7 +79,7 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:max-h-[calc(100dvh-2rem)] sm:p-6"
+        className="animate-fade-in max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:max-h-[calc(100dvh-2rem)] sm:p-6"
       >
         <h2 id="confirm-dialog-title" className="text-lg font-bold text-slate-900">{title}</h2>
         <div className="mt-2 text-sm text-slate-600">{children}</div>
@@ -108,7 +108,7 @@ export function ConfirmDialog({
 }
 
 export const inputClass =
-  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-200 disabled:bg-slate-100'
+  'w-full rounded-xl border border-brand-200 bg-white/95 px-3 py-2.5 text-sm shadow-sm transition-colors hover:border-brand-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-200 disabled:bg-slate-100'
 
 export function Field({ label, hint, required, children }) {
   return (

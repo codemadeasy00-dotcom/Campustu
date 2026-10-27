@@ -8,6 +8,7 @@ import { lostFoundApi, errorMessage } from '../services/api.js';
 import { Alert, useToast } from '../components/ui.jsx';
 import { processAndCompressImage } from '../utils/imageCompressor.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import PageHero from '../components/PageHero.jsx';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 
@@ -30,6 +31,24 @@ function hasValidCoordinates(item) {
   const longitude = Number(item.longitude);
   return Number.isFinite(latitude) && Number.isFinite(longitude)
     && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
+}
+
+function LostFoundSkeleton() {
+  return (
+    <ul aria-label="Loading lost and found reports" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 4 }, (_, index) => (
+        <li key={index} aria-hidden="true" className="surface-card overflow-hidden p-4">
+          <div className="skeleton-shimmer mb-4 h-40 rounded-xl" />
+          <div className="space-y-2">
+            <div className="skeleton-shimmer h-4 w-2/5 rounded" />
+            <div className="skeleton-shimmer h-4 w-3/4 rounded" />
+            <div className="skeleton-shimmer h-3 w-full rounded" />
+            <div className="skeleton-shimmer h-3 w-4/5 rounded" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 // Leaflet default marker fix
@@ -777,42 +796,34 @@ export default function LostFound() {
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-teal-800 to-slate-900 rounded-3xl p-8 mb-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <span className="bg-teal-500/20 text-teal-300 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-            Campus Safety & Recovery
-          </span>
-          <h1 className="text-3xl md:text-4xl font-extrabold mt-2">Lost & Found Portal</h1>
-          <p className="text-teal-100/80 text-sm max-w-xl mt-1">
-            Pinpoint lost items on the campus map and submit answers to claim your belongings safely.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <div className="page-enter mx-auto max-w-7xl space-y-6">
+      <PageHero
+        eyebrow="Campus safety & recovery"
+        title="Lost & Found Portal"
+        description="Pinpoint lost items on the campus map and submit answers to claim your belongings safely."
+      >
           <button
             type="button"
             aria-pressed={showMine}
             onClick={() => setShowMine((value) => !value)}
-            className="rounded-2xl border border-white/40 px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
+            className="rounded-xl border border-white/35 bg-white/10 px-4 py-3 text-sm font-bold text-white hover:bg-white/20"
           >
             {showMine ? 'Browse active reports' : 'My reports'}
           </button>
           <button
             type="button"
             onClick={openMyClaims}
-            className="rounded-2xl border border-white/40 px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
+            className="rounded-xl border border-white/35 bg-white/10 px-4 py-3 text-sm font-bold text-white hover:bg-white/20"
           >
             My claims
           </button>
           <Link
             to="/lost-found/report"
-            className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold px-6 py-3 rounded-2xl transition-all shadow-lg active:scale-95"
+            className="rounded-xl bg-teal-300 px-5 py-3 text-sm font-bold text-teal-950 shadow-lg shadow-teal-950/15 hover:bg-teal-200 active:scale-95"
           >
             + Report Lost / Found Item
           </Link>
-        </div>
-      </div>
+      </PageHero>
 
       {potentialMatches.length > 0 && (
         <section aria-labelledby="potential-matches-title" className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
@@ -865,7 +876,7 @@ export default function LostFound() {
       )}
 
       {/* Main Interactive Map with Standard/Satellite Switcher */}
-      <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm mb-8 z-0 relative">
+      <div className="surface-panel relative z-0 p-3 sm:p-4">
         <div className="mb-3 flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-xs font-bold uppercase text-slate-500">Interactive Campus Pin Map (Standard / Satellite)</h3>
@@ -980,7 +991,7 @@ export default function LostFound() {
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-8 flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div className="surface-panel flex flex-col items-center justify-between gap-4 p-4 md:flex-row">
         <input
           type="text"
           placeholder="Search listings..."
@@ -1015,13 +1026,13 @@ export default function LostFound() {
       {/* Item List */}
       {itemsError && <div className="mb-6"><Alert>{itemsError}</Alert></div>}
       {loading ? (
-        <div className="text-center py-12 text-slate-500">Loading lost & found items...</div>
+        <LostFoundSkeleton />
       ) : items.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
+        <div className="surface-panel py-16 text-center">
           <p className="text-slate-500 font-medium">{showMine ? 'You have not reported any items yet.' : 'No active items reported yet.'}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="stagger-list grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {items.map((item) => {
             const isOwner = item.user_id === user?.id;
             const isAdmin = user?.role === 'admin';
@@ -1030,7 +1041,7 @@ export default function LostFound() {
             const canDelete = isAdmin || (isOwner && remainingDeleteTime && claimCount === 0);
 
             return (
-              <div key={item.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+              <div key={item.id} className="surface-card interactive-card flex flex-col justify-between p-4 sm:p-5">
                 {item.photo && (
                   <img
                     src={item.photo}
@@ -1142,7 +1153,7 @@ export default function LostFound() {
       {/* Claim Modal */}
       {claimModalItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-sm sm:p-4">
-          <div className="max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
+          <div className="animate-fade-in max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
             <h3 className="text-lg font-bold text-slate-900 mb-1">Claim Item: {claimModalItem.title}</h3>
             <p className="text-xs text-slate-500 mb-4">
               Submitting creates a verification request. The report owner reviews it; no handover code is issued until they approve.
@@ -1208,7 +1219,7 @@ export default function LostFound() {
 
       {claimsModalItem && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4">
-          <section role="dialog" aria-modal="true" aria-labelledby="manage-claims-title" className="max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
+          <section role="dialog" aria-modal="true" aria-labelledby="manage-claims-title" className="animate-fade-in max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 id="manage-claims-title" className="text-xl font-bold text-slate-900">Claims for {claimsModalItem.title}</h2>
@@ -1264,7 +1275,7 @@ export default function LostFound() {
 
       {myClaimsOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4">
-          <section role="dialog" aria-modal="true" aria-labelledby="my-claims-title" className="max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
+          <section role="dialog" aria-modal="true" aria-labelledby="my-claims-title" className="animate-fade-in max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 id="my-claims-title" className="text-xl font-bold text-slate-900">My claims</h2>
@@ -1307,7 +1318,7 @@ export default function LostFound() {
 
       {editingItem && editFields && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4">
-          <form onSubmit={handleEditSubmit} className="max-h-[calc(100dvh-1.5rem)] w-full max-w-xl space-y-4 overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
+          <form onSubmit={handleEditSubmit} className="animate-fade-in max-h-[calc(100dvh-1.5rem)] w-full max-w-xl space-y-4 overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Edit report</h2>
@@ -1363,7 +1374,7 @@ export default function LostFound() {
       {/* Post Modal */}
       {showPostModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-sm sm:p-4">
-          <div className="max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
+          <div className="animate-fade-in max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
             <h3 className="text-lg font-bold text-slate-900 mb-4">Report Lost / Found Item</h3>
             <form onSubmit={handlePostSubmit} className="space-y-4">
               {postError && <Alert>{postError}</Alert>}

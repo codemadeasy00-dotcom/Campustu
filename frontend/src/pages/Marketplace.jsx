@@ -4,17 +4,18 @@ import { itemsApi, metaApi, errorMessage } from '../services/api.js'
 import { CONDITIONS, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
 import { Alert, inputClass } from '../components/ui.jsx'
+import PageHero from '../components/PageHero.jsx'
 
 const PAGE_SIZE = 12
 
 function ListingSkeleton() {
   return (
-    <li aria-hidden="true" className="animate-pulse overflow-hidden rounded-2xl border border-white/70 bg-white shadow-sm">
-      <div className="aspect-square bg-slate-200" />
+    <li aria-hidden="true" className="surface-card overflow-hidden">
+      <div className="skeleton-shimmer aspect-square" />
       <div className="space-y-2 p-3">
-        <div className="h-4 w-3/4 rounded bg-slate-200" />
-        <div className="h-4 w-1/2 rounded bg-slate-200" />
-        <div className="h-3 w-2/5 rounded bg-slate-100" />
+        <div className="skeleton-shimmer h-4 w-3/4 rounded" />
+        <div className="skeleton-shimmer h-4 w-1/2 rounded" />
+        <div className="skeleton-shimmer h-3 w-2/5 rounded" />
       </div>
     </li>
   )
@@ -25,7 +26,7 @@ function ListingCard({ item, categoryName }) {
     <li>
       <Link
         to={`/items/${item.id}`}
-        className="group flex h-full flex-col overflow-hidden rounded-2xl border border-white/70 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-md"
+        className="surface-card interactive-card group flex h-full flex-col overflow-hidden"
       >
         <div className="relative aspect-square overflow-hidden bg-slate-100">
           {item.photos[0] && (
@@ -137,13 +138,12 @@ export default function Marketplace() {
   }
 
   return (
-    <div className="animate-fade-in mx-auto max-w-7xl space-y-6">
-      <section className="rounded-3xl bg-gradient-to-r from-brand-700 to-brand-600 px-6 py-8 text-white shadow-lg sm:px-8">
-        <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Campus Marketplace</h1>
-        <p className="mt-2 max-w-2xl text-sm text-brand-100 sm:text-base">
-          Find campus essentials from students at your college.
-        </p>
-      </section>
+    <div className="page-enter mx-auto max-w-7xl space-y-6">
+      <PageHero
+        eyebrow="Buy, sell & reuse"
+        title="Campus Marketplace"
+        description="Find campus essentials from students at your college."
+      />
 
       {metadataError && <Alert>{metadataError}</Alert>}
       {error && (
@@ -159,7 +159,7 @@ export default function Marketplace() {
         </div>
       )}
 
-      <section aria-label="Marketplace filters" className="rounded-2xl border border-white/70 bg-white/90 p-4 shadow-sm backdrop-blur">
+      <section aria-label="Marketplace filters" className="surface-panel p-4 sm:p-5">
         <label className="block">
           <span className="sr-only">Search listings</span>
           <input
@@ -233,7 +233,7 @@ export default function Marketplace() {
             {Array.from({ length: 8 }, (_, index) => <ListingSkeleton key={index} />)}
           </ul>
         ) : items.length === 0 && !error ? (
-          <div className="rounded-2xl border border-dashed border-brand-200 bg-white/80 px-6 py-12 text-center">
+          <div className="surface-panel px-6 py-12 text-center">
             <h2 className="font-semibold text-slate-800">No marketplace listings found.</h2>
             <p className="mt-1 text-sm text-slate-500">Try changing your search or filters.</p>
             <Link to="/sell" className="mt-4 inline-flex rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">
@@ -243,7 +243,7 @@ export default function Marketplace() {
         ) : (
           <>
             {loading && <p role="status" className="mb-3 text-xs text-slate-500">Updating results…</p>}
-            <ul className={`grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 ${loading ? 'opacity-60' : ''}`}>
+            <ul className={`stagger-list grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 ${loading ? 'opacity-60' : ''}`}>
               {items.map((item) => (
                 <ListingCard key={item.id} item={item} categoryName={categoryNames.get(item.category_id)} />
               ))}

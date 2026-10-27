@@ -3,7 +3,25 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { kitsApi, metaApi, wishlistApi, errorMessage } from '../services/api.js'
 import { conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
-import { Alert, Button, PageLoading, inputClass } from '../components/ui.jsx'
+import { Alert, Button, inputClass } from '../components/ui.jsx'
+import PageHero from '../components/PageHero.jsx'
+
+function KitSkeleton() {
+  return (
+    <ul aria-label="Loading semester kit" className="space-y-3">
+      {Array.from({ length: 4 }, (_, index) => (
+        <li key={index} aria-hidden="true" className="surface-card flex items-center gap-4 p-4">
+          <div className="skeleton-shimmer h-16 w-16 shrink-0 rounded-xl" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="skeleton-shimmer h-4 w-2/5 rounded" />
+            <div className="skeleton-shimmer h-3 w-1/3 rounded" />
+            <div className="skeleton-shimmer h-3 w-3/5 rounded" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 // The Home page sends students here as /kits?branch=<branch id>&semester=<1-8>.
 export default function Kits() {
@@ -102,13 +120,14 @@ export default function Kits() {
   const available = kit ? kit.items.filter((i) => i.listings.length).length : 0
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold">Semester kits</h1>
-        <p className="text-sm text-slate-600">Pick your branch and semester to see what you need, and what is available second-hand at your college.</p>
-      </div>
+    <div className="page-enter space-y-5">
+      <PageHero
+        eyebrow="Plan your semester"
+        title="Semester kits"
+        description="Choose your branch and semester to see what you need, with second-hand options available at your college."
+      />
 
-      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm">
+      <div className="surface-panel flex flex-wrap items-end gap-3 p-4 sm:p-5">
         <label className="min-w-40 flex-1 text-xs font-medium text-slate-600">Branch
           <select className={`${inputClass} mt-1`} value={branch} onChange={(e) => setParam('branch', e.target.value)}>
             <option value="">Select branch</option>
@@ -126,10 +145,10 @@ export default function Kits() {
       {!semesterValid && <Alert kind="info">Choose a semester to see its kit.</Alert>}
       {semesterValid && !branch && <Alert kind="info">Choose your branch too. Until then you only see items needed by every branch.</Alert>}
       {error && <Alert>{error}</Alert>}
-      {loading && <PageLoading message="Loading kit…" />}
+      {loading && <KitSkeleton />}
 
       {!loading && kit && kit.items.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-brand-200 bg-white/70 p-8 text-center text-sm text-slate-600">
+        <div className="surface-panel p-8 text-center text-sm text-slate-600">
           No kit has been set up for {branchName ? `${branchName}, ` : ''}semester {semester} yet.
         </div>
       )}
@@ -140,12 +159,12 @@ export default function Kits() {
             {branchName ? `${branchName} · ` : ''}Semester {semester}: {available} of {kit.items.length} item types have a listing available right now.
           </p>
 
-          <ul className="space-y-3">
+          <ul className="stagger-list space-y-3">
             {kit.items.map((item) => {
               const chosen = item.listings.find((l) => l.id === choice[item.item_type_id])
               const isOpen = expanded.has(item.item_type_id)
               return (
-                <li key={item.item_type_id} className="rounded-2xl border border-white/70 bg-white p-4 shadow-sm">
+                <li key={item.item_type_id} className="surface-card interactive-card p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <div className="font-semibold">
@@ -213,7 +232,7 @@ export default function Kits() {
             })}
           </ul>
 
-          <div className="sticky bottom-3 rounded-2xl border border-brand-200 bg-white p-4 shadow-lg">
+          <div className="surface-panel sticky bottom-3 p-4">
             {saveError && <div className="mb-3"><Alert>{saveError}</Alert></div>}
             {saved && (
               <div className="mb-3">

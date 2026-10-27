@@ -41,7 +41,7 @@ function Welcome() {
           { icon: '⌕', title: 'Lost & found', text: 'Report an item or search for something you misplaced.', href: '/signup' },
           { icon: '▦', title: 'Course kits', text: 'Find recommended supplies for your branch and semester.', href: '/signup' },
         ].map((feature) => (
-          <Link key={feature.title} to={feature.href} className="group rounded-2xl border border-white/70 bg-white/90 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+          <Link key={feature.title} to={feature.href} className="surface-card interactive-card group p-5">
             <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-xl font-bold text-brand-700">{feature.icon}</span>
             <h2 className="mt-4 font-bold text-brand-700">{feature.title}</h2>
             <p className="mt-1 text-sm leading-5 text-slate-600">{feature.text}</p>
@@ -187,7 +187,7 @@ function Dashboard() {
           { title: 'Lost & found', text: 'Search campus notices and report found items.', href: '/lost-found', icon: '⌕' },
           { title: 'Course kits', text: 'Browse supplies for your branch and semester.', href: '/kits', icon: '▦' },
         ].map((feature) => (
-          <Link key={feature.title} to={feature.href} className="group rounded-2xl border border-white/70 bg-white/90 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+          <Link key={feature.title} to={feature.href} className="surface-card interactive-card group p-4">
             <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-lg font-bold text-brand-700">{feature.icon}</span>
             <h2 className="mt-3 font-bold text-brand-700">{feature.title}</h2>
             <p className="mt-1 text-xs leading-5 text-slate-600">{feature.text}</p>

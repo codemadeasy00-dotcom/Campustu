@@ -6,7 +6,7 @@ import Wordmark from './Wordmark.jsx'
 export const APP_NAME = 'Campustu'
 
 const navClass = ({ isActive }) =>
-  `rounded-full px-3 py-1.5 text-sm font-semibold ${isActive ? 'bg-brand-600 text-white' : 'text-brand-700 hover:bg-brand-100'}`
+  `rounded-full px-3 py-1.5 text-sm font-semibold transition duration-200 hover:-translate-y-0.5 ${isActive ? 'bg-brand-600 text-white shadow-sm' : 'text-brand-700 hover:bg-brand-100'}`
 
 export default function Layout() {
   const { user, signOut } = useAuth()
@@ -47,10 +47,10 @@ export default function Layout() {
         className="pointer-events-none fixed left-0 top-0 z-50 h-1 bg-gradient-to-r from-teal-500 to-teal-300 transition-[width] duration-75"
         style={{ width: `${scrollProgress}%` }}
       />
-      <header className="sticky top-0 z-10 border-b border-brand-200 bg-white/90 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-brand-200/80 bg-white/90 shadow-[0_4px_18px_rgba(23,90,109,0.05)] backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-[90rem] flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 sm:gap-x-4 sm:px-5 lg:px-8">
           <Link to="/" aria-label="Home">
-            <span className="animate-logo-flip motion-reduce:animate-none inline-block">
+            <span className="wordmark-hover inline-block">
               <Wordmark className="text-xl sm:text-2xl" />
             </span>
           </Link>
