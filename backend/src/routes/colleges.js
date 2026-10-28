@@ -5,9 +5,10 @@
 // Env (optional): NOMINATIM_USER_AGENT="Campustu/1.0 (your-email@example.com)"
 // Needs Node 18+ (built-in fetch). Adjust the pool import path to match your project.
 //
-// Endpoints (only what the two-option picker needs):
+// Endpoints:
 //   GET  /api/colleges               all approved colleges, for the dropdown
 //   GET  /api/colleges/place-search  map lookup, used by "I can't find my college"
+//   GET  /api/colleges/map-search    global place autocomplete for interactive maps
 //   POST /api/colleges/suggest       save a map result as a PENDING college for admin review
 
 const express = require('express');
@@ -65,6 +66,7 @@ function toCollege(r) {
 
 const limiterOpts = { standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'rate_limited' } };
 const placeSearchLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, ...limiterOpts });
+const mapSearchLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, ...limiterOpts });
 const suggestLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, ...limiterOpts });
 const MAX_PENDING = 100;   // stops the pending queue from being flooded
 
@@ -94,6 +96,54 @@ router.get('/place-search', placeSearchLimiter, async (req, res) => {
   } catch (err) {
     console.error('place-search failed', err.message);
     res.status(502).json({ error: 'geocoder_unavailable' });
+  }
+});
+
+// ---------- GET /map-search?q=   (global map autocomplete) ----------
+router.get('/map-search', mapSearchLimiter, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 3 || q.length > 120) {
+    return res.status(400).json({ error: 'Search must be between 3 and 120 characters.' });
+  }
+
+  try {
+    const url = `https://photon.komoot.io/api/?${new URLSearchParams({
+      q,
+      limit: '7',
+      lang: 'en',
+    })}`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Campustu/1.0', Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) throw new Error(`photon_${response.status}`);
+
+    const data = await response.json();
+    const results = (Array.isArray(data.features) ? data.features : [])
+      .filter((feature) => {
+        const [longitude, latitude] = feature.geometry?.coordinates || [];
+        return Number.isFinite(latitude) && Number.isFinite(longitude)
+          && latitude >= -90 && latitude <= 90
+          && longitude >= -180 && longitude <= 180;
+      })
+      .map((feature) => {
+        const properties = feature.properties || {};
+        const [lng, lat] = feature.geometry.coordinates;
+        const name = String(properties.name || properties.street || properties.city || 'Unnamed place').trim();
+        const locality = [
+          properties.district,
+          properties.city || properties.town || properties.village,
+          properties.state,
+          properties.country,
+        ].filter((part, index, parts) => part && parts.indexOf(part) === index && part !== name);
+        return { name, label: [name, ...locality].join(', '), lat, lng };
+      });
+
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json({ results });
+  } catch (err) {
+    console.error('Global map search failed:', err.message);
+    res.status(502).json({ error: 'Place search is temporarily unavailable. Please try again.' });
   }
 });
 

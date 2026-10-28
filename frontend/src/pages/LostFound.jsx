@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom';
 import { Circle, CircleMarker, MapContainer, TileLayer, Marker, Popup, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
-import { OpenStreetMapProvider } from 'leaflet-geosearch';
 import { lostFoundApi, errorMessage } from '../services/api.js';
 import { Alert, useToast } from '../components/ui.jsx';
 import { processAndCompressImage } from '../utils/imageCompressor.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import PageHero from '../components/PageHero.jsx';
 import ItemPhoto from '../components/ItemPhoto.jsx';
+import MapPlaceSearch from '../components/MapPlaceSearch.jsx';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 
@@ -88,94 +88,12 @@ const standardTileAttribution = cartoApiKey
   : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 // Search Box Component
-function SearchField({ onSelect }) {
-  const map = useMap();
-  const provider = useMemo(() => new OpenStreetMapProvider(), []);
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSearch = async (event) => {
-    event.preventDefault();
-    if (!query.trim()) return;
-
-    setSearching(true);
-    setError('');
-    setResults([]);
-    try {
-      const matches = await provider.search({ query: query.trim() });
-      if (matches.length === 0) {
-        setError('No places found. Try a nearby landmark.');
-      } else {
-        setResults(matches.slice(0, 5));
-      }
-    } catch (searchError) {
-      console.error('Map search failed:', searchError);
-      setError('Search is unavailable right now. Please try again.');
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const selectResult = (result) => {
-    map.setView([result.y, result.x], 17);
-    onSelect?.([result.y, result.x]);
-    setQuery(result.label);
-    setResults([]);
-  };
-
+function SearchField({ onSelect, id }) {
   return (
-    <div className="absolute left-3 right-3 top-3 z-[1000] sm:right-auto sm:w-96">
-      <form
-        onSubmit={handleSearch}
-        className="flex items-center overflow-hidden rounded-xl border border-brand-200 bg-cream shadow-lg shadow-brand-700/15 transition focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-200"
-      >
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="ml-3 h-4 w-4 shrink-0 text-brand-600" stroke="currentColor" strokeWidth="2">
-          <circle cx="11" cy="11" r="6.5" />
-          <path strokeLinecap="round" d="m16 16 4 4" />
-        </svg>
-        <input
-          type="search"
-          aria-label="Search map places"
-          placeholder="Search a place or campus building"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setResults([]);
-            setError('');
-          }}
-          className="min-w-0 flex-1 bg-transparent px-2.5 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400"
-        />
-        <button
-          type="submit"
-          disabled={searching}
-          className="mr-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-600 disabled:cursor-wait disabled:opacity-60"
-        >
-          {searching ? 'Searching...' : 'Search'}
-        </button>
-      </form>
-      {error && (
-        <p role="status" className="mt-1 rounded-lg bg-cream px-3 py-2 text-xs font-medium text-brand-700 shadow">
-          {error}
-        </p>
-      )}
-      {results.length > 0 && (
-        <ul className="mt-1 max-h-52 overflow-y-auto rounded-xl border border-brand-200 bg-cream shadow-lg">
-          {results.map((result) => (
-            <li key={`${result.x}-${result.y}-${result.label}`}>
-              <button
-                type="button"
-                onClick={() => selectResult(result)}
-                className="w-full border-b border-brand-100 px-3 py-2 text-left text-xs text-slate-700 last:border-0 hover:bg-brand-50"
-              >
-                {result.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <MapPlaceSearch
+      id={id}
+      onSelect={(place) => onSelect?.([place.lat, place.lng])}
+    />
   );
 }
 
@@ -970,7 +888,7 @@ export default function LostFound() {
                 : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'}
             />
             <ZoomControl position="bottomleft" />
-            <SearchField onSelect={selectNearbyCenter} />
+            <SearchField id="lost-found-nearby-map-search" onSelect={selectNearbyCenter} />
             <MapLayerControl selectedLayer={selectedLayer} onSelectLayer={setSelectedLayer} />
             <FullscreenButton />
             <LocateUserButton onLocationFound={selectNearbyCenter} />
@@ -1569,7 +1487,7 @@ export default function LostFound() {
                       url={standardTileUrl}
                     />
                     <ZoomControl position="bottomleft" />
-                    <SearchField onSelect={setModalPin} />
+                    <SearchField id="lost-found-report-map-search" onSelect={setModalPin} />
                     <FullscreenButton />
                     <LocateUserButton onLocationFound={(coords) => setModalPin(coords)} />
                     <LocationPinPicker position={modalPin} setPosition={setModalPin} />

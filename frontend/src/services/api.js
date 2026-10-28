@@ -101,6 +101,10 @@ export const collegesApi = {
   geocode: (q) => request(`/api/colleges/geocode?q=${encodeURIComponent(q)}`),
 }
 
+export const placesApi = {
+  search: (q) => request(`/api/colleges/map-search?q=${encodeURIComponent(q)}`),
+}
+
 export const deleteItem = (itemId) =>
   request(`/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' })
 

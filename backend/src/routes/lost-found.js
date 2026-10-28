@@ -410,11 +410,11 @@ router.patch('/:id/lifecycle', requireActive, async (req, res, next) => {
       );
       await db.query(
         `UPDATE lost_found_items
-            SET lifecycle_status = $2,
-                status = CASE WHEN $2 = 'resolved' THEN 'returned'::item_status ELSE status END,
+            SET lifecycle_status = $2::text,
+                status = CASE WHEN $3::boolean THEN 'returned'::item_status ELSE status END,
                 updated_at = now()
           WHERE id = $1`,
-        [itemId, lifecycleStatus],
+        [itemId, lifecycleStatus, lifecycleStatus === 'resolved'],
       );
     });
     const mediaCleanupPending = await cleanupAfterChange();

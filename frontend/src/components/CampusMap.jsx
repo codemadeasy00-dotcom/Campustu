@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Circle, CircleMarker, MapContainer, Marker, Popup, TileLayer, ZoomControl, useMap, useMapEvents } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
-import { OpenStreetMapProvider } from 'leaflet-geosearch'
+import MapPlaceSearch from './MapPlaceSearch.jsx'
 import 'leaflet/dist/leaflet.css'
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css'
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css'
@@ -55,82 +55,11 @@ function FitPins({ items }) {
 }
 
 function SearchControl({ onSelectLocation }) {
-  const map = useMap()
-  const provider = useMemo(() => new OpenStreetMapProvider(), [])
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState([])
-  const [searching, setSearching] = useState(false)
-  const [error, setError] = useState('')
-
-  const searchPlaces = async (event) => {
-    event.preventDefault()
-    const searchQuery = query.trim()
-    if (!searchQuery) return
-
-    setSearching(true)
-    setError('')
-    setResults([])
-    try {
-      const matches = await provider.search({ query: searchQuery })
-      if (matches.length === 0) {
-        setError('No places found. Try another search.')
-      } else {
-        setResults(matches.slice(0, 5))
-      }
-    } catch (searchError) {
-      console.error('Campus map search failed:', searchError)
-      setError('Map search is unavailable. Please try again.')
-    } finally {
-      setSearching(false)
-    }
-  }
-
   return (
-    <div className="absolute left-3 right-3 top-3 z-[1000] sm:right-auto sm:w-96">
-      <form onSubmit={searchPlaces} className="flex items-center overflow-hidden rounded-xl border border-brand-200 bg-cream shadow-lg shadow-brand-700/15 focus-within:ring-2 focus-within:ring-brand-200">
-        <label className="sr-only" htmlFor="campus-map-search">Search map places</label>
-        <input
-          id="campus-map-search"
-          type="search"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value)
-            setResults([])
-            setError('')
-          }}
-          placeholder="Search a place or campus building"
-          className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400"
-        />
-        <button
-          type="submit"
-          disabled={searching}
-          className="mr-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-bold text-white hover:bg-brand-600 disabled:cursor-wait disabled:opacity-60"
-        >
-          {searching ? 'Searching…' : 'Search'}
-        </button>
-      </form>
-      {error && <p role="status" className="mt-1 rounded-lg bg-cream px-3 py-2 text-xs font-medium text-brand-700 shadow">{error}</p>}
-      {results.length > 0 && (
-        <ul className="mt-1 max-h-52 overflow-y-auto rounded-xl border border-brand-200 bg-cream shadow-lg">
-          {results.map((result) => (
-            <li key={`${result.x}-${result.y}-${result.label}`}>
-              <button
-                type="button"
-                onClick={() => {
-                  map.setView([result.y, result.x], 17)
-                  onSelectLocation?.({ lat: result.y, lng: result.x })
-                  setQuery(result.label)
-                  setResults([])
-                }}
-                className="w-full border-b border-brand-100 px-3 py-2 text-left text-xs text-slate-700 last:border-0 hover:bg-brand-50"
-              >
-                {result.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <MapPlaceSearch
+      id="campus-map-search"
+      onSelect={(place) => onSelectLocation?.({ lat: place.lat, lng: place.lng })}
+    />
   )
 }
 
