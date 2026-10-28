@@ -6,6 +6,7 @@
     { "source": "/kits/:path*", "destination": "https://campustu-backend.onrender.com/kits/:path*" },
     { "source": "/wishlist/:path*", "destination": "https://campustu-backend.onrender.com/wishlist/:path*" },
     { "source": "/lost-found/:path*", "destination": "https://campustu-backend.onrender.com/lost-found/:path*" },
+    { "source": "/conversations/:path*", "destination": "https://campustu-backend.onrender.com/conversations/:path*" },
     { "source": "/api/:path*", "destination": "https://campustu-backend.onrender.com/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

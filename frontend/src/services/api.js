@@ -121,6 +121,24 @@ export const itemsApi = {
   mine: () => request('/items/mine'),
   updateStatus: (id, status) => request(`/items/${encodeURIComponent(id)}/status`, { method: 'PATCH', json: { status } }),
   remove: deleteItem,
+  reservations: () => request('/items/reservations/mine'),
+  reservation: (id) => request(`/items/${encodeURIComponent(id)}/reservation`),
+  reserve: (id) => request(`/items/${encodeURIComponent(id)}/reservations`, { method: 'POST', json: {} }),
+  updateReservation: (id, action) =>
+    request(`/items/reservations/${encodeURIComponent(id)}`, { method: 'PATCH', json: { action } }),
+  confirmReservation: (id) =>
+    request(`/items/reservations/${encodeURIComponent(id)}/confirm`, { method: 'POST', json: {} }),
+}
+
+export const conversationsApi = {
+  list: () => request('/conversations'),
+  create: (context) => request('/conversations', { method: 'POST', json: context }),
+  messages: (id, after) => {
+    const query = after ? `?after=${encodeURIComponent(after)}` : ''
+    return request(`/conversations/${encodeURIComponent(id)}/messages${query}`)
+  },
+  send: (id, body) =>
+    request(`/conversations/${encodeURIComponent(id)}/messages`, { method: 'POST', json: { body } }),
 }
 
 export const lostFoundApi = {
@@ -148,6 +166,11 @@ export const lostFoundApi = {
     request(`/lost-found/${encodeURIComponent(itemId)}/claims/${encodeURIComponent(claimId)}`, {
       method: 'PATCH',
       json: { action },
+    }),
+  redeemClaim: (claimId, handoverCode) =>
+    request('/lost-found/claims/redeem', {
+      method: 'POST',
+      json: { claim_id: claimId, handover_code: handoverCode },
     }),
   claim: (id, answerAttempt) =>
     request(`/lost-found/${encodeURIComponent(id)}/claim`, {

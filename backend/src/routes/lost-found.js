@@ -66,6 +66,11 @@ const reviewClaimSchema = z.object({
   action: z.enum(['approve', 'reject']),
 });
 
+const redeemSchema = z.object({
+  claim_id: z.uuid(),
+  handover_code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit handover code.'),
+});
+
 const lifecycleSchema = z.object({
   action: z.enum(['close', 'resolve']),
 });
@@ -160,6 +165,49 @@ router.get('/mine', requireCollege, async (req, res, next) => {
         photo: photo_key ? storage.urlFor(photo_key) : null,
       })),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /lost-found/claims/redeem - The report owner verifies a claimant's one-time code.
+router.post('/claims/redeem', requireActive, requireCollege, async (req, res, next) => {
+  try {
+    const { claim_id: claimId, handover_code: handoverCode } = redeemSchema.parse(req.body);
+    await tx(async (db) => {
+      const { rows: [claim] } = await db.query(
+        `SELECT c.id, c.item_id, c.status, c.handover_code,
+                lif.user_id AS owner_id, lif.lifecycle_status
+           FROM item_claims c
+           JOIN lost_found_items lif ON lif.id = c.item_id
+          WHERE c.id = $1 AND lif.college_id = $2
+          FOR UPDATE OF c, lif`,
+        [claimId, req.user.college_id],
+      );
+      if (!claim) throw new AppError(404, 'Claim not found.');
+      assertItemOwner({ user_id: claim.owner_id }, req.user);
+      if (claim.status !== 'approved' || claim.lifecycle_status !== 'claim_pending') {
+        throw new AppError(409, 'This claim is no longer awaiting handover verification.');
+      }
+      if (claim.handover_code !== handoverCode) {
+        throw new AppError(400, 'Invalid handover code.');
+      }
+
+      await db.query(
+        `UPDATE item_claims
+            SET status = 'completed', handover_code = NULL, reviewed_at = now()
+          WHERE id = $1`,
+        [claimId],
+      );
+      await db.query(
+        `UPDATE lost_found_items
+            SET status = 'returned', lifecycle_status = 'resolved', updated_at = now()
+          WHERE id = $1`,
+        [claim.item_id],
+      );
+    });
+
+    res.json({ success: true, message: 'Handover verified. The report is now resolved.' });
   } catch (err) {
     next(err);
   }

@@ -10,6 +10,7 @@ const primaryLinks = [
   { to: '/kits', label: 'Semester kits' },
   { to: '/marketplace', label: 'Marketplace' },
   { to: '/lost-found', label: 'Lost & Found' },
+  { to: '/messages', label: 'Messages' },
 ]
 
 const quickLinks = [

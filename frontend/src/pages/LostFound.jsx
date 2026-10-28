@@ -380,6 +380,8 @@ export default function LostFound() {
   const [claimsLoading, setClaimsLoading] = useState(false);
   const [claimsError, setClaimsError] = useState('');
   const [reviewingClaimId, setReviewingClaimId] = useState(null);
+  const [handoverCodes, setHandoverCodes] = useState({});
+  const [redeemingClaimId, setRedeemingClaimId] = useState(null);
   const [myClaimsOpen, setMyClaimsOpen] = useState(false);
   const [myClaims, setMyClaims] = useState([]);
   const [myClaimsLoading, setMyClaimsLoading] = useState(false);
@@ -702,6 +704,27 @@ export default function LostFound() {
       setClaimsError(errorMessage(err));
     } finally {
       setReviewingClaimId(null);
+    }
+  };
+
+  const redeemHandoverCode = async (claim) => {
+    const code = handoverCodes[claim.id] || '';
+    setRedeemingClaimId(claim.id);
+    setClaimsError('');
+    try {
+      await lostFoundApi.redeemClaim(claim.id, code);
+      setHandoverCodes((current) => ({ ...current, [claim.id]: '' }));
+      showToast('Handover verified. The report is resolved.');
+      const [claimsResult] = await Promise.all([
+        lostFoundApi.claims(claimsModalItem.id),
+        fetchItems(),
+      ]);
+      setManagedClaims(claimsResult.claims || []);
+    } catch (err) {
+      console.error('Could not verify the handover code:', err);
+      setClaimsError(errorMessage(err));
+    } finally {
+      setRedeemingClaimId(null);
     }
   };
 
@@ -1130,17 +1153,25 @@ export default function LostFound() {
                     Manage your report
                   </button>
                 ) : item.lifecycle_status === 'active' && ['lost', 'found'].includes(item.status) ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setClaimModalItem(item);
-                      setClaimAnswer('');
-                      setClaimResult(null);
-                    }}
-                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 rounded-xl transition-all"
-                  >
-                    Claim Item
-                  </button>
+                  <div className="space-y-2">
+                    <Link
+                      to={`/messages?lost_found_item_id=${encodeURIComponent(item.id)}`}
+                      className="block w-full rounded-xl border border-brand-200 bg-brand-50 py-2.5 text-center text-xs font-bold text-brand-800 transition hover:bg-brand-100"
+                    >
+                      Message poster
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setClaimModalItem(item);
+                        setClaimAnswer('');
+                        setClaimResult(null);
+                      }}
+                      className="w-full rounded-xl bg-slate-900 py-2.5 text-xs font-semibold text-white transition-all hover:bg-slate-800"
+                    >
+                      Claim Item
+                    </button>
+                  </div>
                 ) : (
                   <p className="text-center text-xs text-slate-500">This report is not accepting claims.</p>
                 )}
@@ -1244,6 +1275,14 @@ export default function LostFound() {
                     </div>
                     <p className="mt-1 text-xs text-slate-500">{new Date(claim.created_at).toLocaleString()}</p>
                     <p className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{claim.claim_text}</p>
+                    {['pending', 'approved'].includes(claim.status) && (
+                      <Link
+                        to={`/messages?claim_id=${encodeURIComponent(claim.id)}`}
+                        className="mt-3 inline-flex text-xs font-semibold text-brand-700 underline hover:text-brand-600"
+                      >
+                        Message claimant
+                      </Link>
+                    )}
                     {claim.status === 'pending' && claimsModalItem.lifecycle_status === 'active' && (
                       <div className="mt-3 flex gap-2">
                         <button
@@ -1263,6 +1302,39 @@ export default function LostFound() {
                           Reject
                         </button>
                       </div>
+                    )}
+                    {claim.status === 'approved' && (
+                      <form
+                        className="mt-4 flex flex-col gap-2 border-t border-slate-200 pt-3 sm:flex-row"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          redeemHandoverCode(claim);
+                        }}
+                      >
+                        <label className="sr-only" htmlFor={`handover-code-${claim.id}`}>Claimant's handover code</label>
+                        <input
+                          id={`handover-code-${claim.id}`}
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          pattern="[0-9]{6}"
+                          maxLength={6}
+                          required
+                          value={handoverCodes[claim.id] || ''}
+                          onChange={(event) => setHandoverCodes((current) => ({
+                            ...current,
+                            [claim.id]: event.target.value.replace(/\D/g, '').slice(0, 6),
+                          }))}
+                          placeholder="Enter claimant's 6-digit code"
+                          className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm tracking-widest outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                        />
+                        <button
+                          type="submit"
+                          disabled={redeemingClaimId !== null || (handoverCodes[claim.id] || '').length !== 6}
+                          className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {redeemingClaimId === claim.id ? 'Verifying…' : 'Verify handover'}
+                        </button>
+                      </form>
                     )}
                   </li>
                 ))}

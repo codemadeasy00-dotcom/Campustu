@@ -12,6 +12,7 @@ import Wishlist from './pages/Wishlist.jsx'
 import LostFound from './pages/LostFound.jsx'
 import LostFoundNew from './pages/LostFoundNew.jsx'
 import ProfileDashboard from './pages/ProfileDashboard.jsx'
+import Messages from './pages/Messages.jsx'
 
 function NotFound() {
   return (
@@ -39,6 +40,8 @@ export default function App() {
         <Route path="/lost-found" element={guard(<LostFound />)} />
         <Route path="/lost-found/report" element={guard(<LostFoundNew />)} />
         <Route path="/profile" element={guard(<ProfileDashboard />)} />
+        <Route path="/messages" element={guard(<Messages />)} />
+        <Route path="/messages/:conversationId" element={guard(<Messages />)} />
         <Route path="/wishlist" element={guard(<Wishlist />)} />
         <Route path="*" element={<NotFound />} />
       </Route>

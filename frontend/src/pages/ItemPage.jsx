@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { deleteItem, itemsApi, metaApi, errorMessage } from '../services/api.js'
+import { conversationsApi, deleteItem, itemsApi, metaApi, errorMessage } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { STATUS_STYLES, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
@@ -18,12 +18,37 @@ export default function ItemPage() {
   const [deleteError, setDeleteError] = useState('')
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [statusError, setStatusError] = useState('')
+  const [reservation, setReservation] = useState(null)
+  const [reservationLoading, setReservationLoading] = useState(true)
+  const [reservationBusy, setReservationBusy] = useState(false)
+  const [reservationError, setReservationError] = useState('')
+  const [messaging, setMessaging] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     Promise.all([itemsApi.get(id), metaApi.get()])
       .then(([{ item }, meta]) => !cancelled && setState({ item, meta, error: '' }))
       .catch((e) => !cancelled && setState({ item: null, meta: null, error: errorMessage(e) }))
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  useEffect(() => {
+    let cancelled = false
+    setReservation(null)
+    setReservationError('')
+    setReservationLoading(true)
+    itemsApi.reservation(id)
+      .then(({ reservation: current }) => {
+        if (!cancelled) setReservation(current)
+      })
+      .catch((error) => {
+        if (!cancelled) setReservationError(errorMessage(error))
+      })
+      .finally(() => {
+        if (!cancelled) setReservationLoading(false)
+      })
     return () => {
       cancelled = true
     }
@@ -63,6 +88,69 @@ export default function ItemPage() {
       setStatusError(errorMessage(err))
     } finally {
       setUpdatingStatus(false)
+    }
+  }
+
+  async function refreshReservation() {
+    const [{ reservation: current }, { item: updated }] = await Promise.all([
+      itemsApi.reservation(id),
+      itemsApi.get(id),
+    ])
+    setReservation(current)
+    setState((currentState) => ({ ...currentState, item: updated }))
+  }
+
+  async function startConversation() {
+    setMessaging(true)
+    setReservationError('')
+    try {
+      const { conversation } = await conversationsApi.create({ item_id: id })
+      navigate(`/messages/${encodeURIComponent(conversation.id)}`)
+    } catch (error) {
+      setReservationError(errorMessage(error))
+    } finally {
+      setMessaging(false)
+    }
+  }
+
+  async function createReservation() {
+    setReservationBusy(true)
+    setReservationError('')
+    try {
+      await itemsApi.reserve(id)
+      await refreshReservation()
+    } catch (error) {
+      setReservationError(errorMessage(error))
+    } finally {
+      setReservationBusy(false)
+    }
+  }
+
+  async function updateReservation(action) {
+    if (!reservation) return
+    setReservationBusy(true)
+    setReservationError('')
+    try {
+      await itemsApi.updateReservation(reservation.id, action)
+      await refreshReservation()
+    } catch (error) {
+      setReservationError(errorMessage(error))
+    } finally {
+      setReservationBusy(false)
+    }
+  }
+
+  async function confirmHandover() {
+    if (!reservation) return
+    setReservationBusy(true)
+    setReservationError('')
+    try {
+      await itemsApi.confirmReservation(reservation.id)
+      await refreshReservation()
+    } catch (error) {
+      setReservationError(errorMessage(error))
+    } finally {
+      setReservationBusy(false)
     }
   }
 
@@ -117,23 +205,99 @@ export default function ItemPage() {
           </div>
         </div>
 
-        {!isOwner && item.seller.contact_email && (
-          <div className="mt-6">
-            <a
-              href={`mailto:${item.seller.contact_email}?subject=${encodeURIComponent(`Interested in ${item.title} on Campustu`)}&body=${encodeURIComponent(`Hi ${item.seller.display_name},\n\nI'm interested in your listing "${item.title}" on Campustu. Is it still available?`)}`}
-              className="inline-flex w-full items-center justify-center rounded-xl bg-teal-600 px-6 py-3 font-semibold text-white shadow-md transition-all hover:bg-teal-700 hover:shadow-lg active:scale-[0.98]"
+        {!isOwner && ['available', 'reserved'].includes(item.status) && (
+          <div className="mt-6 space-y-3">
+            {reservationError && <Alert>{reservationError}</Alert>}
+            <button
+              type="button"
+              onClick={startConversation}
+              disabled={messaging}
+              className="inline-flex w-full items-center justify-center rounded-xl border border-brand-200 bg-white px-6 py-3 font-semibold text-brand-800 transition hover:bg-brand-50 disabled:opacity-60"
             >
-              Contact Seller by Email
-            </a>
+              {messaging ? 'Opening messages…' : 'Message seller'}
+            </button>
+            {item.seller.contact_email && (
+              <a
+                href={`mailto:${item.seller.contact_email}?subject=${encodeURIComponent(`Interested in ${item.title} on Campustu`)}&body=${encodeURIComponent(`Hi ${item.seller.display_name},\n\nI'm interested in your listing "${item.title}" on Campustu. Is it still available?`)}`}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Email seller
+              </a>
+            )}
+            {reservationLoading ? (
+              <p role="status" className="text-center text-xs text-slate-500">Checking reservation…</p>
+            ) : (!reservation || !['requested', 'accepted', 'disputed'].includes(reservation.status)) && item.status === 'available' ? (
+              <button
+                type="button"
+                onClick={createReservation}
+                disabled={reservationBusy}
+                className="inline-flex w-full items-center justify-center rounded-xl bg-teal-600 px-6 py-3 font-semibold text-white shadow-md transition hover:bg-teal-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {reservationBusy ? 'Requesting…' : 'Request to reserve'}
+              </button>
+            ) : null}
           </div>
         )}
-        {!isOwner && !item.seller.contact_email && (
-          <p className="mt-6 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
-            The seller has not shared a contact email for this listing.
-          </p>
+
+        {reservation && (
+          <section className="mt-5 space-y-3 rounded-2xl border border-brand-100 bg-brand-50/60 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-bold text-slate-900">Reservation</h2>
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-bold capitalize text-brand-800">{reservation.status}</span>
+            </div>
+            <p className="text-sm text-slate-700">
+              {reservation.status === 'requested'
+                ? isOwner ? `${reservation.other_user_name} is requesting to reserve this item.` : 'Your request is waiting for the seller.'
+                : reservation.status === 'accepted'
+                  ? `Reservation accepted at ${formatPrice(reservation.agreed_price)}. Confirm after you meet and complete the handover.`
+                  : reservation.status === 'completed'
+                    ? 'Both participants confirmed the handover. The sale is complete.'
+                    : reservation.status === 'disputed'
+                      ? 'The handover needs support review. Contact the other participant through messages.'
+                      : 'This reservation is no longer active.'}
+            </p>
+            {reservation.conversation_id && (
+              <button
+                type="button"
+                onClick={() => navigate(`/messages/${encodeURIComponent(reservation.conversation_id)}`)}
+                className="rounded-full border border-brand-200 bg-white px-4 py-2 text-xs font-bold text-brand-800 hover:bg-brand-50"
+              >
+                Message {reservation.other_user_name}
+              </button>
+            )}
+            {reservation.status === 'requested' && isOwner && (
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => updateReservation('accept')} disabled={reservationBusy} className="rounded-full bg-emerald-700 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:opacity-50">
+                  {reservationBusy ? 'Saving…' : 'Accept request'}
+                </button>
+                <button type="button" onClick={() => updateReservation('decline')} disabled={reservationBusy} className="rounded-full border border-red-200 px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">
+                  Decline
+                </button>
+              </div>
+            )}
+            {reservation.status === 'requested' && !isOwner && reservation.buyer_id === user?.id && (
+              <button type="button" onClick={() => updateReservation('cancel')} disabled={reservationBusy} className="rounded-full border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-white disabled:opacity-50">
+                Cancel request
+              </button>
+            )}
+            {reservation.status === 'accepted' && !reservation.viewer_confirmed && (
+              <button type="button" onClick={confirmHandover} disabled={reservationBusy} className="rounded-full bg-emerald-700 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:opacity-50">
+                {reservationBusy ? 'Confirming…' : 'Confirm handover completed'}
+              </button>
+            )}
+            {reservation.status === 'accepted' && reservation.viewer_confirmed && (
+              <p className="rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-700">
+                {reservation.counterpart_confirmed
+                  ? 'Both participants confirmed. The sale is complete.'
+                  : 'Your confirmation is saved. Waiting for the other participant.'}
+              </p>
+            )}
+          </section>
         )}
 
-        {isOwner && (deleteError || statusError) && <div className="mt-4"><Alert>{deleteError || statusError}</Alert></div>}
+        {isOwner && (deleteError || statusError || reservationError) && (
+          <div className="mt-4"><Alert>{deleteError || statusError || reservationError}</Alert></div>
+        )}
         {isOwner && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
             <p className="text-sm text-slate-600">

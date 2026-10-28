@@ -114,6 +114,7 @@ export default function LostFoundNew() {
   const [allowDuplicate, setAllowDuplicate] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [modelLoading, setModelLoading] = useState(false)
   const [submitStep, setSubmitStep] = useState('')
   const [error, setError] = useState('')
   const [embeddingWarning, setEmbeddingWarning] = useState('')
@@ -247,6 +248,7 @@ export default function LostFoundNew() {
       let embedding = null
       if (photoPreviews.length > 0) {
         setSubmitStep('matching')
+        setModelLoading(true)
         try {
           const { getImageEmbedding } = await import('../utils/embedder.js')
           embedding = await getImageEmbedding(photoPreviews[0])
@@ -258,6 +260,8 @@ export default function LostFoundNew() {
             ? 'The browser could not download the CLIP image-matching model from Hugging Face. Check your connection or network access to huggingface.co.'
             : `Visual matching is unavailable: ${message}.`)
           setEmbeddingSkipped(true)
+        } finally {
+          setModelLoading(false)
         }
       } else {
         setEmbeddingSkipped(true)
@@ -521,6 +525,11 @@ export default function LostFoundNew() {
           )}
         </section>
 
+        {modelLoading && (
+          <p role="status" aria-live="polite" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-800">
+            Loading the AI image-matching model. The first download may take a little while; you can keep this page open.
+          </p>
+        )}
         {embeddingWarning && <Alert kind="warn">{embeddingWarning} The report can continue publishing without visual matching.</Alert>}
         {isSubmitting && (
           <section role="status" aria-live="polite" aria-label="Publishing progress" className="rounded-xl border border-brand-100 bg-brand-50 p-4">

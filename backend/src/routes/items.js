@@ -61,6 +61,7 @@ const listQuery = z.object({
 })
 
 const statusSchema = z.object({ status: z.enum(['available', 'sold']) })
+const reservationActionSchema = z.object({ action: z.enum(['accept', 'decline', 'cancel']) })
 
 // Columns every listing query needs. Photos come back as an ordered array of storage keys.
 const ITEM_SELECT = `
@@ -220,6 +221,184 @@ router.get('/', requireCollege, async (req, res) => {
 router.get('/mine', async (req, res) => {
   const { rows } = await query(`${ITEM_SELECT} WHERE i.seller_id = $1 AND i.status <> 'removed' ORDER BY i.created_at DESC`, [req.user.id])
   res.json({ items: rows.map(shape) })
+})
+
+router.get('/reservations/mine', requireCollege, async (req, res) => {
+  const { rows } = await query(
+    `SELECT r.id, r.item_id, r.buyer_id, r.seller_id, r.status, r.agreed_price,
+            r.expires_at, r.created_at, r.updated_at, i.title, i.price,
+            CASE WHEN r.buyer_id = $1 THEN seller.display_name ELSE buyer.display_name END AS other_user_name
+       FROM reservations r
+       JOIN items i ON i.id = r.item_id
+       JOIN users buyer ON buyer.id = r.buyer_id
+       JOIN users seller ON seller.id = r.seller_id
+      WHERE r.buyer_id = $1 OR r.seller_id = $1
+      ORDER BY r.created_at DESC
+      LIMIT 100`,
+    [req.user.id],
+  )
+  res.json({ reservations: rows })
+})
+
+router.post('/:id/reservations', requireActive, requireCollege, async (req, res) => {
+  const { id } = idParam.parse(req.params)
+  const { rows: [reservation] } = await tx(async (db) => {
+    const { rows: [item] } = await db.query(
+      'SELECT id, seller_id, college_id, status FROM items WHERE id = $1 FOR UPDATE',
+      [id],
+    )
+    if (!item || item.college_id !== req.user.college_id) throw new AppError(404, 'Listing not found')
+    if (item.seller_id === req.user.id) throw new AppError(400, 'You cannot reserve your own listing')
+    if (item.status !== 'available') throw new AppError(409, 'This listing is no longer available')
+
+    const { rows: [created] } = await db.query(
+      `INSERT INTO reservations (item_id, buyer_id, expires_at)
+       VALUES ($1, $2, now() + interval '48 hours')
+       RETURNING id, item_id, buyer_id, seller_id, status, agreed_price, expires_at, created_at`,
+      [id, req.user.id],
+    )
+    const userA = req.user.id < item.seller_id ? req.user.id : item.seller_id
+    const userB = req.user.id < item.seller_id ? item.seller_id : req.user.id
+    const { rows: [conversation] } = await db.query(
+      `INSERT INTO conversations (item_id, user_a, user_b)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (item_id, user_a, user_b) WHERE item_id IS NOT NULL
+       DO UPDATE SET last_message_at = conversations.last_message_at
+       RETURNING id`,
+      [id, userA, userB],
+    )
+    return { rows: [{ ...created, conversation_id: conversation.id }] }
+  })
+  res.status(201).json({ reservation })
+})
+
+router.patch('/reservations/:id', requireActive, requireCollege, async (req, res) => {
+  const reservationId = idParam.parse({ id: req.params.id }).id
+  const { action } = reservationActionSchema.parse(req.body)
+  const { rows: [reservation] } = await tx(async (db) => {
+    const { rows: [current] } = await db.query(
+      `SELECT r.id, r.item_id, r.buyer_id, r.seller_id, r.status, i.price, i.college_id
+         FROM reservations r
+         JOIN items i ON i.id = r.item_id
+        WHERE r.id = $1
+        FOR UPDATE OF r, i`,
+      [reservationId],
+    )
+    if (!current || current.college_id !== req.user.college_id) throw new AppError(404, 'Reservation not found')
+
+    if (action === 'accept') {
+      if (current.seller_id !== req.user.id) throw new AppError(403, 'Only the seller can accept this reservation')
+      if (current.status !== 'requested') throw new AppError(409, 'This reservation is no longer awaiting a response')
+      const { rows: [updated] } = await db.query(
+        `UPDATE reservations
+            SET status = 'accepted', agreed_price = $2, updated_at = now()
+          WHERE id = $1
+          RETURNING id, item_id, buyer_id, seller_id, status, agreed_price, expires_at`,
+        [reservationId, current.price],
+      )
+      return { rows: [updated] }
+    }
+
+    if (action === 'decline') {
+      if (current.seller_id !== req.user.id) throw new AppError(403, 'Only the seller can decline this reservation')
+      if (current.status !== 'requested') throw new AppError(409, 'Only pending reservations can be declined')
+      const { rows: [updated] } = await db.query(
+        `UPDATE reservations SET status = 'declined', updated_at = now()
+          WHERE id = $1
+          RETURNING id, item_id, buyer_id, seller_id, status`,
+        [reservationId],
+      )
+      return { rows: [updated] }
+    }
+
+    if (current.buyer_id !== req.user.id) throw new AppError(403, 'Only the buyer can cancel this reservation')
+    if (!['requested', 'accepted'].includes(current.status)) {
+      throw new AppError(409, 'This reservation can no longer be cancelled')
+    }
+    const { rows: [updated] } = await db.query(
+      `UPDATE reservations SET status = 'cancelled', updated_at = now()
+        WHERE id = $1
+        RETURNING id, item_id, buyer_id, seller_id, status`,
+      [reservationId],
+    )
+    return { rows: [updated] }
+  })
+  res.json({ reservation })
+})
+
+router.post('/reservations/:id/confirm', requireActive, requireCollege, async (req, res) => {
+  const reservationId = idParam.parse({ id: req.params.id }).id
+  const { rows: [result] } = await tx(async (db) => {
+    const { rows: [reservation] } = await db.query(
+      `SELECT r.id, r.buyer_id, r.seller_id, r.status, i.college_id
+         FROM reservations r
+         JOIN items i ON i.id = r.item_id
+        WHERE r.id = $1
+        FOR UPDATE OF r, i`,
+      [reservationId],
+    )
+    if (!reservation || reservation.college_id !== req.user.college_id) throw new AppError(404, 'Reservation not found')
+    if (![reservation.buyer_id, reservation.seller_id].includes(req.user.id)) {
+      throw new AppError(403, 'You are not part of this reservation')
+    }
+    if (reservation.status !== 'accepted') throw new AppError(409, 'Only accepted reservations can be confirmed')
+
+    const { rows: [existing] } = await db.query(
+      'SELECT 1 FROM handover_confirmations WHERE reservation_id = $1 AND confirmer_id = $2',
+      [reservationId, req.user.id],
+    )
+    if (existing) throw new AppError(409, 'You have already confirmed this handover')
+
+    await db.query(
+      `INSERT INTO handover_confirmations (reservation_id, confirmer_id, counterpart_id, outcome)
+       VALUES ($1, $2, $3, 'met')`,
+      [
+        reservationId,
+        req.user.id,
+        req.user.id === reservation.buyer_id ? reservation.seller_id : reservation.buyer_id,
+      ],
+    )
+    const { rows: [updated] } = await db.query(
+      'SELECT id, status FROM reservations WHERE id = $1',
+      [reservationId],
+    )
+    return { rows: [updated] }
+  })
+  res.json({ reservation: result })
+})
+
+router.get('/:id/reservation', requireCollege, async (req, res) => {
+  const { id } = idParam.parse(req.params)
+  const { rows: [reservation] } = await query(
+    `SELECT r.id, r.item_id, r.buyer_id, r.seller_id, r.status, r.agreed_price,
+            r.expires_at, r.created_at, r.updated_at,
+            CASE WHEN r.buyer_id = $2 THEN seller.display_name ELSE buyer.display_name END AS other_user_name,
+            c.id AS conversation_id,
+            EXISTS (
+              SELECT 1 FROM handover_confirmations hc
+               WHERE hc.reservation_id = r.id AND hc.confirmer_id = $2
+            ) AS viewer_confirmed,
+            EXISTS (
+              SELECT 1 FROM handover_confirmations hc
+               WHERE hc.reservation_id = r.id
+                 AND hc.confirmer_id <> $2
+                 AND hc.outcome = 'met'
+            ) AS counterpart_confirmed
+       FROM reservations r
+       JOIN items i ON i.id = r.item_id
+       JOIN users buyer ON buyer.id = r.buyer_id
+       JOIN users seller ON seller.id = r.seller_id
+       LEFT JOIN conversations c
+         ON c.item_id = r.item_id
+        AND c.user_a = CASE WHEN r.buyer_id < r.seller_id THEN r.buyer_id ELSE r.seller_id END
+        AND c.user_b = CASE WHEN r.buyer_id < r.seller_id THEN r.seller_id ELSE r.buyer_id END
+      WHERE r.item_id = $1 AND i.college_id = $3
+        AND (r.buyer_id = $2 OR r.seller_id = $2)
+      ORDER BY r.created_at DESC
+      LIMIT 1`,
+    [id, req.user.id, req.user.college_id],
+  )
+  res.json({ reservation: reservation || null })
 })
 
 // GET /items/:id

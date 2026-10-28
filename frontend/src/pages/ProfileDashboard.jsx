@@ -53,6 +53,8 @@ export default function ProfileDashboard() {
   const [managedClaims, setManagedClaims] = useState([])
   const [claimsLoading, setClaimsLoading] = useState(false)
   const [claimsError, setClaimsError] = useState('')
+  const [handoverCodes, setHandoverCodes] = useState({})
+  const [redeemingClaimId, setRedeemingClaimId] = useState(null)
   const [avatarBusy, setAvatarBusy] = useState(false)
   const [avatarError, setAvatarError] = useState('')
   const [collegeError, setCollegeError] = useState('')
@@ -120,6 +122,24 @@ export default function ProfileDashboard() {
       setClaimsError(errorMessage(error))
     } finally {
       setReviewingClaimId(null)
+    }
+  }
+
+  async function redeemHandoverCode(claim) {
+    const code = handoverCodes[claim.id] || ''
+    setRedeemingClaimId(claim.id)
+    setClaimsError('')
+    try {
+      await lostFoundApi.redeemClaim(claim.id, code)
+      setHandoverCodes((current) => ({ ...current, [claim.id]: '' }))
+      const result = await lostFoundApi.claims(selectedItem.id)
+      setManagedClaims(result.claims || [])
+      await loadDashboard()
+      showToast('Handover verified. The report is resolved.')
+    } catch (error) {
+      setClaimsError(errorMessage(error))
+    } finally {
+      setRedeemingClaimId(null)
     }
   }
 
@@ -466,8 +486,16 @@ export default function ProfileDashboard() {
                     {claim.item_status} · {claim.location_name} · Submitted {formatDate(claim.created_at)}
                   </p>
                   <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{claim.claim_text}</p>
+                  {['pending', 'approved'].includes(claim.status) && (
+                    <Link
+                      to={`/messages?claim_id=${encodeURIComponent(claim.id)}`}
+                      className="mt-2 inline-flex text-xs font-semibold text-brand-700 underline hover:text-brand-600"
+                    >
+                      Message report owner
+                    </Link>
+                  )}
                   <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
-                    claim.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : claim.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900'
+                    ['approved', 'completed'].includes(claim.status) ? 'bg-emerald-100 text-emerald-800' : claim.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900'
                   }`}>
                     {statusLabel(claim.status)}
                   </span>
@@ -518,6 +546,14 @@ export default function ProfileDashboard() {
                     </div>
                     <p className="mt-1 text-xs text-slate-500">Submitted {formatDate(claim.created_at)}</p>
                     <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{claim.claim_text}</p>
+                    {['pending', 'approved'].includes(claim.status) && (
+                      <Link
+                        to={`/messages?claim_id=${encodeURIComponent(claim.id)}`}
+                        className="mt-3 inline-flex text-xs font-semibold text-brand-700 underline hover:text-brand-600"
+                      >
+                        Message claimant
+                      </Link>
+                    )}
                     {claim.status === 'pending' && (
                       <div className="mt-4 flex justify-end gap-2">
                         <button
@@ -537,6 +573,39 @@ export default function ProfileDashboard() {
                           {reviewingClaimId === claim.id ? 'Saving…' : 'Approve'}
                         </button>
                       </div>
+                    )}
+                    {claim.status === 'approved' && (
+                      <form
+                        className="mt-4 flex flex-col gap-2 border-t border-slate-200 pt-3 sm:flex-row"
+                        onSubmit={(event) => {
+                          event.preventDefault()
+                          redeemHandoverCode(claim)
+                        }}
+                      >
+                        <label className="sr-only" htmlFor={`profile-handover-code-${claim.id}`}>Claimant's handover code</label>
+                        <input
+                          id={`profile-handover-code-${claim.id}`}
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          pattern="[0-9]{6}"
+                          maxLength={6}
+                          required
+                          value={handoverCodes[claim.id] || ''}
+                          onChange={(event) => setHandoverCodes((current) => ({
+                            ...current,
+                            [claim.id]: event.target.value.replace(/\D/g, '').slice(0, 6),
+                          }))}
+                          placeholder="Enter claimant's 6-digit code"
+                          className="min-w-0 flex-1 rounded-full border border-slate-300 px-4 py-2 text-sm tracking-widest outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                        />
+                        <button
+                          type="submit"
+                          disabled={redeemingClaimId !== null || (handoverCodes[claim.id] || '').length !== 6}
+                          className="rounded-full bg-emerald-700 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {redeemingClaimId === claim.id ? 'Verifying…' : 'Verify handover'}
+                        </button>
+                      </form>
                     )}
                   </article>
                 ))}
