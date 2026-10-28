@@ -12,6 +12,14 @@ const int = (name, fallback) => {
 
 const env = process.env.NODE_ENV || 'development';
 const isProd = env === 'production';
+const configuredCorsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+if (configuredCorsOrigins.includes('*')) {
+  throw new Error('CORS_ORIGIN must list explicit origins; wildcard origins are not allowed');
+}
 
 const config = {
   env,
@@ -22,7 +30,9 @@ const config = {
   databaseSsl: process.env.DATABASE_SSL === 'true',
   jwtSecret: required('JWT_SECRET'),
   otpSecret: required('OTP_SECRET'),
-  corsOrigins: (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean),
+  corsOrigins: isProd
+    ? ['https://campustu.vercel.app']
+    : [...new Set([...configuredCorsOrigins, 'http://localhost:5173'])],
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: int('SMTP_PORT', 587),

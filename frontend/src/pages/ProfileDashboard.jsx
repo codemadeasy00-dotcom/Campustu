@@ -4,6 +4,7 @@ import CollegePicker from '../components/CollegePicker.jsx'
 import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
 import { authApi, errorMessage, lostFoundApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import ItemPhoto from '../components/ItemPhoto.jsx'
 
 const DELETE_WINDOW_MS = 8 * 60 * 60 * 1000
 
@@ -305,7 +306,7 @@ export default function ProfileDashboard() {
 
     return (
       <article key={item.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        {item.photo && <img src={item.photo} alt={item.title} className="h-44 w-full bg-slate-100 object-cover" />}
+        <ItemPhoto src={item.photo} alt={item.title} className="h-44 w-full bg-slate-100 object-cover" />
         <div className="space-y-3 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
@@ -389,6 +390,15 @@ export default function ProfileDashboard() {
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-100">Student profile</p>
               <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{user?.display_name || 'Your dashboard'}</h1>
               <p className="mt-1 text-sm text-white/75">{user?.college?.name}</p>
+              {user?.badges?.length > 0 && (
+                <ul aria-label="Your badges" className="mt-2 flex flex-wrap gap-1.5">
+                  {user.badges.map((badge) => (
+                    <li key={badge.id} className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-bold text-white">
+                      {badge.label}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">

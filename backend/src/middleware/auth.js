@@ -8,7 +8,7 @@ const SESSION_COOKIE_NAME = 'campustu_session';
 const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: config.isProd,
-  sameSite: 'lax',
+  sameSite: 'strict',
   path: '/',
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };

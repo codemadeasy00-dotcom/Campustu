@@ -4,6 +4,7 @@ import CampusMap from '../components/CampusMap.jsx'
 import { Alert, inputClass } from '../components/ui.jsx'
 import { lostFoundApi, errorMessage } from '../services/api.js'
 import { processAndCompressImage } from '../utils/imageCompressor.js'
+import ItemPhoto from '../components/ItemPhoto.jsx'
 
 const DRAFT_STORAGE_KEY = 'campustu_lost_found_draft_v1'
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024
@@ -314,7 +315,7 @@ export default function LostFoundNew() {
             <ul className="mt-4 grid gap-3 sm:grid-cols-2">
               {postResult.potential_matches.map((match) => (
                 <li key={match.id} className="overflow-hidden rounded-xl border border-brand-100 bg-white">
-                  {match.photo && <img src={match.photo} alt="" className="h-36 w-full object-cover" />}
+                  <ItemPhoto src={match.photo} alt={match.title} className="h-36 w-full object-cover" />
                   <div className="p-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold uppercase text-slate-500">{match.status}</span>
@@ -568,7 +569,13 @@ export default function LostFoundNew() {
         )}
         <div className="flex flex-col gap-3 border-t border-brand-100 pt-4 sm:flex-row">
           <button type="submit" disabled={isSubmitting || processingPhotos} className="flex-1 rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-brand-600 disabled:cursor-wait disabled:opacity-60">
-            {processingPhotos ? 'Preparing photos…' : isSubmitting ? 'Publishing…' : `Publish ${form.status} item`}
+            {processingPhotos
+              ? 'Preparing photos…'
+              : modelLoading
+                ? 'Loading AI vision model…'
+                : isSubmitting
+                  ? 'Publishing…'
+                  : `Publish ${form.status} item`}
           </button>
           <button type="button" onClick={() => navigate('/lost-found')} disabled={isSubmitting} className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Cancel</button>
         </div>

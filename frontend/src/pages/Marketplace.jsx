@@ -5,6 +5,7 @@ import { CONDITIONS, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
 import { Alert, inputClass } from '../components/ui.jsx'
 import PageHero from '../components/PageHero.jsx'
+import ItemPhoto from '../components/ItemPhoto.jsx'
 
 const PAGE_SIZE = 12
 
@@ -29,14 +30,11 @@ function ListingCard({ item, categoryName }) {
         className="surface-card interactive-card group flex h-full flex-col overflow-hidden"
       >
         <div className="relative aspect-square overflow-hidden bg-slate-100">
-          {item.photos[0] && (
-            <img
-              src={getImageUrl(item.photos[0])}
-              alt={item.title}
-              loading="lazy"
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-            />
-          )}
+          <ItemPhoto
+            src={item.photos[0] ? getImageUrl(item.photos[0]) : null}
+            alt={item.title}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
           <span className="absolute right-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-brand-700 shadow-sm">
             {formatPrice(item.price)}
           </span>

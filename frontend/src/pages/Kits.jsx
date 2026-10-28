@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { kitsApi, metaApi, wishlistApi, errorMessage } from '../services/api.js'
 import { conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
+import ItemPhoto from '../components/ItemPhoto.jsx'
 import { Alert, Button, inputClass } from '../components/ui.jsx'
 import PageHero from '../components/PageHero.jsx'
 
@@ -187,7 +188,11 @@ export default function Kits() {
                   {chosen && (
                     <div className="mt-3 flex items-center gap-3">
                       <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                        {chosen.photo && <img src={getImageUrl(chosen.photo)} alt="" className="h-full w-full object-cover" />}
+                        <ItemPhoto
+                          src={chosen.photo ? getImageUrl(chosen.photo) : null}
+                          alt={chosen.title}
+                          className="h-full w-full object-cover"
+                        />
                       </div>
                       <div className="min-w-0 flex-1">
                         <Link to={`/items/${chosen.id}`} className="block truncate text-sm font-semibold text-brand-700 hover:underline">{chosen.title}</Link>

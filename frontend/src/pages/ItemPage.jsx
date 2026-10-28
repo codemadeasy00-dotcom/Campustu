@@ -4,6 +4,7 @@ import { conversationsApi, deleteItem, itemsApi, metaApi, errorMessage } from '.
 import { useAuth } from '../context/AuthContext.jsx'
 import { STATUS_STYLES, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
+import ItemPhoto from '../components/ItemPhoto.jsx'
 import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
 
 export default function ItemPage() {
@@ -158,13 +159,18 @@ export default function ItemPage() {
     <div className="animate-fade-in grid gap-8 md:grid-cols-2">
       <div>
         <div className="aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {item.photos[selected] && <img src={getImageUrl(item.photos[selected])} alt={item.title} className="h-full w-full object-contain" />}
+          <ItemPhoto
+            src={item.photos[selected] ? getImageUrl(item.photos[selected]) : null}
+            alt={item.title}
+            loading="eager"
+            className="h-full w-full object-contain"
+          />
         </div>
         {item.photos.length > 1 && (
           <div className="mt-3 flex gap-2">
             {item.photos.map((url, i) => (
               <button key={url} onClick={() => setSelected(i)} className={`h-16 w-16 overflow-hidden rounded-lg border-2 ${i === selected ? 'border-brand-600' : 'border-transparent'}`}>
-                <img src={getImageUrl(url)} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                <ItemPhoto src={getImageUrl(url)} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
               </button>
             ))}
           </div>

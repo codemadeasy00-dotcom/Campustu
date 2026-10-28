@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { itemsApi, errorMessage } from '../services/api.js'
 import { STATUS_STYLES, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
+import ItemPhoto from '../components/ItemPhoto.jsx'
 import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
 
 export default function MyListings() {
@@ -66,7 +67,11 @@ export default function MyListings() {
             <li key={item.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <Link to={`/items/${item.id}`} className="block hover:bg-slate-50">
                 <div className="aspect-square bg-slate-100">
-                  {item.photos[0] && <img src={getImageUrl(item.photos[0])} alt="" className="h-full w-full object-cover" />}
+                  <ItemPhoto
+                    src={item.photos[0] ? getImageUrl(item.photos[0]) : null}
+                    alt={item.title}
+                    className="h-full w-full object-cover"
+                  />
                 </div>
                 <div className="p-3">
                   <div className="truncate font-semibold">{item.title}</div>

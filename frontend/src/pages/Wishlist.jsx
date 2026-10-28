@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { wishlistApi, errorMessage } from '../services/api.js'
 import { STATUS_STYLES, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
+import ItemPhoto from '../components/ItemPhoto.jsx'
 import { Alert, PageLoading } from '../components/ui.jsx'
 
 export default function Wishlist() {
@@ -48,7 +49,11 @@ export default function Wishlist() {
           {items.map((item) => (
             <li key={item.id} className="flex items-center gap-3 rounded-2xl border border-white/70 bg-white p-3 shadow-sm">
               <Link to={`/items/${item.id}`} className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-slate-100">
-                {item.photo && <img src={getImageUrl(item.photo)} alt="" className="h-full w-full object-cover" />}
+                <ItemPhoto
+                  src={item.photo ? getImageUrl(item.photo) : null}
+                  alt={item.title}
+                  className="h-full w-full object-cover"
+                />
               </Link>
               <div className="min-w-0 flex-1">
                 <Link to={`/items/${item.id}`} className="block truncate font-semibold hover:underline">{item.title}</Link>

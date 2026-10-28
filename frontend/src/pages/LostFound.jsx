@@ -9,6 +9,7 @@ import { Alert, useToast } from '../components/ui.jsx';
 import { processAndCompressImage } from '../utils/imageCompressor.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import PageHero from '../components/PageHero.jsx';
+import ItemPhoto from '../components/ItemPhoto.jsx';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 
@@ -867,7 +868,7 @@ export default function LostFound() {
           <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {potentialMatches.map((match) => (
               <li key={match.id} className="overflow-hidden rounded-xl border border-amber-200 bg-white">
-                {match.photo && <img src={match.photo} alt="" className="h-36 w-full object-cover" />}
+                <ItemPhoto src={match.photo} alt={match.title} className="h-36 w-full object-cover" />
                 <div className="p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
@@ -949,6 +950,12 @@ export default function LostFound() {
             Showing {nearbyItems.length} located {nearbyItems.length === 1 ? 'post' : 'posts'} within {radiusMeters >= 1000 ? `${radiusMeters / 1000} km` : `${radiusMeters} m`}.
             {nearbyHasMore && ' Showing the nearest 200 posts.'}
           </p>
+        )}
+        {nearbyItems?.length === 0 && (
+          <div className="mb-3 rounded-2xl border border-dashed border-brand-200 bg-white px-4 py-3 text-sm text-slate-700">
+            <p className="font-semibold">No items found within {radiusMeters >= 1000 ? `${radiusMeters / 1000} km` : `${radiusMeters} m`} of this spot.</p>
+            <p className="mt-1 text-xs text-slate-500">Try expanding the radius or selecting another map location.</p>
+          </div>
         )}
         
         <div className="map-fullscreen-container relative z-0 h-[min(60vh,450px)] min-h-[260px] w-full overflow-hidden rounded-xl sm:h-[450px]">
@@ -1065,13 +1072,11 @@ export default function LostFound() {
 
             return (
               <div key={item.id} className="surface-card interactive-card flex flex-col justify-between p-4 sm:p-5">
-                {item.photo && (
-                  <img
-                    src={item.photo}
-                    alt={item.title}
-                    className="mb-4 h-40 w-full rounded-xl bg-slate-100 object-cover"
-                  />
-                )}
+                <ItemPhoto
+                  src={item.photo}
+                  alt={item.title}
+                  className="mb-4 h-40 w-full rounded-xl bg-slate-100 object-cover"
+                />
                 <div>
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${

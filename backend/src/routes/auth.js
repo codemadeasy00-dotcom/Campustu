@@ -397,7 +397,13 @@ async function publicProfile(userId) {
     `SELECT u.id, u.email, u.full_name, u.display_name, u.role, u.status, u.branch_id, u.branch_other, u.admission_year,
 
             u.college_id, u.avatar_key, c.name AS college_name, c.city AS college_city,
-
+            c.email_domain, c.status AS college_status, u.email_verified_at,
+            (SELECT count(*)::int
+               FROM item_claims ic
+               JOIN lost_found_items lif ON lif.id = ic.item_id
+              WHERE lif.user_id = u.id
+                AND lif.lifecycle_status = 'resolved'
+                AND ic.status = 'completed') AS completed_returns,
             t.trust_score::int AS trust_score, t.is_trusted, t.completed_handovers::int AS completed_handovers
 
        FROM users u
@@ -412,18 +418,36 @@ async function publicProfile(userId) {
 
   )
 
-  const { college_name, college_city, avatar_key, ...u } = rows[0]
+  const {
+    college_name,
+    college_city,
+    avatar_key,
+    email_domain,
+    college_status,
+    email_verified_at,
+    completed_returns,
+    ...u
+  } = rows[0]
+  const emailHost = u.email.split('@').at(-1)?.toLowerCase() || ''
+  const domain = email_domain?.toLowerCase()
+  const badges = []
+  if (
+    email_verified_at
+    && college_status === 'approved'
+    && domain
+    && (emailHost === domain || emailHost.endsWith(`.${domain}`))
+  ) {
+    badges.push({ id: 'verified_student', label: 'Verified Student' })
+  }
+  if (u.is_trusted) badges.push({ id: 'trusted_member', label: 'Trusted Member' })
+  if (Number(completed_returns) > 0) badges.push({ id: 'lost_found_hero', label: 'Lost & Found Hero' })
 
   return {
-
     ...u,
-
     college: u.college_id ? { id: u.college_id, name: college_name, city: college_city } : null,
-
     avatar_url: avatar_key ? storage.urlFor(avatar_key) : null,
-
     current_semester: currentSemester(u.admission_year),
-
+    badges,
   }
 
 }
