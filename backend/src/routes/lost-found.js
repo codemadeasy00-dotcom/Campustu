@@ -109,8 +109,6 @@ const updateColumns = {
   location_note: 'location_note',
 };
 
-const DELETE_WINDOW_MS = 8 * 60 * 60 * 1000;
-
 function assertItemOwnerOrAdmin(item, user) {
   if (item.user_id !== user.id && user.role !== 'admin') {
     throw new AppError(403, 'Only the post owner can manage this report.');
@@ -152,7 +150,15 @@ router.get('/mine', requireCollege, async (req, res, next) => {
                 WHERE item_id = lif.id ORDER BY position LIMIT 1) AS photo_key,
               (SELECT count(*)::int FROM item_claims WHERE item_id = lif.id) AS claim_count,
               (SELECT count(*)::int FROM item_claims
-                WHERE item_id = lif.id AND status = 'pending') AS pending_claim_count
+                WHERE item_id = lif.id AND status = 'pending') AS pending_claim_count,
+              (SELECT count(*)::int FROM lost_found_item_edits edits
+                WHERE edits.item_id = lif.id
+                  AND edits.edited_by = lif.user_id
+                  AND edits.edited_at > now() - interval '6 hours') AS edits_in_window,
+              (SELECT min(edits.edited_at) FROM lost_found_item_edits edits
+                WHERE edits.item_id = lif.id
+                  AND edits.edited_by = lif.user_id
+                  AND edits.edited_at > now() - interval '6 hours') AS oldest_edit_in_window
          FROM lost_found_items lif
         WHERE lif.user_id = $1 AND lif.college_id = $2
         ORDER BY lif.created_at DESC`,
@@ -160,9 +166,13 @@ router.get('/mine', requireCollege, async (req, res, next) => {
     );
     res.json({
       success: true,
-      items: rows.map(({ photo_key, ...item }) => ({
+      items: rows.map(({ photo_key, edits_in_window, oldest_edit_in_window, ...item }) => ({
         ...item,
         photo: photo_key ? storage.urlFor(photo_key) : null,
+        edits_remaining: Math.max(0, 3 - Number(edits_in_window || 0)),
+        next_edit_at: Number(edits_in_window || 0) >= 3 && oldest_edit_in_window
+          ? new Date(new Date(oldest_edit_in_window).getTime() + 6 * 60 * 60 * 1000).toISOString()
+          : null,
       })),
     });
   } catch (err) {
@@ -347,7 +357,7 @@ router.get('/', requireCollege, async (req, res, next) => {
   }
 });
 
-// PATCH /lost-found/:id - Owners may correct report details regardless of lifecycle state.
+// PATCH /lost-found/:id - Owners may edit report details up to three times per rolling six hours.
 router.patch('/:id', requireActive, async (req, res, next) => {
   try {
     const itemId = itemIdSchema.parse(req.params.id);
@@ -363,12 +373,41 @@ router.patch('/:id', requireActive, async (req, res, next) => {
       if (!item) throw new AppError(404, 'Lost-and-found post not found.');
       assertItemOwner(item, req.user);
 
+      await db.query(
+        `DELETE FROM lost_found_item_edits
+          WHERE item_id = $1
+            AND edited_by = $2
+            AND edited_at <= now() - interval '6 hours'`,
+        [itemId, req.user.id],
+      );
+      const { rows: [editUsage] } = await db.query(
+        `SELECT count(*)::int AS edits_in_window, min(edited_at) AS oldest_edit_in_window
+           FROM lost_found_item_edits
+          WHERE item_id = $1
+            AND edited_by = $2
+            AND edited_at > now() - interval '6 hours'`,
+        [itemId, req.user.id],
+      );
+      if (editUsage.edits_in_window >= 3) {
+        const nextEditAt = new Date(
+          new Date(editUsage.oldest_edit_in_window).getTime() + 6 * 60 * 60 * 1000,
+        );
+        throw new AppError(
+          429,
+          `You have used all 3 edits for this report. You can edit again after ${nextEditAt.toLocaleString('en-IN')}.`,
+        );
+      }
+
       const assignments = columns.map((field, index) => `${updateColumns[field]} = $${index + 2}`);
       await db.query(
         `UPDATE lost_found_items
             SET ${assignments.join(', ')}, updated_at = now()
           WHERE id = $1`,
         [itemId, ...columns.map((field) => updates[field])],
+      );
+      await db.query(
+        'INSERT INTO lost_found_item_edits (item_id, edited_by) VALUES ($1, $2)',
+        [itemId, req.user.id],
       );
     });
 
@@ -428,14 +467,18 @@ router.patch('/:id/lifecycle', requireActive, async (req, res, next) => {
   }
 });
 
-// DELETE /lost-found/:id - Owners may delete within eight hours only if nobody has claimed it.
+// DELETE /lost-found/:id - Owners may delete after eight hours only if nobody has claimed it.
 // Admins can purge any report immediately.
 router.delete('/:id', requireActive, async (req, res, next) => {
   try {
     const itemId = itemIdSchema.parse(req.params.id);
     await tx(async (db) => {
       const { rows } = await db.query(
-        'SELECT id, user_id, created_at FROM lost_found_items WHERE id = $1 FOR UPDATE',
+        `SELECT id, user_id, created_at,
+                created_at + interval '8 hours' <= now() AS deletion_allowed
+           FROM lost_found_items
+          WHERE id = $1
+          FOR UPDATE`,
         [itemId],
       );
       const item = rows[0];
@@ -447,9 +490,11 @@ router.delete('/:id', requireActive, async (req, res, next) => {
           'SELECT EXISTS (SELECT 1 FROM item_claims WHERE item_id = $1) AS has_claims',
           [itemId],
         );
-        const ageMs = Date.now() - new Date(item.created_at).getTime();
-        if (ageMs >= DELETE_WINDOW_MS || claimCheck.has_claims) {
-          throw new AppError(409, 'This report can no longer be deleted. Close it or mark it returned instead.');
+        if (claimCheck.has_claims) {
+          throw new AppError(409, 'This report cannot be permanently deleted because claims have been submitted.');
+        }
+        if (!item.deletion_allowed) {
+          throw new AppError(409, 'Permanent deletion is available eight hours after the report was posted.');
         }
       }
 

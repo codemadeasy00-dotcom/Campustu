@@ -9,7 +9,7 @@ import ItemPhoto from '../components/ItemPhoto.jsx'
 const DELETE_WINDOW_MS = 8 * 60 * 60 * 1000
 
 function deleteTimeRemaining(item, now) {
-  const remaining = DELETE_WINDOW_MS - (now - new Date(item.created_at).getTime())
+  const remaining = (new Date(item.created_at).getTime() + DELETE_WINDOW_MS) - now
   if (!Number.isFinite(remaining) || remaining <= 0) return null
   const hours = Math.floor(remaining / 3_600_000)
   const minutes = Math.floor((remaining % 3_600_000) / 60_000)
@@ -301,7 +301,7 @@ export default function ProfileDashboard() {
     const claimCount = Number(item.claim_count) || 0
     const pendingCount = Number(item.pending_claim_count) || 0
     const remaining = deleteTimeRemaining(item, clockNow)
-    const canDelete = remaining !== null && claimCount === 0
+    const canDelete = remaining === null && claimCount === 0
     const isBusy = busyItemId === item.id
 
     return (
@@ -354,18 +354,28 @@ export default function ProfileDashboard() {
                 onClick={() => setPendingAction({ item, action: 'delete' })}
                 className="col-span-2 rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
               >
-                Delete permanently · {remaining} left
+                Delete permanently
               </button>
             )}
           </div>
           {!canDelete && (
             <p className="text-center text-xs text-slate-500">
-              {claimCount > 0 ? 'Permanent deletion is locked because a claim has been submitted.' : 'Permanent deletion is locked after eight hours.'}
+              {claimCount > 0
+                ? 'Permanent deletion is locked because a claim has been submitted.'
+                : remaining
+                  ? `Permanent deletion available in ${remaining}.`
+                  : 'Permanent deletion is not available.'}
             </p>
           )}
-          <Link to="/lost-found" className="inline-block text-xs font-semibold text-brand-700 underline hover:text-brand-600">
-            Open Lost &amp; Found to edit this report
-          </Link>
+          {Number(item.edits_remaining ?? 3) > 0 ? (
+            <Link to={`/lost-found?mine=1&edit=${encodeURIComponent(item.id)}`} className="inline-block text-xs font-semibold text-brand-700 underline hover:text-brand-600">
+              Edit report · {Number(item.edits_remaining ?? 3)} edits left
+            </Link>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Edit limit reached. Available again {new Date(item.next_edit_at).toLocaleString()}.
+            </p>
+          )}
         </div>
       </article>
     )
