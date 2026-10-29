@@ -153,6 +153,7 @@ export const lostFoundApi = {
     return request(`/lost-found?${params.toString()}`)
   },
   mine: () => request('/lost-found/mine'),
+  notifications: () => request('/lost-found/notifications'),
   myClaims: () => request('/lost-found/my-claims'),
   nearby: ({ lat, lng, radius = 1000, status, search }) => {
     const params = new URLSearchParams({ lat: String(lat), lng: String(lng), radius: String(radius) })

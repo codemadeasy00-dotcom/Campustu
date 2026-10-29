@@ -436,21 +436,11 @@ export default function LostFound() {
   useEffect(() => {
     if (!showMine) return undefined;
     let cancelled = false;
-    let previousPendingCount = null;
     const refreshMyReports = async () => {
       try {
         const result = await lostFoundApi.mine();
         if (cancelled) return;
         const reports = result.items || [];
-        const pendingCount = reports.reduce(
-          (total, item) => total + (Number(item.pending_claim_count) || 0),
-          0,
-        );
-        if (previousPendingCount !== null && pendingCount > previousPendingCount) {
-          const newClaims = pendingCount - previousPendingCount;
-          showToast(`${newClaims} new claim${newClaims === 1 ? '' : 's'} received. Review it in My reports.`);
-        }
-        previousPendingCount = pendingCount;
         const term = search.trim().toLowerCase();
         setItems(reports.filter((item) =>
           (statusFilter === 'all' || item.status === statusFilter)

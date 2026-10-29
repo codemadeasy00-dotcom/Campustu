@@ -180,6 +180,29 @@ router.get('/mine', requireCollege, async (req, res, next) => {
   }
 });
 
+// GET /lost-found/notifications - Pending claims on reports owned by the signed-in student.
+router.get('/notifications', requireCollege, async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT c.id, c.item_id, c.created_at,
+              lif.title,
+              u.display_name AS claimant_name
+         FROM item_claims c
+         JOIN lost_found_items lif ON lif.id = c.item_id
+         JOIN users u ON u.id = c.claimant_id
+        WHERE lif.user_id = $1
+          AND lif.college_id = $2
+          AND c.status = 'pending'
+        ORDER BY c.created_at DESC
+        LIMIT 100`,
+      [req.user.id, req.user.college_id],
+    );
+    res.json({ success: true, notifications: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /lost-found/claims/redeem - The report owner verifies a claimant's one-time code.
 router.post('/claims/redeem', requireActive, requireCollege, async (req, res, next) => {
   try {

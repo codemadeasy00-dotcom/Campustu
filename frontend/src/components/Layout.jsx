@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import { lostFoundApi } from '../services/api.js'
+import { useToast } from './ui.jsx'
 import Wordmark from './Wordmark.jsx'
 
 export const APP_NAME = 'Campustu'
@@ -36,19 +38,133 @@ function ProfileMark({ user, compact = false }) {
 
 export default function Layout() {
   const { user, signOut } = useAuth()
+  const showToast = useToast()
   const navigate = useNavigate()
   const location = useLocation()
   const menuRef = useRef(null)
+  const notificationsRef = useRef(null)
   const mobileToggleRef = useRef(null)
+  const notifiedClaimIdsRef = useRef(new Set())
   const [mobileOpen, setMobileOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [claimNotifications, setClaimNotifications] = useState([])
+  const [unreadClaimCount, setUnreadClaimCount] = useState(0)
   const [scrollProgress, setScrollProgress] = useState(0)
   const [logoutError, setLogoutError] = useState('')
 
   useEffect(() => {
     setMobileOpen(false)
     setMoreOpen(false)
+    setNotificationsOpen(false)
   }, [location.pathname])
+
+  useEffect(() => {
+    if (!user?.id || !user?.college) {
+      setClaimNotifications([])
+      setUnreadClaimCount(0)
+      return undefined
+    }
+
+    let cancelled = false
+    let requestPending = false
+    const storageKey = `campustu:seen-claims:${user.id}:${user.college.id}`
+    notifiedClaimIdsRef.current = new Set()
+    setClaimNotifications([])
+    setUnreadClaimCount(0)
+
+    const refreshClaimNotifications = async () => {
+      if (cancelled || requestPending) return
+      requestPending = true
+      try {
+        const result = await lostFoundApi.notifications()
+        if (cancelled) return
+
+        const notifications = result.notifications || []
+        let savedIds = []
+        try {
+          const parsedIds = JSON.parse(localStorage.getItem(storageKey) || '[]')
+          if (Array.isArray(parsedIds)) {
+            savedIds = parsedIds.filter((id) => typeof id === 'string')
+          }
+        } catch (error) {
+          console.error('Could not read seen claim notifications:', error)
+        }
+        const seenIds = new Set(savedIds)
+        const newClaims = notifications.filter((claim) => !seenIds.has(claim.id))
+        const claimsToAnnounce = newClaims.filter((claim) => !notifiedClaimIdsRef.current.has(claim.id))
+        if (claimsToAnnounce.length) {
+          showToast(`${claimsToAnnounce.length} new claim${claimsToAnnounce.length === 1 ? '' : 's'} received. Tap the bell to review.`)
+          claimsToAnnounce.forEach((claim) => notifiedClaimIdsRef.current.add(claim.id))
+        }
+
+        setUnreadClaimCount(newClaims.length)
+        setClaimNotifications(notifications.map((claim) => ({
+          id: claim.id,
+          itemId: claim.item_id,
+          title: claim.title,
+          claimantName: claim.claimant_name,
+          createdAt: claim.created_at,
+        })))
+      } catch (error) {
+        if (!cancelled) console.error('Could not refresh claim notifications:', error)
+      } finally {
+        requestPending = false
+      }
+    }
+
+    refreshClaimNotifications()
+    const timer = window.setInterval(refreshClaimNotifications, 30_000)
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshClaimNotifications()
+    }
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [showToast, user?.college?.id, user?.id])
+
+  useEffect(() => {
+    if (!notificationsOpen) return undefined
+    const closeOnOutsideClick = (event) => {
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+        setNotificationsOpen(false)
+      }
+    }
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setNotificationsOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [notificationsOpen])
+
+  const pendingClaimTotal = unreadClaimCount
+  const markNotificationsSeen = () => {
+    setNotificationsOpen((open) => !open)
+    if (notificationsOpen || !user?.id || !user?.college?.id) return
+    const storageKey = `campustu:seen-claims:${user.id}:${user.college.id}`
+    const seenIds = new Set(claimNotifications.map((item) => item.id))
+    try {
+      const savedIds = JSON.parse(localStorage.getItem(storageKey) || '[]')
+      if (Array.isArray(savedIds)) {
+        savedIds.forEach((id) => {
+          if (typeof id === 'string') seenIds.add(id)
+        })
+      }
+      localStorage.setItem(storageKey, JSON.stringify([...seenIds].slice(-500)))
+      setUnreadClaimCount(0)
+    } catch (error) {
+      console.error('Could not save seen claim notifications:', error)
+    }
+  }
 
   useEffect(() => {
     if (!moreOpen) return undefined
@@ -169,6 +285,69 @@ export default function Layout() {
           {user && (
             <div className="ml-auto flex shrink-0 items-center gap-2 xl:ml-0">
               <Link to="/sell" className="site-primary-action hidden sm:inline-flex">＋ <span>Sell an item</span></Link>
+              <div className="relative" ref={notificationsRef}>
+                <button
+                  type="button"
+                  aria-label={pendingClaimTotal ? `${pendingClaimTotal} claims need review` : 'Notifications'}
+                  aria-expanded={notificationsOpen}
+                  aria-haspopup="dialog"
+                  onClick={markNotificationsSeen}
+                  className="relative flex h-10 w-10 items-center justify-center rounded-full border border-brand-200 bg-white text-brand-800 transition hover:bg-brand-50"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 12h4" />
+                  </svg>
+                  {pendingClaimTotal > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                      {pendingClaimTotal > 99 ? '99+' : pendingClaimTotal}
+                    </span>
+                  )}
+                </button>
+                {notificationsOpen && (
+                  <section
+                    role="dialog"
+                    aria-label="Notifications"
+                    className="absolute right-0 top-full z-[70] mt-2 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-xl"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                      <div>
+                        <h2 className="text-sm font-bold text-slate-900">Notifications</h2>
+                        <p className="text-xs text-slate-500">
+                          {claimNotifications.length} claim{claimNotifications.length === 1 ? '' : 's'} waiting for review
+                        </p>
+                      </div>
+                      <span aria-hidden="true" className="text-lg">🔔</span>
+                    </div>
+                    {claimNotifications.length ? (
+                      <ul className="max-h-72 overflow-y-auto p-2">
+                        {claimNotifications.map((item) => (
+                          <li key={item.id}>
+                            <Link
+                              to={`/profile?tab=incoming&item=${encodeURIComponent(item.itemId)}`}
+                              onClick={() => setNotificationsOpen(false)}
+                              className="block rounded-xl px-3 py-3 transition hover:bg-brand-50"
+                            >
+                              <span className="block text-sm font-semibold text-slate-800">{item.title}</span>
+                              <span className="mt-1 block text-xs text-slate-500">
+                                New claim from {item.claimantName} · {new Date(item.createdAt).toLocaleString()}
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="px-4 py-6 text-center text-sm text-slate-500">You’re all caught up. New claims will appear here.</p>
+                    )}
+                    <Link
+                      to="/profile?tab=incoming"
+                      onClick={() => setNotificationsOpen(false)}
+                      className="block border-t border-slate-100 px-4 py-3 text-center text-xs font-bold text-brand-700 hover:bg-brand-50"
+                    >
+                      Review incoming claims
+                    </Link>
+                  </section>
+                )}
+              </div>
               <Link to="/profile" aria-label="Open your profile" className="site-profile-button">
                 <ProfileMark user={user} />
                 <span className="hidden min-w-0 text-left leading-tight lg:block">

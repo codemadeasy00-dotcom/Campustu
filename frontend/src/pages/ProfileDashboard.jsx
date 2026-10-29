@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import CollegePicker from '../components/CollegePicker.jsx'
 import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
 import { authApi, errorMessage, lostFoundApi } from '../services/api.js'
@@ -40,7 +40,12 @@ function ProfileAvatar({ user, className = '' }) {
 export default function ProfileDashboard() {
   const { user, updateUser } = useAuth()
   const showToast = useToast()
-  const [activeTab, setActiveTab] = useState('listings')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const requestedItemId = searchParams.get('item')
+  const [activeTab, setActiveTab] = useState(
+    ['listings', 'incoming', 'submitted'].includes(requestedTab) ? requestedTab : 'listings',
+  )
   const [items, setItems] = useState(null)
   const [myClaims, setMyClaims] = useState(null)
   const [pageError, setPageError] = useState('')
@@ -89,6 +94,21 @@ export default function ProfileDashboard() {
   useEffect(() => {
     loadDashboard()
   }, [user?.college?.id])
+
+  useEffect(() => {
+    if (['listings', 'incoming', 'submitted'].includes(requestedTab)) {
+      setActiveTab(requestedTab)
+    }
+  }, [requestedTab])
+
+  useEffect(() => {
+    if (!requestedItemId || !items) return
+    const report = items.find((item) => item.id === requestedItemId)
+    if (report) {
+      openClaims(report)
+    }
+    setSearchParams({ tab: 'incoming' }, { replace: true })
+  }, [items, requestedItemId, setSearchParams])
 
   useEffect(() => {
     const timer = window.setInterval(() => setClockNow(Date.now()), 1000)
