@@ -60,6 +60,20 @@ export default function Layout() {
   }, [location.pathname])
 
   useEffect(() => {
+    const updateFavicon = () => {
+      const disabled = document.visibilityState === 'hidden'
+      const ico = document.querySelector('[data-app-favicon-ico]')
+      const png = document.querySelector('[data-app-favicon-png]')
+      if (ico) ico.href = disabled ? '/favicon_disabled.ico' : '/favicon.ico'
+      if (png) png.href = disabled ? '/favicon_disabled_32.png' : '/favicon_32.png'
+    }
+
+    updateFavicon()
+    document.addEventListener('visibilitychange', updateFavicon)
+    return () => document.removeEventListener('visibilitychange', updateFavicon)
+  }, [])
+
+  useEffect(() => {
     if (!user?.id || !user?.college) {
       setClaimNotifications([])
       setUnreadClaimCount(0)

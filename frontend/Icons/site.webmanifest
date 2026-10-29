@@ -1,0 +1,23 @@
+{
+  "name": "Campustu",
+  "short_name": "Campustu",
+  "description": "Your campus, shared.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fffdf7",
+  "theme_color": "#0f7180",
+  "icons": [
+    {
+      "src": "/favicon_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app_icon.png",
+      "sizes": "900x927",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
