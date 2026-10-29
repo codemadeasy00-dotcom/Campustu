@@ -3,8 +3,7 @@
 // Assumes:
 //   ../db                   exports a pg Pool
 //   ../middleware/requireAuth  verifies the login and sets req.user.id  (adapt to your passwordless auth)
-//   tables users, items, reservations, handovers, lost_found_posts as in schema.sql (rename in
-//   activityCounts() if yours differ).
+//   tables users, items, reservations, and lost_found_items as in schema.sql.
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth } = require('../middleware/auth');
@@ -24,9 +23,14 @@ async function activityCounts(client, userId) {
   const { rows } = await client.query(
     `SELECT
        (SELECT count(*) FROM items WHERE seller_id = $1 AND status IN ('available','reserved'))::int AS listings,
-       (SELECT count(*) FROM reservations WHERE buyer_id = $1 AND status = 'active')::int           AS reservations,
-       (SELECT count(*) FROM handovers WHERE status = 'pending' AND (seller_id = $1 OR buyer_id = $1))::int AS handovers,
-       (SELECT count(*) FROM lost_found_posts WHERE author_id = $1 AND status = 'open')::int        AS lost_found_posts`,
+       (SELECT count(*) FROM reservations
+         WHERE (buyer_id = $1 OR seller_id = $1)
+           AND status = 'requested' AND expires_at > now())::int AS reservations,
+       (SELECT count(*) FROM reservations
+         WHERE (buyer_id = $1 OR seller_id = $1)
+           AND status IN ('accepted', 'disputed'))::int AS handovers,
+       (SELECT count(*) FROM lost_found_items
+         WHERE user_id = $1 AND lifecycle_status IN ('active', 'claim_pending'))::int AS lost_found_posts`,
     [userId]
   );
   return rows[0];

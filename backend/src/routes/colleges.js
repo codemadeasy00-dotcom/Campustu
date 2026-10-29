@@ -13,7 +13,7 @@
 
 const express = require('express');
 const { rateLimit } = require('express-rate-limit');
-const pool = require('../db');
+const { pool } = require('../db');
 
 const router = express.Router();
 
