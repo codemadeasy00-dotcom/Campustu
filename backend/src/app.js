@@ -60,6 +60,7 @@ app.use('/conversations', conversationsRouter);
 app.use('/kits', kitsRouter);
 app.use('/wishlist', wishlistRouter);
 app.use('/lost-found', lostFoundRouter);
+app.use('/api/lost-found', lostFoundRouter);
 
 app.use(notFound);
 app.use(errorHandler);

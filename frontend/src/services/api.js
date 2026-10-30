@@ -150,35 +150,35 @@ export const lostFoundApi = {
     const params = new URLSearchParams()
     if (status && status !== 'all') params.set('status', status)
     if (search) params.set('search', search)
-    return request(`/lost-found?${params.toString()}`)
+    return request(`/api/lost-found?${params.toString()}`)
   },
-  mine: () => request('/lost-found/mine'),
-  notifications: () => request('/lost-found/notifications'),
-  myClaims: () => request('/lost-found/my-claims'),
+  mine: () => request('/api/lost-found/mine'),
+  notifications: () => request('/api/lost-found/notifications'),
+  myClaims: () => request('/api/lost-found/my-claims'),
   nearby: ({ lat, lng, radius = 1000, status, search }) => {
     const params = new URLSearchParams({ lat: String(lat), lng: String(lng), radius: String(radius) })
     if (status && status !== 'all') params.set('status', status)
     if (search) params.set('search', search)
-    return request(`/lost-found/nearby?${params.toString()}`)
+    return request(`/api/lost-found/nearby?${params.toString()}`)
   },
-  create: (formData) => request('/lost-found', { method: 'POST', formData }),
-  update: (id, fields) => request(`/lost-found/${encodeURIComponent(id)}`, { method: 'PATCH', json: fields }),
+  create: (formData) => request('/api/lost-found', { method: 'POST', formData }),
+  update: (id, fields) => request(`/api/lost-found/${encodeURIComponent(id)}`, { method: 'PATCH', json: fields }),
   setLifecycle: (id, action) =>
-    request(`/lost-found/${encodeURIComponent(id)}/lifecycle`, { method: 'PATCH', json: { action } }),
-  remove: (id) => request(`/lost-found/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  claims: (id) => request(`/lost-found/${encodeURIComponent(id)}/claims`),
+    request(`/api/lost-found/${encodeURIComponent(id)}/lifecycle`, { method: 'PATCH', json: { action } }),
+  remove: (id) => request(`/api/lost-found/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  claims: (id) => request(`/api/lost-found/${encodeURIComponent(id)}/claims`),
   reviewClaim: (itemId, claimId, action) =>
-    request(`/lost-found/${encodeURIComponent(itemId)}/claims/${encodeURIComponent(claimId)}`, {
+    request(`/api/lost-found/${encodeURIComponent(itemId)}/claims/${encodeURIComponent(claimId)}`, {
       method: 'PATCH',
       json: { action },
     }),
   redeemClaim: (claimId, handoverCode) =>
-    request('/lost-found/claims/redeem', {
+    request('/api/lost-found/claims/redeem', {
       method: 'POST',
       json: { claim_id: claimId, handover_code: handoverCode },
     }),
   claim: (id, answerAttempt) =>
-    request(`/lost-found/${encodeURIComponent(id)}/claim`, {
+    request(`/api/lost-found/${encodeURIComponent(id)}/claim`, {
       method: 'POST',
       json: { claim_text: answerAttempt },
     }),
