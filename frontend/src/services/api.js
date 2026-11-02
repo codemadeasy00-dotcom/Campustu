@@ -2,6 +2,13 @@
 
 export const API_BASE_URL = ''
 export const LOGOUT_EVENT = 'campustu:logout'
+export const APP_ERROR_EVENT = 'campustu:app-error'
+
+function reportAppError() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(APP_ERROR_EVENT))
+  }
+}
 
 export class ApiError extends Error {
   constructor(message, status = 0, details = null, code = null) {
@@ -14,6 +21,7 @@ export class ApiError extends Error {
 
 // Turns an error into one readable sentence for the screen.
 export function errorMessage(err) {
+  reportAppError()
   if (err instanceof ApiError && Array.isArray(err.details) && err.details.length) {
     return err.details.map((d) => (d.field ? `${d.field}: ${d.message}` : d.message)).join(' | ')
   }
@@ -41,6 +49,7 @@ async function request(endpoint, { method = 'GET', json, formData } = {}) {
     if (body !== undefined) init.body = body
     res = await fetch(`${API_BASE_URL}${endpoint}`, init)
   } catch (e) {
+    reportAppError()
     throw new ApiError(
       e.name === 'AbortError'
         ? 'The server took too long to answer. Please try again.'
@@ -60,6 +69,8 @@ async function request(endpoint, { method = 'GET', json, formData } = {}) {
   if (!res.ok) {
     if (res.status === 401) {
       window.dispatchEvent(new Event(LOGOUT_EVENT))
+    } else {
+      reportAppError()
     }
     throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data?.details, data?.code)
   }

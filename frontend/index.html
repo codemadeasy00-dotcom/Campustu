@@ -10,6 +10,19 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon_32.png" data-app-favicon-png />
     <link rel="apple-touch-icon" href="/favicon_512.png" />
     <link rel="manifest" href="/site.webmanifest" />
+    <script>
+      (() => {
+        const disableAppIcon = () => {
+          const ico = document.querySelector('[data-app-favicon-ico]')
+          const png = document.querySelector('[data-app-favicon-png]')
+          if (ico) ico.href = '/favicon_disabled.ico'
+          if (png) png.href = '/favicon_disabled_32.png'
+        }
+        window.addEventListener('campustu:app-error', disableAppIcon)
+        window.addEventListener('error', disableAppIcon, true)
+        window.addEventListener('unhandledrejection', disableAppIcon)
+      })()
+    </script>
     <!-- Rounded display font for the logo. If it fails to load, the logo falls back to a system font. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
