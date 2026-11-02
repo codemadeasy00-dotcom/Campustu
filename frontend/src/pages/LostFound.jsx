@@ -9,12 +9,13 @@ import { processAndCompressImage } from '../utils/imageCompressor.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import PageHero from '../components/PageHero.jsx';
 import ItemPhoto from '../components/ItemPhoto.jsx';
+import ReportItemButton from '../components/ReportItemButton.jsx';
 import MapPlaceSearch from '../components/MapPlaceSearch.jsx';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 
 const MAX_PHOTOS = 5;
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const DELETE_WINDOW_MS = 8 * 60 * 60 * 1000;
 
 function deleteTimeRemaining(item, now) {
@@ -367,7 +368,7 @@ export default function LostFound() {
         return false;
       }
       if (file.size > MAX_PHOTO_BYTES) {
-        setPostError(`${file.name} is larger than 8 MB.`);
+        setPostError(`${file.name} is larger than 5 MB.`);
         return false;
       }
       return true;
@@ -378,7 +379,7 @@ export default function LostFound() {
     try {
       const processedFiles = await Promise.all(validFiles.map((file) => processAndCompressImage(file)));
       const oversized = processedFiles.find((file) => file.size > MAX_PHOTO_BYTES);
-      if (oversized) throw new Error(`${oversized.name} is still larger than 8 MB after compression.`);
+      if (oversized) throw new Error(`${oversized.name} is still larger than 5 MB after compression.`);
       const urls = processedFiles.map((file) => URL.createObjectURL(file));
       photoPreviewsRef.current = [...photoPreviewsRef.current, ...urls];
       setPhotos((current) => [...current, ...processedFiles]);
@@ -1118,6 +1119,11 @@ export default function LostFound() {
                 ) : (
                   <p className="text-center text-xs text-slate-500">This report is not accepting claims.</p>
                 )}
+                {!showMine && !isOwner && !isAdmin && (
+                  <div className="mt-2 flex justify-end border-t border-slate-100 pt-2">
+                    <ReportItemButton itemId={item.id} itemType="lost_found" />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1454,7 +1460,7 @@ export default function LostFound() {
 
               <div>
                 <label className="mb-2 block text-xs font-semibold text-slate-600">
-                  Photos <span className="font-normal text-slate-400">(optional, up to {MAX_PHOTOS}; JPEG, PNG, WebP; 8 MB each)</span>
+                  Photos <span className="font-normal text-slate-400">(optional, up to {MAX_PHOTOS}; JPEG, PNG, WebP; 5 MB each)</span>
                 </label>
                 <div className="flex flex-wrap gap-3">
                   {photoPreviews.map((url, index) => (
@@ -1484,7 +1490,7 @@ export default function LostFound() {
                     </label>
                   )}
                 </div>
-                <p className="mt-1 text-[10px] text-slate-400">Photos are resized and location metadata is removed before upload.</p>
+                <p className="mt-1 text-[10px] text-slate-400">Photos are resized, stripped of location metadata, and screened by Hugging Face's automated moderation service before storage.</p>
               </div>
 
               <div>

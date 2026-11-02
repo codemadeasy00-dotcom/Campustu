@@ -1,7 +1,6 @@
 const router = require('express').Router();
 
 const crypto = require('crypto');
-const multer = require('multer');
 const { z } = require('zod');
 
 const config = require('../config');
@@ -15,6 +14,8 @@ const { generateCode, hashCode, safeEqual } = require('../utils/otp');
 const { sendOtpEmail } = require('../email');
 
 const { processPhoto } = require('../utils/images');
+const { assertImageIsAllowed } = require('../utils/image-moderation');
+const { createImageUpload } = require('../utils/image-upload');
 const storage = require('../storage');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const {
@@ -27,10 +28,7 @@ const {
 
 const { currentSemester } = require('../utils/semester');
 
-const avatarUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
-});
+const avatarUpload = createImageUpload();
 
 const collegeSelectionSchema = z.object({
   college_id: z.coerce.number().int().positive(),
@@ -81,6 +79,7 @@ const signupSchema = z
     branch_other: z.preprocess(blankToUndefined, z.string().trim().min(2).max(60).optional()),
 
     admission_year: optionalInt(2000, 2100),
+    conduct_accepted: z.literal(true),
 
   })
 
@@ -264,9 +263,8 @@ router.post('/signup', async (req, res) => {
 
     await query(
 
-      `INSERT INTO users (email, full_name, display_name, college_id, branch_id, branch_other, admission_year)
-
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO users (email, full_name, display_name, college_id, branch_id, branch_other, admission_year, conduct_accepted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, now())`,
 
       [b.email, ...cols]
 
@@ -278,8 +276,8 @@ router.post('/signup', async (req, res) => {
 
     await query(
 
-      `UPDATE users SET full_name = $2, display_name = $3, college_id = $4, branch_id = $5, branch_other = $6, admission_year = $7
-
+      `UPDATE users SET full_name = $2, display_name = $3, college_id = $4, branch_id = $5, branch_other = $6, admission_year = $7,
+                        conduct_accepted_at = now()
         WHERE id = $1`,
 
       [existing.id, ...cols]
@@ -493,6 +491,7 @@ router.patch('/profile/avatar', requireAuth, requireActive, avatarUpload.single(
   if (!req.file) throw new AppError(400, 'Choose an image to upload.');
 
   const image = await processPhoto(req.file.buffer);
+  await assertImageIsAllowed(image);
   const newKey = `avatars/${req.user.id}/${crypto.randomUUID()}.webp`;
   const storedKey = await storage.save(newKey, image);
 

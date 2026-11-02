@@ -1,5 +1,4 @@
 const router = require('express').Router();
-const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const { z } = require('zod');
@@ -8,6 +7,8 @@ const { query, tx } = require('../db');
 const storage = require('../storage');
 const { AppError } = require('../utils/errors');
 const { processPhoto } = require('../utils/images');
+const { assertPhotosAreAllowed } = require('../utils/image-moderation');
+const { createImageUpload } = require('../utils/image-upload');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
 
@@ -25,10 +26,7 @@ router.get('/nearby', createRateLimiter(60));
 router.post('/:id/claim', createRateLimiter(20));
 router.use(requireAuth);
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: config.maxPhotoBytes, files: config.maxPhotosPerItem },
-});
+const upload = createImageUpload(config.maxPhotosPerItem);
 
 const createItemSchema = z.object({
   title: z.string().trim().min(3).max(255),
@@ -389,12 +387,15 @@ router.patch('/:id', requireActive, async (req, res, next) => {
 
     await tx(async (db) => {
       const { rows } = await db.query(
-        'SELECT id, user_id FROM lost_found_items WHERE id = $1 FOR UPDATE',
+        'SELECT id, user_id, lifecycle_status FROM lost_found_items WHERE id = $1 FOR UPDATE',
         [itemId],
       );
       const item = rows[0];
       if (!item) throw new AppError(404, 'Lost-and-found post not found.');
       assertItemOwner(item, req.user);
+      if (item.lifecycle_status === 'removed') {
+        throw new AppError(409, 'This report was removed by moderation and can no longer be edited.');
+      }
 
       await db.query(
         `DELETE FROM lost_found_item_edits
@@ -454,6 +455,9 @@ router.patch('/:id/lifecycle', requireActive, async (req, res, next) => {
       const item = rows[0];
       if (!item) throw new AppError(404, 'Lost-and-found post not found.');
       assertItemOwnerOrAdmin(item, req.user);
+      if (item.lifecycle_status === 'removed') {
+        throw new AppError(409, 'This report was removed by moderation and cannot be changed.');
+      }
       lifecycleStatus = item.lifecycle_status === 'resolved' || action === 'resolve'
         ? 'resolved'
         : 'closed';
@@ -549,6 +553,7 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
   }
   const vectorString = embedding ? `[${embedding.join(',')}]` : null;
   const cleanedPhotos = await Promise.all(files.map((file) => processPhoto(file.buffer)));
+  await assertPhotosAreAllowed(cleanedPhotos);
   const keys = cleanedPhotos.map(() => `lost-found/${itemId}/${crypto.randomUUID()}.webp`);
   const storedKeys = [];
   let matches = [];

@@ -13,6 +13,7 @@ import LostFound from './pages/LostFound.jsx'
 import LostFoundNew from './pages/LostFoundNew.jsx'
 import ProfileDashboard from './pages/ProfileDashboard.jsx'
 import Messages from './pages/Messages.jsx'
+import AdminModeration from './pages/AdminModeration.jsx'
 
 function NotFound() {
   return (
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/messages" element={guard(<Messages />)} />
         <Route path="/messages/:conversationId" element={guard(<Messages />)} />
         <Route path="/wishlist" element={guard(<Wishlist />)} />
+        <Route path="/admin/moderation" element={guard(<AdminModeration />)} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

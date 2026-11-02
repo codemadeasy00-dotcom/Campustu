@@ -31,7 +31,8 @@ See `../DEPLOY.md` (free-tier plan: Supabase + Render + Brevo).
 4. `npm run db:init`          (new empty database: base schema + migrations). Existing database: `npm run db:migrate`
 5. `npm run db:seed`          (general branches, categories, item types), then add your college: see DEPLOY.md Step 4.
 6. `npm run dev`
-7. Sign up, read the OTP from the server console (no SMTP configured in development),
+7. Set `HF_ACCESS_TOKEN` to a Hugging Face token with Inference Providers permission to enable uploads; the server rejects uploads if moderation cannot run.
+8. Sign up, accept the Code of Conduct, read the OTP from the server console (no SMTP configured in development),
    verify, then `npm run make-admin -- you@example.com` for your own account.
 
 ## Endpoints
@@ -40,13 +41,16 @@ See `../DEPLOY.md` (free-tier plan: Supabase + Render + Brevo).
 | GET | /health | no | |
 | GET | /meta | no | branches, categories, item types |
 | GET | /colleges?q= | no | approved colleges for the sign-up picker |
-| POST | /auth/signup | no | JSON: email, full_name, display_name, **college_id or new_college{name,city,state?}**, branch_id or branch_other, admission_year? |
+| POST | /auth/signup | no | JSON: email, full_name, display_name, conduct_accepted: true, **college_id or new_college{name,city,state?}**, branch_id or branch_other, admission_year? |
 | POST | /auth/login | no | JSON: email |
 | POST | /auth/verify | no | JSON: email, code -> `{ user }`; sets an HttpOnly session cookie |
 | POST | /auth/logout | no | Clears the HttpOnly session cookie |
 | GET | /auth/me | session cookie | profile, college, trust, derived current_semester |
 | GET | /items?limit= | Bearer | newest available listings at YOUR college |
-| POST | /items | session cookie, active | multipart: title, condition, price, item_type_id or category_id, optional description/branch_id/semester/preferred_place, 1-5 files in `photos` |
+| POST | /items | session cookie, active | multipart: title, condition, price, item_type_id or category_id, optional description/branch_id/semester/preferred_place, 1-5 JPEG/PNG/WebP files in `photos` (5 MB each; images are re-encoded and checked by Hugging Face before storage) |
+| POST | /moderation/reports | session cookie, active | JSON: item_type (`marketplace` or `lost_found`), item_id, reason |
+| GET | /moderation/admin/reports | admin | Pending content reports |
+| PATCH | /moderation/admin/reports/:id | admin | JSON action: `dismiss`, `remove`, or `ban`; removal also deletes stored photos |
 | GET | /items/mine | Bearer | |
 | GET | /items/:id | Bearer | 404 if the item belongs to another college |
 
@@ -63,4 +67,4 @@ no orphan files after failures.
 - Sessions are 7-day Bearer tokens with no refresh/logout-everywhere. Fine for now; revisit before the mobile app.
 - Photos are on local disk and publicly readable by URL (unguessable names, but not private). Move to a bucket when you deploy.
 - Nothing runs `expire_stale_reservations()` yet (needs a scheduled job, comes with the reserve flow).
-- No automated Node tests yet; everything above was checked by hand with curl.
+- The moderation classifier and upload gate have unit tests (`npm test`); full authenticated endpoint flows still need an integration test against a scratch PostgreSQL database.

@@ -271,6 +271,12 @@ export default function Layout() {
                       <span aria-hidden="true" className="site-more-icon">◎</span>
                       <span>Profile &amp; settings</span>
                     </Link>
+                    {user.role === 'admin' && (
+                      <Link role="menuitem" to="/admin/moderation" onClick={() => setMoreOpen(false)} className="site-more-link">
+                        <span aria-hidden="true" className="site-more-icon">⚑</span>
+                        <span>Content moderation</span>
+                      </Link>
+                    )}
                   </div>
                 )}
               </div>
@@ -386,6 +392,7 @@ export default function Layout() {
             <NavLink to="/my-listings" className={navClass}>My listings</NavLink>
             <NavLink to="/wishlist" className={navClass}>Wishlist</NavLink>
             <NavLink to="/lost-found/report" className={navClass}>Report item</NavLink>
+            {user.role === 'admin' && <NavLink to="/admin/moderation" className={navClass}>Moderation</NavLink>}
           </nav>
         )}
 
@@ -414,6 +421,11 @@ export default function Layout() {
                       <span aria-hidden="true">{item.icon}</span>{item.label}
                     </Link>
                   ))}
+                  {user.role === 'admin' && (
+                    <Link to="/admin/moderation" className="site-mobile-quicklink">
+                      <span aria-hidden="true">⚑</span>Content moderation
+                    </Link>
+                  )}
                 </div>
                 <button type="button" className="site-mobile-logout" onClick={handleLogout}>Log out</button>
               </>

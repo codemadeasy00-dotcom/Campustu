@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { STATUS_STYLES, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
 import ItemPhoto from '../components/ItemPhoto.jsx'
+import ReportItemButton from '../components/ReportItemButton.jsx'
 import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
 
 export default function ItemPage() {
@@ -210,6 +211,12 @@ export default function ItemPage() {
               : `Completed handovers with ${item.seller.trust_score} different student${item.seller.trust_score === 1 ? '' : 's'}.`}
           </div>
         </div>
+
+        {!isOwner && user?.role !== 'admin' && (
+          <div className="mt-3 flex justify-end">
+            <ReportItemButton itemId={item.id} itemType="marketplace" />
+          </div>
+        )}
 
         {!isOwner && ['available', 'reserved'].includes(item.status) && (
           <div className="mt-6 space-y-3">

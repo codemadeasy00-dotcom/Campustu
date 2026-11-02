@@ -79,7 +79,8 @@ A paused project means your site is down until you un-pause it in the dashboard.
    lifecycle states, pending owner-reviewed claims, private claimant handover codes, and a retryable
    photo-cleanup queue. It resets legacy auto-approved claims to pending review and clears their old
    handover codes. Migration `010_user_profile_avatar.sql` adds the stored profile-photo reference;
-   deploy the backend so its startup migration runner applies both updates.
+   migration `013_content_moderation.sql` adds consent tracking and student content reports.
+   Deploy the backend so its startup migration runner applies the pending migrations.
 3. Add your first college (the platform is multi-college; students pick theirs at sign-up). In the Neon SQL editor:
    ```sql
    INSERT INTO colleges (name, city, state, email_domain, status)
@@ -111,13 +112,14 @@ SMTP_HOST=...  SMTP_PORT=587  SMTP_USER=...  SMTP_PASS=...  MAIL_FROM="CampusKit
 S3_BUCKET=item-photos  S3_REGION=...  S3_ENDPOINT=...  S3_ACCESS_KEY_ID=...  S3_SECRET_ACCESS_KEY=...
 S3_PUBLIC_BASE_URL=https://<project-ref>.supabase.co/storage/v1/object/public/item-photos
 CLOUDINARY_CLOUD_NAME=...  CLOUDINARY_API_KEY=...  CLOUDINARY_API_SECRET=...
+HF_ACCESS_TOKEN=...         IMAGE_MODERATION_MODEL=Falconsai/nsfw_image_detection
 ```
-Configure either the S3 variables or all three Cloudinary variables for persistent photo storage. When both are configured, new photos use Cloudinary and existing untagged S3 keys continue to use S3. The API refuses to start in production if email, persistent photo storage or strong secrets are missing. That is deliberate:
+Configure either the S3 variables or all three Cloudinary variables for persistent photo storage. When both are configured, new photos use Cloudinary and existing untagged S3 keys continue to use S3. Create a Hugging Face access token with Inference Providers permission and add it as `HF_ACCESS_TOKEN`; image uploads fail closed if the classifier is unavailable. Marketplace photos, Lost & Found photos, and profile avatars are validated, limited to 5 MB each, re-encoded, then classified before storage. Admins can review user reports at `/admin/moderation`; `npm run make-admin -- email@example.com` assigns the admin role. The API refuses to start in production if email, persistent photo storage, moderation credentials or strong secrets are missing. That is deliberate:
 read the Render log for the exact missing name.
 
 ### Browser sessions and the Vercel API proxy
 
-The browser uses an HttpOnly, SameSite=Lax session cookie. Keep API calls same-origin by deploying the frontend with the included Vercel rewrites, which proxy `/auth`, `/items`, `/kits`, `/wishlist`, `/lost-found`, `/meta`, and `/api` to `https://campustu-backend.onrender.com`. If the Render service hostname changes, update the destinations in `frontend/vercel.json`.
+The browser uses an HttpOnly, SameSite=Lax session cookie. Keep API calls same-origin by deploying the frontend with the included Vercel rewrites, which proxy `/auth`, `/items`, `/kits`, `/wishlist`, `/conversations`, `/moderation`, `/meta`, and `/api` to `https://campustu-backend.onrender.com`. If the Render service hostname changes, update the destinations in `frontend/vercel.json`.
 
 On Render, set `CORS_ORIGIN=https://campustu.vercel.app` (add any other exact frontend origins as comma-separated values). Do not set `VITE_API_URL` to the Render hostname for API requests; the frontend uses relative URLs so the browser sends its HttpOnly cookie to the Vercel origin. Existing users will need to sign in again after deployment because the old localStorage token is cleared and no longer accepted.
 

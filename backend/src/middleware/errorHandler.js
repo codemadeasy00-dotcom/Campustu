@@ -3,7 +3,7 @@ const { ZodError } = require('zod');
 const { AppError } = require('../utils/errors');
 
 const MULTER_MESSAGES = {
-  LIMIT_FILE_SIZE: 'Each photo must be 8 MB or smaller',
+  LIMIT_FILE_SIZE: 'Each photo must be 5 MB or smaller',
   LIMIT_FILE_COUNT: 'Too many photos (maximum 5)',
   LIMIT_UNEXPECTED_FILE: 'Unexpected file field. Send photos in the "photos" field',
 };

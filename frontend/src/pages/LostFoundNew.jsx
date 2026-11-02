@@ -7,7 +7,7 @@ import { processAndCompressImage } from '../utils/imageCompressor.js'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 
 const DRAFT_STORAGE_KEY = 'campustu_lost_found_draft_v1'
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024
 const MAX_PHOTOS = 5
 const DEFAULT_CENTER = [18.1678, 73.3364]
 const CATEGORIES = [
@@ -165,7 +165,7 @@ export default function LostFoundNew() {
         return false
       }
       if (file.size > MAX_PHOTO_BYTES) {
-        validationErrors.push(`${file.name} is larger than 8 MB.`)
+        validationErrors.push(`${file.name} is larger than 5 MB.`)
         return false
       }
       return true
@@ -179,7 +179,7 @@ export default function LostFoundNew() {
     try {
       const processed = await Promise.all(validFiles.map((file) => processAndCompressImage(file)))
       const oversized = processed.find((photo) => photo.size > MAX_PHOTO_BYTES)
-      if (oversized) throw new Error(`${oversized.name} is still larger than 8 MB after compression.`)
+      if (oversized) throw new Error(`${oversized.name} is still larger than 5 MB after compression.`)
       setPhotos((current) => [...current, ...processed].slice(0, MAX_PHOTOS))
       if (validationErrors.length) setError(validationErrors.join(' '))
     } catch (photoError) {
@@ -484,11 +484,12 @@ export default function LostFoundNew() {
         </fieldset>
 
         <section>
-          <label className="block text-sm font-semibold text-slate-700" htmlFor="lost-found-report-photo">Photos <span className="font-normal text-slate-500">(optional, up to {MAX_PHOTOS})</span></label>
+          <label className="block text-sm font-semibold text-slate-700" htmlFor="lost-found-report-photo">Photos <span className="font-normal text-slate-500">(optional, up to {MAX_PHOTOS}; 5 MB each)</span></label>
           <input id="lost-found-report-photo" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={processingPhotos || isSubmitting || photos.length >= MAX_PHOTOS} onChange={handlePhotoChange} className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-700 disabled:opacity-60" />
           <p className="mt-1 text-xs text-slate-500">
             {processingPhotos ? 'Preparing selected photos…' : `${photos.length} of ${MAX_PHOTOS} photos selected. The first photo is used for visual matching.`}
           </p>
+          <p className="mt-1 text-xs text-slate-500">Photos are screened by Hugging Face's automated moderation service before storage.</p>
           <p className="mt-1 text-xs text-amber-700">Avoid photos that expose ID numbers or other sensitive personal information.</p>
           {photoPreviews.length > 0 && (
             <ul className="mt-3 flex flex-wrap gap-3">

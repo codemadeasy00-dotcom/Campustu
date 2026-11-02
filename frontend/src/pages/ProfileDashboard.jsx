@@ -195,8 +195,8 @@ export default function ProfileDashboard() {
       setAvatarError('Choose a JPEG, PNG, or WebP image.')
       return
     }
-    if (file.size > 8 * 1024 * 1024) {
-      setAvatarError('Choose an image smaller than 8 MB.')
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError('Choose an image smaller than 5 MB.')
       return
     }
 
@@ -283,7 +283,7 @@ export default function ProfileDashboard() {
                 </button>
               )}
               {avatarError && <p role="alert" className="mt-3 text-xs text-red-700">{avatarError}</p>}
-              <p className="mt-2 text-xs text-slate-500">JPEG, PNG, or WebP · up to 8 MB</p>
+              <p className="mt-2 text-xs text-slate-500">JPEG, PNG, or WebP · up to 5 MB · screened by automated moderation before storage</p>
             </aside>
           </div>
         </section>

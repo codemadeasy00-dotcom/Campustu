@@ -13,6 +13,7 @@ export default defineConfig({
       '/kits': 'http://localhost:4000',
       '/wishlist': 'http://localhost:4000',
       '/conversations': 'http://localhost:4000',
+      '/moderation': 'http://localhost:4000',
       '/api': 'http://localhost:4000',
     },
   },

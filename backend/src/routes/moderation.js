@@ -1,0 +1,196 @@
+const router = require('express').Router();
+const rateLimit = require('express-rate-limit');
+const { z } = require('zod');
+const config = require('../config');
+const { query, tx } = require('../db');
+const { AppError } = require('../utils/errors');
+const { requireAuth, requireActive, requireAdmin, requireCollege } = require('../middleware/auth');
+const storage = require('../storage');
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: config.isProd ? 30 : 1000,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+});
+const reportSchema = z.object({
+  item_type: z.enum(['marketplace', 'lost_found']),
+  item_id: z.uuid(),
+  reason: z.string().trim().min(5).max(1000),
+});
+const actionSchema = z.object({ action: z.enum(['dismiss', 'remove', 'ban']) });
+
+router.use(requireAuth);
+router.post('/reports', limiter, requireActive, requireCollege, async (req, res) => {
+  const { item_type: type, item_id: itemId, reason } = reportSchema.parse(req.body);
+  const target = type === 'marketplace'
+    ? {
+      table: 'items',
+      ownerColumn: 'seller_id',
+      statusCondition: "status <> 'removed'",
+    }
+    : {
+      table: 'lost_found_items',
+      ownerColumn: 'user_id',
+      statusCondition: "lifecycle_status <> 'removed'",
+    };
+  const { rows: [item] } = await query(
+    `SELECT id, ${target.ownerColumn} AS owner_id
+       FROM ${target.table}
+      WHERE id = $1 AND college_id = $2 AND ${target.statusCondition}`,
+    [itemId, req.user.college_id],
+  );
+  if (!item) throw new AppError(404, 'The post was not found or is no longer available.');
+  if (item.owner_id === req.user.id) throw new AppError(400, 'You cannot report your own post.');
+
+  const column = type === 'marketplace' ? 'marketplace_item_id' : 'lost_found_item_id';
+  await query(
+    `INSERT INTO item_reports (${column}, reporter_id, reason)
+     VALUES ($1, $2, $3)`,
+    [itemId, req.user.id, reason],
+  );
+  res.status(201).json({ success: true, message: 'Your report was sent to the moderation team.' });
+});
+
+router.get('/admin/reports', limiter, requireAdmin, async (_req, res) => {
+  const { rows } = await query(
+    `SELECT r.id, r.marketplace_item_id, r.lost_found_item_id, r.reason, r.created_at,
+            reporter.display_name AS reporter_name,
+            COALESCE(mi.title, lif.title) AS item_title,
+            COALESCE(mi.seller_id, lif.user_id) AS target_user_id,
+            target.display_name AS target_user_name,
+            CASE WHEN r.marketplace_item_id IS NOT NULL THEN 'marketplace' ELSE 'lost_found' END AS item_type,
+            COALESCE(mi.status::text, lif.lifecycle_status) AS item_status,
+            COALESCE(
+              (SELECT p.storage_key FROM item_photos p
+                WHERE p.item_id = mi.id ORDER BY p.position LIMIT 1),
+              (SELECT p.storage_key FROM lost_found_photos p
+                WHERE p.item_id = lif.id ORDER BY p.position LIMIT 1)
+            ) AS photo_key
+       FROM item_reports r
+       JOIN users reporter ON reporter.id = r.reporter_id
+       LEFT JOIN items mi ON mi.id = r.marketplace_item_id
+       LEFT JOIN lost_found_items lif ON lif.id = r.lost_found_item_id
+       LEFT JOIN users target ON target.id = COALESCE(mi.seller_id, lif.user_id)
+      WHERE r.status = 'pending'
+      ORDER BY r.created_at ASC
+      LIMIT 100`,
+  );
+  res.json({
+    reports: rows.map(({ photo_key, ...report }) => ({
+      ...report,
+      photo_url: photo_key ? storage.urlFor(photo_key) : null,
+    })),
+  });
+});
+
+router.patch('/admin/reports/:id', requireAdmin, async (req, res) => {
+  const reportId = z.uuid().parse(req.params.id);
+  const { action } = actionSchema.parse(req.body);
+
+  if (action === 'dismiss') {
+    const { rows: [report] } = await query(
+      `UPDATE item_reports
+          SET status = 'dismissed', reviewed_at = now(), reviewed_by = $2
+        WHERE id = $1 AND status = 'pending'
+        RETURNING id`,
+      [reportId, req.user.id],
+    );
+    if (!report) throw new AppError(404, 'Pending report not found.');
+    return res.json({ success: true, message: 'Report dismissed.' });
+  }
+
+  const moderation = await tx(async (db) => {
+    const { rows: [report] } = await db.query(
+      `SELECT id, marketplace_item_id, lost_found_item_id
+         FROM item_reports
+        WHERE id = $1 AND status = 'pending'
+        FOR UPDATE`,
+      [reportId],
+    );
+    if (!report) throw new AppError(404, 'Pending report not found.');
+
+    const marketplace = Boolean(report.marketplace_item_id);
+    const itemTable = marketplace ? 'items' : 'lost_found_items';
+    const photoTable = marketplace ? 'item_photos' : 'lost_found_photos';
+    const itemId = report.marketplace_item_id || report.lost_found_item_id;
+    const ownerColumn = marketplace ? 'seller_id' : 'user_id';
+    const { rows: [item] } = await db.query(
+      `SELECT id, ${ownerColumn} AS owner_id
+         FROM ${itemTable}
+        WHERE id = $1
+        FOR UPDATE`,
+      [itemId],
+    );
+    if (!item) throw new AppError(404, 'Reported post no longer exists.');
+
+    let bannedUser = false;
+    if (action === 'ban') {
+      const { rows: [offender] } = await db.query(
+        'SELECT id, role FROM users WHERE id = $1 FOR UPDATE',
+        [item.owner_id],
+      );
+      if (!offender || offender.role === 'admin') {
+        throw new AppError(400, 'This account cannot be banned from the moderation queue.');
+      }
+      await db.query(
+        `UPDATE users
+            SET status = 'banned', frozen_reason = 'Account banned after content moderation review'
+          WHERE id = $1`,
+        [offender.id],
+      );
+      bannedUser = true;
+    }
+
+    const { rows: photos } = await db.query(
+      `SELECT storage_key FROM ${photoTable} WHERE item_id = $1`,
+      [itemId],
+    );
+
+    if (marketplace) {
+      await db.query(
+        `UPDATE items
+            SET status = 'removed', removed_reason = 'Removed after content moderation review', updated_at = now()
+          WHERE id = $1`,
+        [itemId],
+      );
+    } else {
+      await db.query(
+        `UPDATE lost_found_items
+            SET lifecycle_status = 'removed', moderation_reason = 'Removed after content moderation review', updated_at = now()
+          WHERE id = $1`,
+        [itemId],
+      );
+    }
+
+    return { itemId, photoTable, photos: photos.map((photo) => photo.storage_key), marketplace, bannedUser };
+  });
+
+  const cleanupResults = await Promise.allSettled(moderation.photos.map((key) => storage.remove(key)));
+  const cleanupFailures = cleanupResults.filter((result) => result.status === 'rejected');
+  if (cleanupFailures.length) {
+    cleanupFailures.forEach((result) => console.error('Could not remove media during content moderation:', result.reason));
+    throw new AppError(503, 'The post was hidden, but its media could not be fully removed. Retry this action to finish cleanup.', 'MEDIA_CLEANUP_PENDING');
+  }
+
+  await tx(async (db) => {
+    await db.query(`DELETE FROM ${moderation.photoTable} WHERE item_id = $1`, [moderation.itemId]);
+    const itemColumn = moderation.marketplace ? 'marketplace_item_id' : 'lost_found_item_id';
+    await db.query(
+      `UPDATE item_reports
+          SET status = 'actioned', reviewed_at = now(), reviewed_by = $2
+        WHERE ${itemColumn} = $1 AND status = 'pending'`,
+      [moderation.itemId, req.user.id],
+    );
+  });
+
+  res.json({
+    success: true,
+    message: moderation.bannedUser
+      ? 'The account was banned and the reported post and its media were removed.'
+      : 'The reported post and its media were removed.',
+    banned_user: moderation.bannedUser,
+  });
+});
+
+module.exports = router;

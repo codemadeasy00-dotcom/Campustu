@@ -26,6 +26,7 @@ export default function AuthPage({ mode }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [cooldown, setCooldown] = useState(0)
+  const [conductAccepted, setConductAccepted] = useState(false)
 
   const thisYear = new Date().getFullYear()
   const years = Array.from({ length: 6 }, (_, i) => thisYear - i)
@@ -47,7 +48,12 @@ export default function AuthPage({ mode }) {
   const email = form.email.trim().toLowerCase()
 
   function buildSignupPayload() {
-    const payload = { email, full_name: form.full_name.trim(), display_name: form.display_name.trim() }
+    const payload = {
+      email,
+      full_name: form.full_name.trim(),
+      display_name: form.display_name.trim(),
+      conduct_accepted: conductAccepted,
+    }
     if (college?.isNew) {
       payload.new_college = { name: college.name.trim(), city: college.city.trim(), ...(college.state?.trim() ? { state: college.state.trim() } : {}) }
     } else if (college) {
@@ -61,6 +67,7 @@ export default function AuthPage({ mode }) {
 
   async function sendCode() {
     if (isSignup && !college) throw new Error('Choose your college, or add it if it is not listed')
+    if (isSignup && !conductAccepted) throw new Error('Accept the Code of Conduct before creating an account')
     const res = isSignup ? await authApi.signup(buildSignupPayload()) : await authApi.login({ email })
     setNotice(res.message)
     setCooldown(RESEND_SECONDS)
@@ -191,8 +198,21 @@ export default function AuthPage({ mode }) {
               </select>
             </Field>
 
+            <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                required
+                checked={conductAccepted}
+                onChange={(event) => setConductAccepted(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span>
+                I agree to the Code of Conduct. Explicit, abusive, fraudulent, or otherwise prohibited uploads may result in a permanent account ban and, where appropriate and lawful, referral to college authorities.
+              </span>
+            </label>
+
             {!sent ? (
-              <Button type="button" onClick={onSend} disabled={busy || !email || !form.full_name || !form.display_name} className="w-full">
+              <Button type="button" onClick={onSend} disabled={busy || !email || !form.full_name || !form.display_name || !conductAccepted} className="w-full">
                 {busy ? 'Sending code…' : 'Send me a code'}
               </Button>
             ) : (

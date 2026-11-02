@@ -7,7 +7,7 @@ import { Alert, Button, Field, PageLoading, inputClass } from '../components/ui.
 import { processAndCompressImage } from '../utils/imageCompressor.js'
 
 const MAX_PHOTOS = 5
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024 // same limit as the server
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024 // same limit as the server
 
 export default function NewListing() {
   const { user } = useAuth()
@@ -59,7 +59,7 @@ export default function NewListing() {
     const next = []
     for (const file of chosen.slice(0, room)) {
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setError(`${file.name} must be a JPEG, PNG or WebP image.`); continue }
-      if (file.size > MAX_PHOTO_BYTES) { setError(`${file.name} is larger than 8 MB.`); continue }
+      if (file.size > MAX_PHOTO_BYTES) { setError(`${file.name} is larger than 5 MB.`); continue }
       next.push(file)
     }
     if (chosen.length > room) setError(`You can add at most ${MAX_PHOTOS} photos.`)
@@ -69,7 +69,7 @@ export default function NewListing() {
     try {
       const processed = await Promise.all(next.map((file) => processAndCompressImage(file)))
       const oversizedIndex = processed.findIndex((file) => file.size > MAX_PHOTO_BYTES)
-      if (oversizedIndex !== -1) throw new Error(`${next[oversizedIndex].name} is still larger than 8 MB after compression.`)
+      if (oversizedIndex !== -1) throw new Error(`${next[oversizedIndex].name} is still larger than 5 MB after compression.`)
       setPhotos((p) => [...p, ...processed.map((file) => ({ file, url: URL.createObjectURL(file) }))])
     } catch (err) {
       setError(err.message || 'Could not process the selected photos.')
@@ -205,7 +205,7 @@ export default function NewListing() {
 
         <div>
           <span className="mb-1 block text-sm font-medium text-slate-700">
-            Photos <span className="text-red-600">*</span> <span className="font-normal text-slate-500">(1 to {MAX_PHOTOS}, up to 8 MB each)</span>
+            Photos <span className="text-red-600">*</span> <span className="font-normal text-slate-500">(1 to {MAX_PHOTOS}, up to 5 MB each)</span>
           </span>
           <div className="flex flex-wrap gap-3">
             {photos.map((p, i) => (
@@ -223,7 +223,7 @@ export default function NewListing() {
               </label>
             )}
           </div>
-          <p className="mt-1 text-xs text-slate-500">Photos are resized and location metadata is removed before upload.</p>
+          <p className="mt-1 text-xs text-slate-500">Photos are resized, stripped of location metadata, and screened by Hugging Face's automated moderation service before storage.</p>
         </div>
 
         <div className="flex items-center gap-3">

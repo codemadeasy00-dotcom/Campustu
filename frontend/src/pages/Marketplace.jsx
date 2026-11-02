@@ -6,6 +6,8 @@ import { getImageUrl } from '../lib/imageUrl.js'
 import { Alert, inputClass } from '../components/ui.jsx'
 import PageHero from '../components/PageHero.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
+import ReportItemButton from '../components/ReportItemButton.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
 
 const PAGE_SIZE = 12
 
@@ -22,9 +24,9 @@ function ListingSkeleton() {
   )
 }
 
-function ListingCard({ item, categoryName }) {
+function ListingCard({ item, categoryName, currentUserId }) {
   return (
-    <li>
+    <li className="space-y-1">
       <Link
         to={`/items/${item.id}`}
         className="surface-card interactive-card group flex h-full flex-col overflow-hidden"
@@ -48,11 +50,17 @@ function ListingCard({ item, categoryName }) {
           </div>
         </div>
       </Link>
+      {currentUserId !== item.seller.id && (
+        <div className="flex justify-end px-2">
+          <ReportItemButton itemId={item.id} itemType="marketplace" />
+        </div>
+      )}
     </li>
   )
 }
 
 export default function Marketplace() {
+  const { user } = useAuth()
   const [searchParams] = useSearchParams()
   const [metadata, setMetadata] = useState(null)
   const [metadataError, setMetadataError] = useState('')
@@ -243,7 +251,7 @@ export default function Marketplace() {
             {loading && <p role="status" className="mb-3 text-xs text-slate-500">Updating results…</p>}
             <ul className={`stagger-list grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 ${loading ? 'opacity-60' : ''}`}>
               {items.map((item) => (
-                <ListingCard key={item.id} item={item} categoryName={categoryNames.get(item.category_id)} />
+                <ListingCard key={item.id} item={item} categoryName={categoryNames.get(item.category_id)} currentUserId={user?.id} />
               ))}
             </ul>
           </>

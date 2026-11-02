@@ -194,3 +194,13 @@ export const lostFoundApi = {
       json: { claim_text: answerAttempt },
     }),
 }
+
+export const moderationApi = {
+  report: (payload) => request('/moderation/reports', { method: 'POST', json: payload }),
+  reports: () => request('/moderation/admin/reports'),
+  act: (reportId, action) =>
+    request(`/moderation/admin/reports/${encodeURIComponent(reportId)}`, {
+      method: 'PATCH',
+      json: { action },
+    }),
+}
