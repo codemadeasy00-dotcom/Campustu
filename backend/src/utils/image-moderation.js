@@ -3,6 +3,32 @@ const { AppError } = require('./errors');
 
 const NSFW_THRESHOLD = 0.75;
 
+function getProviderErrorMessage(status, responseBody) {
+  const detail = typeof responseBody === 'object' && responseBody !== null
+    ? responseBody.error || responseBody.message
+    : responseBody;
+  const safeDetail = typeof detail === 'string'
+    ? detail.replace(/hf_[A-Za-z0-9_-]+/g, '[redacted token]').slice(0, 500)
+    : '';
+  console.error(
+    `Image moderation provider returned HTTP ${status}${safeDetail ? `: ${safeDetail}` : ''}.`,
+  );
+
+  if (status === 401 || status === 403) {
+    return 'Hugging Face rejected the moderation credentials. Check that HF_ACCESS_TOKEN is valid and has Inference Providers permission, then redeploy the backend.';
+  }
+  if (status === 404) {
+    return 'The configured moderation model is unavailable to Hugging Face Inference Providers. Check IMAGE_MODERATION_MODEL in Render.';
+  }
+  if (status === 429) {
+    return 'Image moderation is rate-limited right now. Please wait a moment and try again.';
+  }
+  if (status === 503) {
+    return 'Hugging Face image moderation is unavailable or still loading the model. Please wait briefly and try again.';
+  }
+  return 'Image moderation is temporarily unavailable. Please try again later.';
+}
+
 async function assertImageIsAllowed(imageBuffer) {
   if (!config.hfAccessToken) {
     throw new AppError(503, 'Image moderation is not configured. Please try again later.', 'IMAGE_MODERATION_UNAVAILABLE');
@@ -28,8 +54,22 @@ async function assertImageIsAllowed(imageBuffer) {
   }
 
   if (!response.ok) {
-    console.error(`Image moderation provider returned HTTP ${response.status}.`);
-    throw new AppError(503, 'Image moderation is temporarily unavailable. Your photo was not uploaded.', 'IMAGE_MODERATION_UNAVAILABLE');
+    let responseBody = '';
+    try {
+      const bodyText = await response.text();
+      try {
+        responseBody = JSON.parse(bodyText);
+      } catch {
+        responseBody = bodyText;
+      }
+    } catch (error) {
+      console.error('Could not read the image moderation error response:', error.message);
+    }
+    throw new AppError(
+      503,
+      getProviderErrorMessage(response.status, responseBody),
+      'IMAGE_MODERATION_UNAVAILABLE',
+    );
   }
 
   let classifications;
@@ -74,4 +114,4 @@ async function assertPhotosAreAllowed(photos) {
   if (failed) throw failed.reason;
 }
 
-module.exports = { assertImageIsAllowed, assertPhotosAreAllowed };
+module.exports = { assertImageIsAllowed, assertPhotosAreAllowed, getProviderErrorMessage };

@@ -78,6 +78,27 @@ test('refuses to upload images when moderation credentials are missing', async (
   }
 });
 
+test('returns actionable errors for invalid provider credentials and unavailable models', async () => {
+  await withMockedFetch(
+    async () => new Response(JSON.stringify({ error: 'Invalid token hf_should_not_be_logged' }), { status: 401 }),
+    async () => {
+      await assert.rejects(assertImageIsAllowed(image), (error) => (
+        error.code === 'IMAGE_MODERATION_UNAVAILABLE'
+        && error.message.includes('Inference Providers permission')
+      ));
+    },
+  );
+  await withMockedFetch(
+    async () => new Response(JSON.stringify({ error: 'Model is loading' }), { status: 503 }),
+    async () => {
+      await assert.rejects(assertImageIsAllowed(image), (error) => (
+        error.code === 'IMAGE_MODERATION_UNAVAILABLE'
+        && error.message.includes('still loading')
+      ));
+    },
+  );
+});
+
 test('limits file size and rejects MIME or extension mismatches', async () => {
   const upload = createImageUpload(5);
   assert.equal(upload.limits.fileSize, 5 * 1024 * 1024);
