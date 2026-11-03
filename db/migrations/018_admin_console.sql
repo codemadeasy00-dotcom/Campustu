@@ -30,7 +30,7 @@ INSERT INTO system_controls (key, enabled, note) VALUES
   ('marketplace_read_only', false, 'Temporarily prevent marketplace changes')
 ON CONFLICT (key) DO NOTHING;
 
-CREATE TABLE admin_audit_logs (
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   admin_id    uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   action      text NOT NULL,
@@ -42,8 +42,8 @@ CREATE TABLE admin_audit_logs (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX admin_audit_logs_created_idx ON admin_audit_logs (created_at DESC);
-CREATE INDEX admin_audit_logs_target_idx ON admin_audit_logs (target_type, target_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS admin_audit_logs_created_idx ON admin_audit_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS admin_audit_logs_target_idx ON admin_audit_logs (target_type, target_id, created_at DESC);
 
 CREATE OR REPLACE FUNCTION prevent_admin_audit_log_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $$
@@ -52,10 +52,12 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS admin_audit_logs_immutable ON admin_audit_logs;
 CREATE TRIGGER admin_audit_logs_immutable
   BEFORE UPDATE OR DELETE ON admin_audit_logs
   FOR EACH ROW EXECUTE FUNCTION prevent_admin_audit_log_mutation();
 
+DROP TRIGGER IF EXISTS admin_audit_logs_no_truncate ON admin_audit_logs;
 CREATE TRIGGER admin_audit_logs_no_truncate
   BEFORE TRUNCATE ON admin_audit_logs
   FOR EACH STATEMENT EXECUTE FUNCTION prevent_admin_audit_log_mutation();
