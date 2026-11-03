@@ -20,6 +20,9 @@ function getProviderErrorMessage(status, responseBody) {
   if (status === 404) {
     return 'The configured moderation model is unavailable to Hugging Face Inference Providers. Check IMAGE_MODERATION_MODEL in Render.';
   }
+  if (status === 402) {
+    return 'Hugging Face image moderation has no remaining Inference Providers credits. Restore provider credits or configure a server-side moderation provider before uploading photos.';
+  }
   if (status === 429) {
     return 'Image moderation is rate-limited right now. Please wait a moment and try again.';
   }

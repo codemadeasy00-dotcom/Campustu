@@ -97,6 +97,15 @@ test('returns actionable errors for invalid provider credentials and unavailable
       ));
     },
   );
+  await withMockedFetch(
+    async () => new Response(JSON.stringify({ error: 'No remaining credits' }), { status: 402 }),
+    async () => {
+      await assert.rejects(assertImageIsAllowed(image), (error) => (
+        error.code === 'IMAGE_MODERATION_UNAVAILABLE'
+        && error.message.includes('no remaining Inference Providers credits')
+      ));
+    },
+  );
 });
 
 test('limits file size and rejects MIME or extension mismatches', async () => {

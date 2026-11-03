@@ -4,6 +4,7 @@ import CampusMap from '../components/CampusMap.jsx'
 import { Alert, inputClass } from '../components/ui.jsx'
 import { lostFoundApi, errorMessage } from '../services/api.js'
 import { processAndCompressImage } from '../utils/imageCompressor.js'
+import { checkImagesSafety } from '../utils/moderation.js'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 
 const DRAFT_STORAGE_KEY = 'campustu_lost_found_draft_v1'
@@ -19,6 +20,7 @@ const CATEGORIES = [
   'Other',
 ]
 const SUBMISSION_STEPS = [
+  { id: 'moderation', label: 'Screen photos on this device', detail: 'The first model download may take a little while.' },
   { id: 'duplicates', label: 'Check nearby reports', detail: 'Looking for a possible duplicate.' },
   { id: 'matching', label: 'Prepare visual matching', detail: 'The image model may take a while to load the first time.' },
   { id: 'publishing', label: 'Upload and publish', detail: 'Uploading your photos and saving the report.' },
@@ -115,6 +117,7 @@ export default function LostFoundNew() {
   const [allowDuplicate, setAllowDuplicate] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [moderationProgress, setModerationProgress] = useState('')
   const [modelLoading, setModelLoading] = useState(false)
   const [submitStep, setSubmitStep] = useState('')
   const [error, setError] = useState('')
@@ -228,6 +231,19 @@ export default function LostFoundNew() {
 
     setIsSubmitting(true)
     try {
+      if (photos.length > 0) {
+        setSubmitStep('moderation')
+        setModerationProgress('Loading the on-device image moderation model…')
+        const safety = await checkImagesSafety(
+          photos,
+          (current, total) => setModerationProgress(`Screening photo ${current} of ${total} on this device…`),
+        )
+        if (!safety.safe) {
+          setError(safety.reason)
+          return
+        }
+      }
+
       if (!allowDuplicate) {
         setSubmitStep('duplicates')
         const nearby = await lostFoundApi.nearby({
@@ -296,6 +312,7 @@ export default function LostFoundNew() {
     } finally {
       setIsSubmitting(false)
       setSubmitStep('')
+      setModerationProgress('')
     }
   }
 
@@ -489,7 +506,7 @@ export default function LostFoundNew() {
           <p className="mt-1 text-xs text-slate-500">
             {processingPhotos ? 'Preparing selected photos…' : `${photos.length} of ${MAX_PHOTOS} photos selected. The first photo is used for visual matching.`}
           </p>
-          <p className="mt-1 text-xs text-slate-500">Photos are screened by Hugging Face's automated moderation service before storage.</p>
+          <p className="mt-1 text-xs text-slate-500">Photos are screened on this device first, then checked by server-side moderation before storage.</p>
           <p className="mt-1 text-xs text-amber-700">Avoid photos that expose ID numbers or other sensitive personal information.</p>
           {photoPreviews.length > 0 && (
             <ul className="mt-3 flex flex-wrap gap-3">
@@ -532,13 +549,19 @@ export default function LostFoundNew() {
             Loading the AI image-matching model. The first download may take a little while; you can keep this page open.
           </p>
         )}
+        {moderationProgress && (
+          <p role="status" aria-live="polite" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-800">
+            {moderationProgress}
+          </p>
+        )}
         {embeddingWarning && <Alert kind="warn">{embeddingWarning} The report can continue publishing without visual matching.</Alert>}
         {isSubmitting && (
           <section role="status" aria-live="polite" aria-label="Publishing progress" className="rounded-xl border border-brand-100 bg-brand-50 p-4">
             <h2 className="font-bold text-brand-900">Publishing your report</h2>
             <ol className="mt-3 space-y-3">
               {SUBMISSION_STEPS.map((step, index) => {
-                const skipped = (step.id === 'duplicates' && allowDuplicate)
+                const skipped = (step.id === 'moderation' && photos.length === 0)
+                  || (step.id === 'duplicates' && allowDuplicate)
                   || (step.id === 'matching' && embeddingSkipped && currentSubmitStepIndex > index)
                 const complete = currentSubmitStepIndex > index && !skipped
                 const active = submitStep === step.id
@@ -555,7 +578,9 @@ export default function LostFoundNew() {
                         {active && <span className="ml-2 font-normal text-brand-700">In progress…</span>}
                       </span>
                       <span className="text-xs text-slate-600">
-                        {step.id === 'matching' && skipped && !photos.length
+                        {step.id === 'moderation' && skipped
+                          ? 'No photo selected.'
+                          : step.id === 'matching' && skipped && !photos.length
                           ? 'No photo selected.'
                           : step.id === 'matching' && skipped && embeddingWarning
                             ? 'Unavailable; publishing continues without a visual match.'

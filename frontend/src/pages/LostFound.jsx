@@ -6,6 +6,7 @@ import L from 'leaflet';
 import { lostFoundApi, errorMessage } from '../services/api.js';
 import { Alert, useToast } from '../components/ui.jsx';
 import { processAndCompressImage } from '../utils/imageCompressor.js';
+import { checkImagesSafety } from '../utils/moderation.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import PageHero from '../components/PageHero.jsx';
 import ItemPhoto from '../components/ItemPhoto.jsx';
@@ -316,6 +317,7 @@ export default function LostFound() {
   const [photos, setPhotos] = useState([]);
   const [photoPreviews, setPhotoPreviews] = useState([]);
   const [processingPhotos, setProcessingPhotos] = useState(false);
+  const [moderationProgress, setModerationProgress] = useState('');
   const photoPreviewsRef = React.useRef([]);
 
   // Default Campus Coordinates (DBATU Lonere)
@@ -508,6 +510,19 @@ export default function LostFound() {
     setPostingItem(true);
     let embeddingWarning = '';
     try {
+      if (photos.length > 0) {
+        setModerationProgress('Loading the on-device image moderation model…');
+        const safety = await checkImagesSafety(
+          photos,
+          (current, total) => setModerationProgress(`Screening photo ${current} of ${total} on this device…`),
+        );
+        if (!safety.safe) {
+          setPostError(safety.reason);
+          return;
+        }
+      }
+
+      setModerationProgress('');
       let embedding = null;
       if (photoPreviews.length > 0) {
         try {
@@ -561,6 +576,7 @@ export default function LostFound() {
         : errorMessage(err));
     } finally {
       setPostingItem(false);
+      setModerationProgress('');
     }
   };
 
@@ -1403,6 +1419,7 @@ export default function LostFound() {
             <h3 className="text-lg font-bold text-slate-900 mb-4">Report Lost / Found Item</h3>
             <form onSubmit={handlePostSubmit} className="space-y-4">
               {postError && <Alert>{postError}</Alert>}
+              {moderationProgress && <p role="status" aria-live="polite" className="text-sm text-sky-800">{moderationProgress}</p>}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
                 <select
