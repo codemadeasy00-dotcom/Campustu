@@ -17,7 +17,7 @@ export default function AuthPage({ mode }) {
   const redirectTo = location.state?.from || '/'
 
   const [sent, setSent] = useState(false) // has a code been requested yet?
-  const [form, setForm] = useState({ email: '', full_name: '', display_name: '', branch: '', branch_other: '', admission_year: '' })
+  const [form, setForm] = useState({ email: '', full_name: '', display_name: '', branch: '', branch_other: '', admission_year: '', roll_number: '' })
   const [college, setCollege] = useState(null)
   const [code, setCode] = useState('')
   const [showCode, setShowCode] = useState(false)
@@ -62,6 +62,7 @@ export default function AuthPage({ mode }) {
     if (form.branch === 'other') payload.branch_other = form.branch_other.trim()
     else if (form.branch) payload.branch_id = Number(form.branch)
     if (form.admission_year) payload.admission_year = Number(form.admission_year)
+    if (form.roll_number.trim()) payload.roll_number = form.roll_number.trim()
     return payload
   }
 
@@ -178,6 +179,9 @@ export default function AuthPage({ mode }) {
             </Field>
             <Field label="Display name" required hint="This is what other students see.">
               <input required minLength={2} maxLength={40} className={inputClass} value={form.display_name} onChange={set('display_name')} />
+            </Field>
+            <Field label="Roll number" hint="Optional. Helps admins find the right account when assisting you.">
+              <input maxLength={40} className={inputClass} value={form.roll_number} onChange={set('roll_number')} />
             </Field>
             <Field label="Branch">
               <select className={inputClass} value={form.branch} onChange={set('branch')}>

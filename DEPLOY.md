@@ -76,6 +76,11 @@ A paused project means your site is down until you un-pause it in the dashboard.
    the new model. Migration `016_lost_found_match_notifications.sql` stores notices for deferred scans;
    a high score never automatically removes a post. Migration `017_lost_found_duplicate_overrides.sql`
    records explanations and review flags when an owner proceeds after a high-confidence duplicate warning.
+   Migration `018_admin_console.sql` adds the admin-panel account/session fields, college metadata, emergency
+   controls, and immutable audit log. Existing databases should run `npm run db:migrate` before deploying
+   the updated backend. The admin console is available at `/admin` for accounts with the `admin` role;
+   account roll numbers are optional and can be collected during sign-up. Image screening currently runs
+   only in the browser, so its client-reported scores are not treated as an authoritative admin queue.
    Apply migrations before deploying the backend update. Migration `008_lost_found_report_details.sql`
    adds the optional report metadata used by the dedicated lost-and-found report page.
    Migration `009_lost_found_lifecycle_claims.sql` adds the eight-hour deletion rule, closed/resolved

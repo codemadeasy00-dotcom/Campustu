@@ -13,7 +13,7 @@ import LostFound from './pages/LostFound.jsx'
 import LostFoundNew from './pages/LostFoundNew.jsx'
 import ProfileDashboard from './pages/ProfileDashboard.jsx'
 import Messages from './pages/Messages.jsx'
-import AdminModeration from './pages/AdminModeration.jsx'
+import AdminDashboard from './pages/AdminDashboard.jsx'
 
 function NotFound() {
   return (
@@ -29,6 +29,8 @@ const guard = (el) => <ProtectedRoute>{el}</ProtectedRoute>
 export default function App() {
   return (
     <Routes>
+      <Route path="/admin" element={guard(<AdminDashboard />)} />
+      <Route path="/admin/moderation" element={guard(<AdminDashboard />)} />
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/signup" element={<AuthPage mode="signup" />} />
@@ -44,7 +46,6 @@ export default function App() {
         <Route path="/messages" element={guard(<Messages />)} />
         <Route path="/messages/:conversationId" element={guard(<Messages />)} />
         <Route path="/wishlist" element={guard(<Wishlist />)} />
-        <Route path="/admin/moderation" element={guard(<AdminModeration />)} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

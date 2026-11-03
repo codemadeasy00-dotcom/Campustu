@@ -18,6 +18,7 @@ const { createImageUpload } = require('../utils/image-upload');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 const storage = require('../storage');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
+const { requireImageUploadsEnabled } = require('../middleware/system-controls');
 const {
   requireAuth,
   requireActive,
@@ -79,6 +80,7 @@ const signupSchema = z
     branch_other: z.preprocess(blankToUndefined, z.string().trim().min(2).max(60).optional()),
 
     admission_year: optionalInt(2000, 2100),
+      roll_number: z.preprocess(blankToUndefined, z.string().trim().min(2).max(40).optional()),
     conduct_accepted: z.literal(true),
 
   })
@@ -263,7 +265,15 @@ router.post('/signup', async (req, res) => {
 
   }
 
-  const cols = [b.full_name, b.display_name, college.id, b.branch_id ?? null, b.branch_other ?? null, b.admission_year ?? null]
+  const cols = [
+    b.full_name,
+    b.display_name,
+    college.id,
+    b.branch_id ?? null,
+    b.branch_other ?? null,
+    b.admission_year ?? null,
+    b.roll_number?.toUpperCase() ?? null,
+  ]
 
 
 
@@ -271,8 +281,8 @@ router.post('/signup', async (req, res) => {
 
     await query(
 
-      `INSERT INTO users (email, full_name, display_name, college_id, branch_id, branch_other, admission_year, conduct_accepted_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, now())`,
+      `INSERT INTO users (email, full_name, display_name, college_id, branch_id, branch_other, admission_year, roll_number, conduct_accepted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())`,
 
       [b.email, ...cols]
 
@@ -284,7 +294,7 @@ router.post('/signup', async (req, res) => {
 
     await query(
 
-      `UPDATE users SET full_name = $2, display_name = $3, college_id = $4, branch_id = $5, branch_other = $6, admission_year = $7,
+      `UPDATE users SET full_name = $2, display_name = $3, college_id = $4, branch_id = $5, branch_other = $6, admission_year = $7, roll_number = $8,
                         conduct_accepted_at = now()
         WHERE id = $1`,
 
@@ -376,7 +386,7 @@ router.post('/verify', async (req, res) => {
 
       WHERE lower(email) = $1 AND deleted_at IS NULL AND status <> 'banned'
 
-      RETURNING id`,
+      RETURNING id, auth_version`,
 
     [addr]
 
@@ -386,7 +396,7 @@ router.post('/verify', async (req, res) => {
 
 
 
-  setSessionCookie(res, signToken(u.rows[0].id));
+  setSessionCookie(res, signToken(u.rows[0].id, u.rows[0].auth_version));
   res.json({ user: await publicProfile(u.rows[0].id) });
 });
 
@@ -495,7 +505,7 @@ router.patch('/profile/college', requireAuth, requireActive, async (req, res) =>
   res.json({ success: true, user: await publicProfile(req.user.id) });
 });
 
-router.patch('/profile/avatar', requireAuth, requireActive, avatarUpload.single('avatar'), async (req, res) => {
+router.patch('/profile/avatar', requireAuth, requireActive, requireImageUploadsEnabled, avatarUpload.single('avatar'), async (req, res) => {
   if (!req.file) throw new AppError(400, 'Choose an image to upload.');
 
   const image = await processPhoto(req.file.buffer);

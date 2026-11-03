@@ -3,7 +3,7 @@ const config = require('../config');
 const { query } = require('../db');
 const { AppError } = require('../utils/errors');
 
-const USER_COLUMNS = 'id, email, full_name, display_name, role, status, branch_id, admission_year, college_id';
+const USER_COLUMNS = 'id, email, full_name, display_name, role, status, branch_id, admission_year, college_id, auth_version';
 const SESSION_COOKIE_NAME = 'campustu_session';
 const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
@@ -47,7 +47,7 @@ async function requireAuth(req, res, next) {
     [payload.sub]
   );
   const user = rows[0];
-  if (!user || user.status === 'banned') {
+  if (!user || user.status === 'banned' || Number(payload.ver || 0) !== Number(user.auth_version)) {
     clearSessionCookie(res);
     throw new AppError(401, 'Please log in');
   }
@@ -76,8 +76,8 @@ function requireAdmin(req, _res, next) {
   next();
 }
 
-function signToken(userId) {
-  return jwt.sign({ sub: userId }, config.jwtSecret, {
+function signToken(userId, authVersion = 0) {
+  return jwt.sign({ sub: userId, ver: authVersion }, config.jwtSecret, {
     algorithm: 'HS256',
     expiresIn: config.jwtExpiresIn,
   });

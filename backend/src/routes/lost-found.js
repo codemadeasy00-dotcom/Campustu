@@ -11,6 +11,7 @@ const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 const { createImageUpload } = require('../utils/image-upload');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
+const { requireImageUploadsEnabled } = require('../middleware/system-controls');
 
 const DUPLICATE_WARNING_THRESHOLD = 0.88;
 const DUPLICATE_SUGGESTION_THRESHOLD = 0.70;
@@ -693,7 +694,7 @@ router.delete('/:id', requireActive, async (req, res, next) => {
 });
 
 // POST /lost-found - Create a new lost or found listing
-router.post('/', requireActive, requireCollege, upload.array('photos', config.maxPhotosPerItem), async (req, res) => {
+router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, upload.array('photos', config.maxPhotosPerItem), async (req, res) => {
   const data = createItemSchema.parse(req.body);
   assertUserTextIsAllowed([
     data.title,

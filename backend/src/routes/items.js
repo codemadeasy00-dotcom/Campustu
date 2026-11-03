@@ -9,8 +9,10 @@ const { assertUserTextIsAllowed } = require('../utils/text-moderation')
 const { createImageUpload } = require('../utils/image-upload')
 const { AppError } = require('../utils/errors')
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth')
+const { requireImageUploadsEnabled, requireMarketplaceWritable } = require('../middleware/system-controls')
 
 router.use(requireAuth)
+router.use(requireMarketplaceWritable)
 
 // Photos are held in memory only long enough to be checked, cleaned and saved.
 const upload = createImageUpload(config.maxPhotosPerItem)
@@ -111,7 +113,7 @@ async function loadItem(id, viewer) {
 }
 
 // POST /items  (multipart/form-data: fields + up to 5 files in "photos")
-router.post('/', requireActive, requireCollege, upload.array('photos', config.maxPhotosPerItem), async (req, res) => {
+router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, upload.array('photos', config.maxPhotosPerItem), async (req, res) => {
   const data = createSchema.parse(req.body)
   assertUserTextIsAllowed([data.title, data.description, data.preferred_place])
   const files = req.files || []

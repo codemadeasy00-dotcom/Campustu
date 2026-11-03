@@ -213,3 +213,35 @@ export const moderationApi = {
       json: { action },
     }),
 }
+
+export const adminApi = {
+  dashboard: () => request('/api/admin/dashboard'),
+  reports: () => request('/api/admin/reports'),
+  searchUsers: (q) => request(`/api/admin/users?q=${encodeURIComponent(q)}`),
+  user: (id) => request(`/api/admin/users/${encodeURIComponent(id)}`),
+  banUser: (id, reason) => request(`/api/admin/users/${encodeURIComponent(id)}/ban`, {
+    method: 'POST',
+    json: { reason },
+  }),
+  setUserStatus: (id, status, reason) => request(`/api/admin/users/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    json: { status, reason },
+  }),
+  colleges: () => request('/api/admin/colleges'),
+  setCollegeStatus: (id, status, reason) => request(`/api/admin/colleges/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    json: { status, reason },
+  }),
+  createCollege: (college) => request('/api/admin/colleges', { method: 'POST', json: college }),
+  controls: () => request('/api/admin/controls'),
+  updateControl: (key, enabled, note) => request(`/api/admin/controls/${encodeURIComponent(key)}`, {
+    method: 'PATCH',
+    json: { enabled, note },
+  }),
+  auditLogs: ({ limit = 50, offset = 0 } = {}) =>
+    request(`/api/admin/audit-logs?limit=${limit}&offset=${offset}`),
+  reviewReport: (id, action) => request(`/api/admin/reports/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    json: { action },
+  }),
+}

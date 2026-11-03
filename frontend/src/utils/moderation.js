@@ -1,4 +1,4 @@
-const EXPLICIT_LABELS = new Set(['porn', 'hentai'])
+const EXPLICIT_LABELS = new Set(['porn', 'hentai', 'sex', 'land', 'gand', 'sexy', 'nsfw', 'erotic', 'nude', 'nudity', 'sexual activity', 'sexual content', 'ladki'])
 const REJECTION_THRESHOLD = 0.6
 
 let modelPromise

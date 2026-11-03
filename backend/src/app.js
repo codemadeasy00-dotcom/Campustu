@@ -56,6 +56,7 @@ app.use('/api/colleges', require('./routes/colleges'));
 app.use('/api/me/college', require('./routes/me-college'));
 app.use('/items', require('./routes/items'));
 app.use('/moderation', require('./routes/moderation'));
+app.use('/api/admin', require('./routes/admin'));
 app.use('/conversations', conversationsRouter);
 
 app.use('/kits', kitsRouter);

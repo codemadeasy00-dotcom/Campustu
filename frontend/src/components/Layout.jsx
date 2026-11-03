@@ -319,9 +319,9 @@ export default function Layout() {
                       <span>Profile &amp; settings</span>
                     </Link>
                     {user.role === 'admin' && (
-                      <Link role="menuitem" to="/admin/moderation" onClick={() => setMoreOpen(false)} className="site-more-link">
+                      <Link role="menuitem" to="/admin" onClick={() => setMoreOpen(false)} className="site-more-link">
                         <span aria-hidden="true" className="site-more-icon">⚑</span>
-                        <span>Content moderation</span>
+                        <span>Admin console</span>
                       </Link>
                     )}
                   </div>
@@ -453,7 +453,7 @@ export default function Layout() {
             <NavLink to="/my-listings" className={navClass}>My listings</NavLink>
             <NavLink to="/wishlist" className={navClass}>Wishlist</NavLink>
             <NavLink to="/lost-found/report" className={navClass}>Report item</NavLink>
-            {user.role === 'admin' && <NavLink to="/admin/moderation" className={navClass}>Moderation</NavLink>}
+            {user.role === 'admin' && <NavLink to="/admin" className={navClass}>Admin</NavLink>}
           </nav>
         )}
 
@@ -483,8 +483,8 @@ export default function Layout() {
                     </Link>
                   ))}
                   {user.role === 'admin' && (
-                    <Link to="/admin/moderation" className="site-mobile-quicklink">
-                      <span aria-hidden="true">⚑</span>Content moderation
+                    <Link to="/admin" className="site-mobile-quicklink">
+                      <span aria-hidden="true">⚑</span>Admin console
                     </Link>
                   )}
                 </div>

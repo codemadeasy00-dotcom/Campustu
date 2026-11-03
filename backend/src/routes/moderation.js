@@ -23,6 +23,24 @@ const reportSchema = z.object({
 const actionSchema = z.object({ action: z.enum(['dismiss', 'remove', 'ban']) });
 
 router.use(requireAuth);
+
+async function writeAudit(db, req, action, targetType, targetId, details = {}) {
+  await db.query(
+    `INSERT INTO admin_audit_logs
+       (admin_id, action, target_type, target_id, details, ip_address, user_agent)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+    [
+      req.user.id,
+      action,
+      targetType,
+      String(targetId),
+      JSON.stringify(details),
+      req.ip || null,
+      req.get('user-agent') || null,
+    ],
+  );
+}
+
 router.post('/reports', limiter, requireActive, requireCollege, async (req, res) => {
   const { item_type: type, item_id: itemId, reason } = reportSchema.parse(req.body);
   assertUserTextIsAllowed([reason]);
@@ -110,20 +128,24 @@ router.patch('/admin/duplicate-overrides/:id', requireAdmin, async (req, res) =>
   const { action } = z.object({ action: z.enum(['dismiss', 'remove']) }).parse(req.body);
 
   if (action === 'dismiss') {
-    const { rows: [item] } = await query(
-      `UPDATE lost_found_items
-          SET flagged_for_review = false
-        WHERE id = $1 AND flagged_for_review = true
-        RETURNING id`,
-      [itemId],
-    );
+    const { rows: [item] } = await tx(async (db) => {
+      const { rows: [updated] } = await db.query(
+        `UPDATE lost_found_items
+            SET flagged_for_review = false
+          WHERE id = $1 AND flagged_for_review = true
+          RETURNING id`,
+        [itemId],
+      );
+      if (updated) await writeAudit(db, req, 'clear_duplicate_override_flag', 'lost_found', itemId);
+      return { rows: [updated] };
+    });
     if (!item) throw new AppError(404, 'Flagged duplicate override not found.');
     return res.json({ success: true, message: 'Review flag cleared; the original reason remains in the audit record.' });
   }
 
   await tx(async (db) => {
     const { rows: [item] } = await db.query(
-      `SELECT id
+      `SELECT id, user_id
          FROM lost_found_items
         WHERE id = $1 AND flagged_for_review = true AND lifecycle_status = 'active'
         FOR UPDATE`,
@@ -146,6 +168,7 @@ router.patch('/admin/duplicate-overrides/:id', requireAdmin, async (req, res) =>
       [itemId],
     );
     await db.query('DELETE FROM lost_found_photos WHERE item_id = $1', [itemId]);
+    await writeAudit(db, req, 'remove_duplicate_override_post', 'lost_found', itemId, { user_id: item.user_id });
   });
 
   const mediaCleanupPending = (await processQueuedMediaCleanup()) > 0;
@@ -157,13 +180,17 @@ router.patch('/admin/reports/:id', requireAdmin, async (req, res) => {
   const { action } = actionSchema.parse(req.body);
 
   if (action === 'dismiss') {
-    const { rows: [report] } = await query(
+    const { rows: [report] } = await tx(async (db) => {
+      const { rows: [updated] } = await db.query(
       `UPDATE item_reports
           SET status = 'dismissed', reviewed_at = now(), reviewed_by = $2
         WHERE id = $1 AND status = 'pending'
         RETURNING id`,
       [reportId, req.user.id],
-    );
+      );
+      if (updated) await writeAudit(db, req, 'dismiss_report', 'item_report', reportId);
+      return { rows: [updated] };
+    });
     if (!report) throw new AppError(404, 'Pending report not found.');
     return res.json({ success: true, message: 'Report dismissed.' });
   }
@@ -203,10 +230,53 @@ router.patch('/admin/reports/:id', requireAdmin, async (req, res) => {
       }
       await db.query(
         `UPDATE users
-            SET status = 'banned', frozen_reason = 'Account banned after content moderation review'
+            SET status = 'banned',
+                frozen_reason = 'Account banned after content moderation review',
+                auth_version = auth_version + 1
           WHERE id = $1`,
         [offender.id],
       );
+      const { rows: marketplacePhotos } = await db.query(
+        `SELECT p.storage_key FROM item_photos p
+          JOIN items i ON i.id = p.item_id
+         WHERE i.seller_id = $1 AND i.status IN ('available', 'reserved')`,
+        [offender.id],
+      );
+      const { rows: lostFoundPhotos } = await db.query(
+        `SELECT p.storage_key FROM lost_found_photos p
+          JOIN lost_found_items lif ON lif.id = p.item_id
+         WHERE lif.user_id = $1 AND lif.lifecycle_status = 'active'`,
+        [offender.id],
+      );
+      await enqueueCleanup(db, [...marketplacePhotos, ...lostFoundPhotos].map((photo) => photo.storage_key));
+      await db.query(
+        `UPDATE items SET status = 'removed', removed_reason = 'Owner account banned', updated_at = now()
+          WHERE seller_id = $1 AND status IN ('available', 'reserved')`,
+        [offender.id],
+      );
+      await db.query(
+        `UPDATE lost_found_items
+            SET lifecycle_status = 'removed', moderation_reason = 'Owner account banned', updated_at = now()
+          WHERE user_id = $1 AND lifecycle_status = 'active'`,
+        [offender.id],
+      );
+      await db.query(
+        `UPDATE item_claims SET status = 'rejected', reviewed_at = now()
+          WHERE status = 'pending'
+            AND item_id IN (SELECT id FROM lost_found_items WHERE user_id = $1)`,
+        [offender.id],
+      );
+      await db.query(
+        `DELETE FROM item_photos
+          WHERE item_id IN (SELECT id FROM items WHERE seller_id = $1 AND status = 'removed')`,
+        [offender.id],
+      );
+      await db.query(
+        `DELETE FROM lost_found_photos
+          WHERE item_id IN (SELECT id FROM lost_found_items WHERE user_id = $1 AND lifecycle_status = 'removed')`,
+        [offender.id],
+      );
+      await writeAudit(db, req, 'ban_user', 'user', offender.id, { report_id: reportId });
       bannedUser = true;
     }
 
@@ -231,6 +301,14 @@ router.patch('/admin/reports/:id', requireAdmin, async (req, res) => {
       );
     }
 
+    await writeAudit(
+      db,
+      req,
+      action === 'ban' ? 'ban_user_from_report' : 'remove_reported_post',
+      marketplace ? 'marketplace' : 'lost_found',
+      itemId,
+      { report_id: reportId, user_id: item.owner_id, banned_user: bannedUser },
+    );
     return { itemId, photoTable, photos: photos.map((photo) => photo.storage_key), marketplace, bannedUser };
   });
 
@@ -251,13 +329,17 @@ router.patch('/admin/reports/:id', requireAdmin, async (req, res) => {
       [moderation.itemId, req.user.id],
     );
   });
+  const mediaCleanupPending = moderation.bannedUser
+    ? (await processQueuedMediaCleanup()) > 0
+    : false;
 
   res.json({
     success: true,
     message: moderation.bannedUser
-      ? 'The account was banned and the reported post and its media were removed.'
+      ? 'The account was banned and all active posts were removed.'
       : 'The reported post and its media were removed.',
     banned_user: moderation.bannedUser,
+    media_cleanup_pending: mediaCleanupPending,
   });
 });
 
