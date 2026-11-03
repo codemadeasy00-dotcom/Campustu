@@ -15,6 +15,7 @@ const { sendOtpEmail } = require('../email');
 
 const { processPhoto } = require('../utils/images');
 const { createImageUpload } = require('../utils/image-upload');
+const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 const storage = require('../storage');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const {
@@ -225,6 +226,14 @@ async function issueOtp(addr, purpose) {
 router.post('/signup', async (req, res) => {
 
   const b = signupSchema.parse(req.body)
+  assertUserTextIsAllowed([
+    b.full_name,
+    b.display_name,
+    b.branch_other,
+    b.new_college?.name,
+    b.new_college?.city,
+    b.new_college?.state,
+  ])
 
 
 

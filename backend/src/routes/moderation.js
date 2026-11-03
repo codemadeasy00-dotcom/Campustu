@@ -6,6 +6,7 @@ const { query, tx } = require('../db');
 const { AppError } = require('../utils/errors');
 const { requireAuth, requireActive, requireAdmin, requireCollege } = require('../middleware/auth');
 const storage = require('../storage');
+const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -23,6 +24,7 @@ const actionSchema = z.object({ action: z.enum(['dismiss', 'remove', 'ban']) });
 router.use(requireAuth);
 router.post('/reports', limiter, requireActive, requireCollege, async (req, res) => {
   const { item_type: type, item_id: itemId, reason } = reportSchema.parse(req.body);
+  assertUserTextIsAllowed([reason]);
   const target = type === 'marketplace'
     ? {
       table: 'items',

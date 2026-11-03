@@ -5,6 +5,7 @@ const config = require('../config');
 const { query, tx } = require('../db');
 const { AppError } = require('../utils/errors');
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
+const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -188,6 +189,7 @@ router.get('/:id/messages', async (req, res) => {
 router.post('/:id/messages', requireActive, async (req, res) => {
   const conversationId = idSchema.parse(req.params.id);
   const { body } = messageSchema.parse(req.body);
+  assertUserTextIsAllowed([body]);
   const { rows: [message] } = await tx(async (db) => {
     const { rows: [conversation] } = await db.query(
       'SELECT id FROM conversations WHERE id = $1 AND (user_a = $2 OR user_b = $2) FOR UPDATE',

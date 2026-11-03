@@ -31,7 +31,7 @@ See `../DEPLOY.md` (free-tier plan: Supabase + Render + Brevo).
 4. `npm run db:init`          (new empty database: base schema + migrations). Existing database: `npm run db:migrate`
 5. `npm run db:seed`          (general branches, categories, item types), then add your college: see DEPLOY.md Step 4.
 6. `npm run dev`
-7. Uploads require valid JPEG, PNG, or WebP images no larger than 5 MB. Profile, Lost & Found, and marketplace forms run an on-device image check; it is client-side and can be bypassed.
+7. Uploads require valid JPEG, PNG, or WebP images no larger than 5 MB. Profile, Lost & Found, and marketplace forms run an on-device image check; it is client-side and can be bypassed. Lost & Found visual matching uses MobileNet and needs a one-time browser model download. Server endpoints screen user-submitted text against word lists for English, Arabic, German, Spanish, French, Hindi, Korean, Russian, Mandarin Chinese, and Brazilian Portuguese, and reject unsupported writing systems. Word lists cannot guarantee detection of every phrase or evasion in every language.
 8. Sign up, accept the Code of Conduct, read the OTP from the server console (no SMTP configured in development),
    verify, then `npm run make-admin -- you@example.com` for your own account.
 
@@ -47,7 +47,7 @@ See `../DEPLOY.md` (free-tier plan: Supabase + Render + Brevo).
 | POST | /auth/logout | no | Clears the HttpOnly session cookie |
 | GET | /auth/me | session cookie | profile, college, trust, derived current_semester |
 | GET | /items?limit= | Bearer | newest available listings at YOUR college |
-| POST | /items | session cookie, active | multipart: title, condition, price, item_type_id or category_id, optional description/branch_id/semester/preferred_place, 1-5 JPEG/PNG/WebP files in `photos` (5 MB each; images are validated and re-encoded before storage) |
+| POST | /items | session cookie, active | multipart: title, condition, price, item_type_id or category_id, optional description/branch_id/semester/preferred_place, 1-5 JPEG/PNG/WebP files in `photos` (5 MB each; images are validated and re-encoded before storage; text is moderated server-side) |
 | POST | /moderation/reports | session cookie, active | JSON: item_type (`marketplace` or `lost_found`), item_id, reason |
 | GET | /moderation/admin/reports | admin | Pending content reports |
 | PATCH | /moderation/admin/reports/:id | admin | JSON action: `dismiss`, `remove`, or `ban`; removal also deletes stored photos |

@@ -5,6 +5,7 @@ const config = require('../config')
 const { query, tx } = require('../db')
 const storage = require('../storage')
 const { processPhoto } = require('../utils/images')
+const { assertUserTextIsAllowed } = require('../utils/text-moderation')
 const { createImageUpload } = require('../utils/image-upload')
 const { AppError } = require('../utils/errors')
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth')
@@ -112,6 +113,7 @@ async function loadItem(id, viewer) {
 // POST /items  (multipart/form-data: fields + up to 5 files in "photos")
 router.post('/', requireActive, requireCollege, upload.array('photos', config.maxPhotosPerItem), async (req, res) => {
   const data = createSchema.parse(req.body)
+  assertUserTextIsAllowed([data.title, data.description, data.preferred_place])
   const files = req.files || []
   if (files.length < 1) throw new AppError(400, 'Add at least one photo')
 

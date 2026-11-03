@@ -14,6 +14,7 @@
 const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const { pool } = require('../db');
+const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 
 const router = express.Router();
 
@@ -189,8 +190,9 @@ router.post('/suggest', suggestLimiter, async (req, res) => {
 
 // POST /api/colleges/suggest-direct - Direct student suggestion fallback
 router.post('/suggest-direct', async (req, res) => {
+  const { name, city, state } = req.body;
+  assertUserTextIsAllowed([name, city, state]);
   try {
-    const { name, city, state } = req.body;
     if (!name || !city) {
       return res.status(400).json({ error: 'Name and city are required' });
     }

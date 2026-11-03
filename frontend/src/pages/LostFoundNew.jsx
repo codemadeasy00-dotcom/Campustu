@@ -5,6 +5,7 @@ import { Alert, inputClass } from '../components/ui.jsx'
 import { lostFoundApi, errorMessage } from '../services/api.js'
 import { processAndCompressImage } from '../utils/imageCompressor.js'
 import { checkImagesSafety } from '../utils/moderation.js'
+import ItemPhoto from '../components/ItemPhoto.jsx'
 
 const DRAFT_STORAGE_KEY = 'campustu_lost_found_draft_v1'
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024
@@ -21,6 +22,7 @@ const CATEGORIES = [
 const SUBMISSION_STEPS = [
   { id: 'moderation', label: 'Screen photos on this device', detail: 'The first model download may take a little while.' },
   { id: 'duplicates', label: 'Check nearby reports', detail: 'Looking for a possible duplicate.' },
+  { id: 'matching', label: 'Compare item photos', detail: 'The visual-matching model may take a little while to load the first time.' },
   { id: 'publishing', label: 'Upload and publish', detail: 'Uploading your photos and saving the report.' },
 ]
 
@@ -116,8 +118,11 @@ export default function LostFoundNew() {
   const [showPreview, setShowPreview] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [moderationProgress, setModerationProgress] = useState('')
+  const [modelLoading, setModelLoading] = useState(false)
   const [submitStep, setSubmitStep] = useState('')
   const [error, setError] = useState('')
+  const [embeddingWarning, setEmbeddingWarning] = useState('')
+  const [embeddingSkipped, setEmbeddingSkipped] = useState(false)
   const [postResult, setPostResult] = useState(null)
   const currentSubmitStepIndex = SUBMISSION_STEPS.findIndex((step) => step.id === submitStep)
 
@@ -213,6 +218,8 @@ export default function LostFoundNew() {
   const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
+    setEmbeddingWarning('')
+    setEmbeddingSkipped(false)
     if (form.latitude == null || form.longitude == null) {
       setError('Select the approximate item location on the map before publishing.')
       return
@@ -255,6 +262,24 @@ export default function LostFoundNew() {
         }
       }
 
+      let embedding = null
+      if (photoPreviews.length > 0) {
+        setSubmitStep('matching')
+        setModelLoading(true)
+        try {
+          const { getImageEmbedding } = await import('../utils/embedder.js')
+          embedding = await getImageEmbedding(photoPreviews[0])
+        } catch (modelError) {
+          console.error('Could not generate visual embedding:', modelError)
+          setEmbeddingWarning(`Visual matching is unavailable: ${errorMessage(modelError)}.`)
+          setEmbeddingSkipped(true)
+        } finally {
+          setModelLoading(false)
+        }
+      } else {
+        setEmbeddingSkipped(true)
+      }
+
       setSubmitStep('publishing')
       const payload = new FormData()
       for (const [key, value] of Object.entries(form)) {
@@ -267,6 +292,7 @@ export default function LostFoundNew() {
       } else {
         payload.set('radius_meters', '0')
       }
+      if (embedding) payload.append('embedding', JSON.stringify(embedding))
       photos.forEach((photo) => payload.append('photos', photo))
 
       const result = await lostFoundApi.create(payload)
@@ -293,7 +319,29 @@ export default function LostFoundNew() {
           <span aria-hidden="true" className="text-4xl">✓</span>
           <h1 className="mt-2 text-2xl font-extrabold text-brand-700">Post published</h1>
           <p className="mt-2 text-sm text-slate-600">Your {form.status} item is now visible to students at your college.</p>
+          {embeddingWarning && <p role="status" className="mt-3 text-left"><Alert kind="warn">{embeddingWarning} This report was published without visual matching.</Alert></p>}
         </div>
+        {postResult.potential_matches?.length > 0 && (
+          <section className="mt-6 border-t border-brand-100 pt-5">
+            <h2 className="font-bold text-brand-700">Potential similar items</h2>
+            <p className="mt-1 text-xs text-slate-600">These photos look similar. Verify details before taking action.</p>
+            <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+              {postResult.potential_matches.map((match) => (
+                <li key={match.id} className="overflow-hidden rounded-xl border border-brand-100 bg-white">
+                  <ItemPhoto src={match.photo} alt={match.title} className="h-36 w-full object-cover" />
+                  <div className="p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase text-slate-500">{match.status}</span>
+                      <span className="text-xs text-slate-500">{Math.round(match.similarity_score * 100)}% visual similarity</span>
+                    </div>
+                    <h3 className="mt-2 font-bold text-slate-900">{match.title}</h3>
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-600">{match.description}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <div className="mt-6 flex justify-center">
           <Link to="/lost-found" className="rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white hover:bg-brand-600">
             Back to Lost &amp; Found
@@ -452,7 +500,7 @@ export default function LostFoundNew() {
           <label className="block text-sm font-semibold text-slate-700" htmlFor="lost-found-report-photo">Photos <span className="font-normal text-slate-500">(optional, up to {MAX_PHOTOS}; 5 MB each)</span></label>
           <input id="lost-found-report-photo" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={processingPhotos || isSubmitting || photos.length >= MAX_PHOTOS} onChange={handlePhotoChange} className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-700 disabled:opacity-60" />
           <p className="mt-1 text-xs text-slate-500">
-            {processingPhotos ? 'Preparing selected photos…' : `${photos.length} of ${MAX_PHOTOS} photos selected.`}
+            {processingPhotos ? 'Preparing selected photos…' : `${photos.length} of ${MAX_PHOTOS} photos selected. The first photo is compared with opposite-status reports.`}
           </p>
           <p className="mt-1 text-xs text-slate-500">Photos are screened on this device before upload.</p>
           <p className="mt-1 text-xs text-amber-700">Avoid photos that expose ID numbers or other sensitive personal information.</p>
@@ -497,6 +545,12 @@ export default function LostFoundNew() {
             {moderationProgress}
           </p>
         )}
+        {modelLoading && (
+          <p role="status" aria-live="polite" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-800">
+            Loading the on-device visual-matching model. The first download may take a little while.
+          </p>
+        )}
+        {embeddingWarning && <Alert kind="warn">{embeddingWarning} The report can still be published without visual matching.</Alert>}
         {isSubmitting && (
           <section role="status" aria-live="polite" aria-label="Publishing progress" className="rounded-xl border border-brand-100 bg-brand-50 p-4">
             <h2 className="font-bold text-brand-900">Publishing your report</h2>
@@ -504,6 +558,7 @@ export default function LostFoundNew() {
               {SUBMISSION_STEPS.map((step, index) => {
                 const skipped = (step.id === 'moderation' && photos.length === 0)
                   || (step.id === 'duplicates' && allowDuplicate)
+                  || (step.id === 'matching' && embeddingSkipped && currentSubmitStepIndex > index)
                 const complete = currentSubmitStepIndex > index && !skipped
                 const active = submitStep === step.id
                 return (
@@ -519,7 +574,13 @@ export default function LostFoundNew() {
                         {active && <span className="ml-2 font-normal text-brand-700">In progress…</span>}
                       </span>
                       <span className="text-xs text-slate-600">
-                        {step.id === 'moderation' && skipped ? 'No photo selected.' : step.detail}
+                        {step.id === 'moderation' && skipped
+                          ? 'No photo selected.'
+                          : step.id === 'matching' && skipped && !photos.length
+                            ? 'No photo selected.'
+                            : step.id === 'matching' && skipped && embeddingWarning
+                              ? 'Unavailable; publishing continues without visual matches.'
+                              : step.detail}
                       </span>
                     </span>
                   </li>
@@ -532,9 +593,11 @@ export default function LostFoundNew() {
           <button type="submit" disabled={isSubmitting || processingPhotos} className="flex-1 rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-brand-600 disabled:cursor-wait disabled:opacity-60">
             {processingPhotos
               ? 'Preparing photos…'
-              : isSubmitting
-                ? 'Publishing…'
-                : `Publish ${form.status} item`}
+              : modelLoading
+                ? 'Loading visual model…'
+                : isSubmitting
+                  ? 'Publishing…'
+                  : `Publish ${form.status} item`}
           </button>
           <button type="button" onClick={() => navigate('/lost-found')} disabled={isSubmitting} className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Cancel</button>
         </div>
