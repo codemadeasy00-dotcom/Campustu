@@ -21,10 +21,9 @@ const CATEGORIES = [
 ]
 const SUBMISSION_STEPS = [
   { id: 'moderation', label: 'Screen photos on this device', detail: 'The first model download may take a little while.' },
-  { id: 'duplicates', label: 'Check nearby reports', detail: 'Looking for a possible duplicate.' },
   { id: 'matching', label: 'Compare item photos', detail: 'The visual-matching model may take a little while to load the first time.' },
   { id: 'publishing', label: 'Upload and publish', detail: 'Uploading your photos and saving the report.' },
-]
+];
 
 function localDateTimeValue(date = new Date()) {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -96,13 +95,6 @@ function draftFields(form) {
   }
 }
 
-function looksLikeSameItem(left, right) {
-  const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-  const first = normalize(left)
-  const second = normalize(right)
-  return first.length >= 4 && second.length >= 4 && (first === second || first.includes(second) || second.includes(first))
-}
-
 export default function LostFoundNew() {
   const navigate = useNavigate()
   const [draftState] = useState(readDraft)
@@ -115,6 +107,7 @@ export default function LostFoundNew() {
   const [processingPhotos, setProcessingPhotos] = useState(false)
   const [duplicateWarning, setDuplicateWarning] = useState([])
   const [allowDuplicate, setAllowDuplicate] = useState(false)
+  const [skipReason, setSkipReason] = useState('')
   const [showPreview, setShowPreview] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [moderationProgress, setModerationProgress] = useState('')
@@ -148,6 +141,7 @@ export default function LostFoundNew() {
     setDraftReady(true)
     setDuplicateWarning([])
     setAllowDuplicate(false)
+    setSkipReason('')
   }
 
   const handlePhotoChange = async (event) => {
@@ -244,24 +238,6 @@ export default function LostFoundNew() {
         }
       }
 
-      if (!allowDuplicate) {
-        setSubmitStep('duplicates')
-        const nearby = await lostFoundApi.nearby({
-          lat: form.latitude,
-          lng: form.longitude,
-          radius: 300,
-          status: form.status,
-        })
-        const duplicates = nearby.items.filter((item) =>
-          item.category === form.category && looksLikeSameItem(item.title, form.title),
-        )
-        if (duplicates.length > 0) {
-          setDuplicateWarning(duplicates)
-          setIsSubmitting(false)
-          return
-        }
-      }
-
       let embedding = null
       if (photoPreviews.length > 0) {
         setSubmitStep('matching')
@@ -292,6 +268,10 @@ export default function LostFoundNew() {
       } else {
         payload.set('radius_meters', '0')
       }
+      if (allowDuplicate) {
+        payload.set('force_publish', 'true')
+        payload.set('skip_reason', skipReason)
+      }
       if (embedding) payload.append('embedding', JSON.stringify(embedding))
       photos.forEach((photo) => payload.append('photos', photo))
 
@@ -301,8 +281,18 @@ export default function LostFoundNew() {
       } catch (storageError) {
         console.error('Could not clear saved lost-and-found draft:', storageError)
       }
+      setDuplicateWarning([])
+      setAllowDuplicate(false)
+      setSkipReason('')
       setPostResult(result)
     } catch (submitError) {
+      if (submitError.code === 'DUPLICATE_WARNING') {
+        setDuplicateWarning(submitError.data?.potential_matches || [])
+        setAllowDuplicate(false)
+        setSkipReason('')
+        setError('')
+        return
+      }
       console.error('Could not publish lost-and-found post:', submitError)
       setError(errorMessage(submitError))
     } finally {
@@ -390,18 +380,44 @@ export default function LostFoundNew() {
 
       {duplicateWarning.length > 0 && (
         <section className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4" aria-labelledby="duplicate-warning-title">
-          <h2 id="duplicate-warning-title" className="font-bold text-amber-950">A similar post may already exist nearby</h2>
-          <ul className="mt-2 space-y-1 text-sm text-amber-900">
-            {duplicateWarning.map((item) => <li key={item.id}>{item.title} — {item.location_name}</li>)}
+          <h2 id="duplicate-warning-title" className="font-bold text-amber-950">A very similar post may already exist</h2>
+          <p className="mt-1 text-sm text-amber-900">Visual similarity is not proof that this is the same item. Review the existing post before deciding.</p>
+          <ul className="mt-3 space-y-2 text-sm text-amber-950">
+            {duplicateWarning.map((item) => (
+              <li key={item.id} className="flex items-center gap-3 rounded-lg bg-white/80 p-2">
+                {item.photo && <ItemPhoto src={item.photo} alt="" className="h-12 w-12 rounded object-cover" />}
+                <span>{item.title} · {Math.round(item.similarity_score * 100)}% visual similarity</span>
+              </li>
+            ))}
           </ul>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" onClick={() => { setAllowDuplicate(true); setDuplicateWarning([]) }} className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white">Continue to publishing</button>
+          <label className="mt-4 block text-sm font-semibold text-amber-950">
+            If this is a different item, explain how (at least 15 characters).
+            <textarea
+              value={skipReason}
+              onChange={(event) => setSkipReason(event.target.value)}
+              minLength={15}
+              maxLength={1000}
+              rows={2}
+              className={`${inputClass} mt-1`}
+              placeholder="For example, describe a distinctive mark, color, or location."
+            />
+          </label>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="submit"
+              form="lost-found-report-form"
+              onClick={() => setAllowDuplicate(true)}
+              disabled={skipReason.trim().length < 15 || isSubmitting}
+              className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+            >
+              Continue &amp; publish
+            </button>
             <button type="button" onClick={() => navigate('/lost-found')} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-950">Review Lost &amp; Found feed</button>
           </div>
         </section>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form id="lost-found-report-form" onSubmit={handleSubmit} className="space-y-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-sm font-semibold text-slate-700">Title *</span>

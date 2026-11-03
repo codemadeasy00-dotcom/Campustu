@@ -12,7 +12,10 @@ const { createImageUpload } = require('../utils/image-upload');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
 
+const DUPLICATE_WARNING_THRESHOLD = 0.88;
+const DUPLICATE_SUGGESTION_THRESHOLD = 0.70;
 const DEFERRED_DUPLICATE_SIMILARITY_THRESHOLD = 0.98;
+const MAX_DUPLICATE_OVERRIDES_PER_DAY = 3;
 
 const createRateLimiter = (limit) => rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -41,6 +44,11 @@ const createItemSchema = z.object({
   radius_meters: z.coerce.number().int().min(0).max(5000).default(0),
   where_is_it: z.preprocess((value) => value === '' ? undefined : value, z.enum(['with_me', 'security_desk', 'left_at_spot']).optional()),
   location_note: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().max(255).optional()),
+  force_publish: z.preprocess((value) => value === true || value === 'true', z.boolean().default(false)),
+  skip_reason: z.preprocess(
+    (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.string().trim().min(15).max(1000).optional(),
+  ),
   embedding: z.preprocess((value) => {
     if (value === '' || value === undefined) return undefined;
     if (typeof value !== 'string') return value;
@@ -270,7 +278,7 @@ router.get('/:id/match-image', requireActive, requireCollege, async (req, res, n
   }
 });
 
-// POST /lost-found/:id/match-scan - Save a deferred embedding and remove very high-confidence duplicates.
+// POST /lost-found/:id/match-scan - Save a deferred embedding and notify on a very high-confidence duplicate.
 router.post('/:id/match-scan', requireActive, requireCollege, async (req, res, next) => {
   try {
     const itemId = itemIdSchema.parse(req.params.id);
@@ -314,28 +322,16 @@ router.post('/:id/match-scan', requireActive, requireCollege, async (req, res, n
       const score = match
         ? Math.max(0, Math.min(1, Number(match.similarity_score)))
         : 0;
-      const isDuplicate = match && score >= DEFERRED_DUPLICATE_SIMILARITY_THRESHOLD;
+      const strongSimilarity = match && score >= DEFERRED_DUPLICATE_SIMILARITY_THRESHOLD;
 
       await db.query(
         `UPDATE lost_found_items
-            SET embedding = $2::vector,
-                lifecycle_status = CASE WHEN $3 THEN 'removed' ELSE lifecycle_status END,
-                moderation_reason = CASE WHEN $3
-                  THEN 'Automatically removed after a deferred visual scan found a same-category, same-status post with at least 98% visual similarity.'
-                  ELSE moderation_reason END,
-                updated_at = CASE WHEN $3 THEN now() ELSE updated_at END
+            SET embedding = $2::vector
           WHERE id = $1`,
-        [item.id, vectorString, Boolean(isDuplicate)],
+        [item.id, vectorString],
       );
 
-      if (!isDuplicate) return { already_scanned: false, removed: false };
-
-      const { rows: photos } = await db.query(
-        'SELECT storage_key FROM lost_found_photos WHERE item_id = $1',
-        [item.id],
-      );
-      await enqueueCleanup(db, photos.map((photo) => photo.storage_key));
-      await db.query('DELETE FROM lost_found_photos WHERE item_id = $1', [item.id]);
+      if (!strongSimilarity) return { already_scanned: false, match_detected: false };
       const { rows: [notification] } = await db.query(
         `INSERT INTO lost_found_match_notifications
            (owner_id, college_id, item_id, matched_item_id, item_title, matched_item_title, similarity_score)
@@ -345,13 +341,12 @@ router.post('/:id/match-scan', requireActive, requireCollege, async (req, res, n
       );
       return {
         already_scanned: false,
-        removed: true,
+        match_detected: true,
         notification_id: notification.id,
         match: { id: match.id, title: match.title, similarity_score: score },
       };
     });
 
-    if (result.removed) await cleanupAfterChange();
     res.json({ success: true, ...result });
   } catch (err) {
     next(err);
@@ -711,6 +706,7 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
     data.security_question,
     data.security_answer,
     data.dropoff_location,
+    data.skip_reason,
   ]);
   const itemId = crypto.randomUUID();
   const files = req.files || [];
@@ -725,20 +721,88 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
   const cleanedPhotos = await Promise.all(files.map((file) => processPhoto(file.buffer)));
   const keys = cleanedPhotos.map(() => `lost-found/${itemId}/${crypto.randomUUID()}.webp`);
   const storedKeys = [];
-  let matches = [];
+  let created;
 
   try {
     for (let index = 0; index < keys.length; index++) {
       storedKeys.push(await storage.save(keys[index], cleanedPhotos[index]));
     }
 
-    matches = await tx(async (db) => {
+    created = await tx(async (db) => {
+      let similarItems = [];
+      let acceptedSkipReason = null;
+      if (vectorString) {
+        const { rows } = await db.query(
+          `SELECT lif.id, lif.title, lif.description, lif.category, lif.status,
+                  lif.location_name, lif.created_at,
+                  (SELECT storage_key FROM lost_found_photos
+                    WHERE item_id = lif.id ORDER BY position LIMIT 1) AS photo_key,
+                  1 - (lif.embedding <=> $1::vector) AS similarity_score
+             FROM lost_found_items lif
+            WHERE lif.college_id = $2
+              AND lif.status = $3
+              AND lif.category = $4
+              AND lif.lifecycle_status = 'active'
+              AND lif.embedding IS NOT NULL
+            ORDER BY lif.embedding <=> $1::vector
+            LIMIT 5`,
+          [vectorString, req.user.college_id, data.status, data.category],
+        );
+        similarItems = rows
+          .map((row) => ({
+            id: row.id,
+            title: row.title,
+            description: row.description,
+            category: row.category,
+            status: row.status,
+            location_name: row.location_name,
+            created_at: row.created_at,
+            photo: row.photo_key ? storage.urlFor(row.photo_key) : null,
+            similarity_score: Math.max(0, Math.min(1, Number(row.similarity_score))),
+          }))
+          .filter((match) => match.similarity_score >= DUPLICATE_SUGGESTION_THRESHOLD);
+
+        const strongDuplicate = similarItems.find(
+          (match) => match.similarity_score >= DUPLICATE_WARNING_THRESHOLD,
+        );
+        if (strongDuplicate && !data.force_publish) {
+          return { duplicate_warning: true, similar_items: similarItems };
+        }
+
+        if (strongDuplicate && data.force_publish) {
+          if (!data.skip_reason || data.skip_reason.trim().length < 15) {
+            throw new AppError(
+              400,
+              'Please explain in at least 15 characters how your item differs from the similar post.',
+              'INVALID_REASON',
+            );
+          }
+          await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [req.user.id]);
+          const { rows: [skipCount] } = await db.query(
+            `SELECT count(*)::int AS count
+               FROM lost_found_items
+              WHERE user_id = $1
+                AND skip_reason IS NOT NULL
+                AND created_at > now() - interval '24 hours'`,
+            [req.user.id],
+          );
+          if (skipCount.count >= MAX_DUPLICATE_OVERRIDES_PER_DAY) {
+            throw new AppError(
+              429,
+              'You have reached the daily limit for publishing despite a high-confidence duplicate warning (3 per 24 hours).',
+              'DUPLICATE_SKIP_LIMIT',
+            );
+          }
+          acceptedSkipReason = data.skip_reason;
+        }
+      }
+
       await db.query(
         `INSERT INTO lost_found_items
          (id, college_id, user_id, title, description, category, status, latitude, longitude, location_name,
           security_question, security_answer_hash, dropoff_location, embedding, brand, colour, occurred_at,
-          radius_meters, where_is_it, location_note)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::vector, $15, $16, $17, $18, $19, $20)`,
+          radius_meters, where_is_it, location_note, skip_reason, flagged_for_review)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::vector, $15, $16, $17, $18, $19, $20, $21, $22)`,
         [
           itemId,
           req.user.college_id,
@@ -760,6 +824,8 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
           data.radius_meters,
           data.status === 'found' ? data.where_is_it ?? null : null,
           data.location_note || null,
+          acceptedSkipReason,
+          Boolean(acceptedSkipReason),
         ]
       );
 
@@ -770,7 +836,7 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
         );
       }
 
-      if (!vectorString) return [];
+      if (!vectorString) return { potentialMatches: [], similarItems };
 
       const targetStatus = data.status === 'lost' ? 'found' : 'lost';
       const { rows } = await db.query(
@@ -788,7 +854,7 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
           LIMIT 5`,
         [vectorString, req.user.college_id, targetStatus, req.user.id]
       );
-      return rows.map((row) => ({
+      const potentialMatches = rows.map((row) => ({
         id: row.id,
         title: row.title,
         description: row.description,
@@ -800,13 +866,30 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
         photo: row.photo_key ? storage.urlFor(row.photo_key) : null,
         similarity_score: Number(row.similarity_score),
       }));
+      return { potentialMatches, similarItems };
     });
   } catch (err) {
     await Promise.all(storedKeys.map((key) => storage.remove(key).catch(() => {})));
     throw err;
   }
 
-  res.status(201).json({ success: true, itemId, potential_matches: matches });
+  if (created.duplicate_warning) {
+    await tx((db) => enqueueCleanup(db, storedKeys));
+    const mediaCleanupPending = await cleanupAfterChange();
+    return res.status(409).json({
+      error: 'A very similar post is already active. Review it before publishing.',
+      code: 'DUPLICATE_WARNING',
+      potential_matches: created.similar_items,
+      media_cleanup_pending: mediaCleanupPending,
+    });
+  }
+
+  res.status(201).json({
+    success: true,
+    itemId,
+    potential_matches: created.potentialMatches,
+    similar_items: created.similarItems,
+  });
 });
 
 // GET /lost-found/:id/claims - Only the report owner can inspect submitted proof.

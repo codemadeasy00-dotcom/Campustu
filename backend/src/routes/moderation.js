@@ -7,6 +7,7 @@ const { AppError } = require('../utils/errors');
 const { requireAuth, requireActive, requireAdmin, requireCollege } = require('../middleware/auth');
 const storage = require('../storage');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
+const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -55,7 +56,8 @@ router.post('/reports', limiter, requireActive, requireCollege, async (req, res)
 });
 
 router.get('/admin/reports', limiter, requireAdmin, async (_req, res) => {
-  const { rows } = await query(
+  const [{ rows }, { rows: duplicateOverrides }] = await Promise.all([
+    query(
     `SELECT r.id, r.marketplace_item_id, r.lost_found_item_id, r.reason, r.created_at,
             reporter.display_name AS reporter_name,
             COALESCE(mi.title, lif.title) AS item_title,
@@ -77,13 +79,77 @@ router.get('/admin/reports', limiter, requireAdmin, async (_req, res) => {
       WHERE r.status = 'pending'
       ORDER BY r.created_at ASC
       LIMIT 100`,
-  );
+    ),
+    query(
+      `SELECT lif.id, lif.title, lif.description, lif.category, lif.status,
+              lif.skip_reason, lif.created_at, u.display_name AS target_user_name,
+              (SELECT p.storage_key FROM lost_found_photos p
+                WHERE p.item_id = lif.id ORDER BY p.position LIMIT 1) AS photo_key
+         FROM lost_found_items lif
+         JOIN users u ON u.id = lif.user_id
+        WHERE lif.flagged_for_review = true
+          AND lif.lifecycle_status = 'active'
+        ORDER BY lif.created_at ASC
+        LIMIT 100`,
+    ),
+  ]);
   res.json({
     reports: rows.map(({ photo_key, ...report }) => ({
       ...report,
       photo_url: photo_key ? storage.urlFor(photo_key) : null,
     })),
+    duplicate_overrides: duplicateOverrides.map(({ photo_key, ...item }) => ({
+      ...item,
+      photo_url: photo_key ? storage.urlFor(photo_key) : null,
+    })),
   });
+});
+
+router.patch('/admin/duplicate-overrides/:id', requireAdmin, async (req, res) => {
+  const itemId = z.uuid().parse(req.params.id);
+  const { action } = z.object({ action: z.enum(['dismiss', 'remove']) }).parse(req.body);
+
+  if (action === 'dismiss') {
+    const { rows: [item] } = await query(
+      `UPDATE lost_found_items
+          SET flagged_for_review = false
+        WHERE id = $1 AND flagged_for_review = true
+        RETURNING id`,
+      [itemId],
+    );
+    if (!item) throw new AppError(404, 'Flagged duplicate override not found.');
+    return res.json({ success: true, message: 'Review flag cleared; the original reason remains in the audit record.' });
+  }
+
+  await tx(async (db) => {
+    const { rows: [item] } = await db.query(
+      `SELECT id
+         FROM lost_found_items
+        WHERE id = $1 AND flagged_for_review = true AND lifecycle_status = 'active'
+        FOR UPDATE`,
+      [itemId],
+    );
+    if (!item) throw new AppError(404, 'Flagged duplicate override not found.');
+
+    const { rows: photos } = await db.query(
+      'SELECT storage_key FROM lost_found_photos WHERE item_id = $1',
+      [itemId],
+    );
+    await enqueueCleanup(db, photos.map((photo) => photo.storage_key));
+    await db.query(
+      `UPDATE lost_found_items
+          SET lifecycle_status = 'removed',
+              moderation_reason = 'Removed after review of a high-similarity duplicate override.',
+              flagged_for_review = false,
+              updated_at = now()
+        WHERE id = $1`,
+      [itemId],
+    );
+    await db.query('DELETE FROM lost_found_photos WHERE item_id = $1', [itemId]);
+  });
+
+  const mediaCleanupPending = (await processQueuedMediaCleanup()) > 0;
+  res.json({ success: true, message: 'The post was removed after moderation review.', media_cleanup_pending: mediaCleanupPending });
 });
 
 router.patch('/admin/reports/:id', requireAdmin, async (req, res) => {

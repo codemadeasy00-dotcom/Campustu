@@ -120,7 +120,7 @@ export default function Layout() {
           claimsToAnnounce.forEach((claim) => notifiedClaimIdsRef.current.add(claim.id))
         }
         if (matchesToAnnounce.length) {
-          showToast(`${matchesToAnnounce.length} Lost & Found post${matchesToAnnounce.length === 1 ? '' : 's'} removed after a high-confidence duplicate scan. Tap the bell for details.`)
+          showToast(`${matchesToAnnounce.length} high-similarity Lost & Found match${matchesToAnnounce.length === 1 ? '' : 'es'} found. Your post remains active; tap the bell to review.`)
           matchesToAnnounce.forEach((notice) => notifiedMatchIdsRef.current.add(notice.id))
         }
 
@@ -394,9 +394,9 @@ export default function Layout() {
                               onClick={() => setNotificationsOpen(false)}
                               className="block rounded-xl px-3 py-3 transition hover:bg-brand-50"
                             >
-                              <span className="block text-sm font-semibold text-slate-800">{item.itemTitle} was automatically removed</span>
+                              <span className="block text-sm font-semibold text-slate-800">A highly similar post was found</span>
                               <span className="mt-1 block text-xs text-slate-500">
-                                It matched “{item.matchedItemTitle}” at {Math.round(item.similarityScore * 100)}% visual similarity · {new Date(item.createdAt).toLocaleString()}
+                                Your post “{item.itemTitle}” matched “{item.matchedItemTitle}” at {Math.round(item.similarityScore * 100)}%. It remains active; please review · {new Date(item.createdAt).toLocaleString()}
                               </span>
                             </Link>
                           </li>

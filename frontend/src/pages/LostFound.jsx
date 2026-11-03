@@ -314,6 +314,9 @@ export default function LostFound() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [postError, setPostError] = useState('');
   const [postingItem, setPostingItem] = useState(false);
+  const [postDuplicateWarning, setPostDuplicateWarning] = useState([]);
+  const [allowDuplicatePost, setAllowDuplicatePost] = useState(false);
+  const [postSkipReason, setPostSkipReason] = useState('');
   const [photos, setPhotos] = useState([]);
   const [photoPreviews, setPhotoPreviews] = useState([]);
   const [processingPhotos, setProcessingPhotos] = useState(false);
@@ -443,17 +446,14 @@ export default function LostFound() {
         if (cancelled || pendingItems.length === 0) return;
 
         const { getImageEmbedding } = await import('../utils/embedder.js');
-        let removedReport = false;
         for (const item of pendingItems) {
           if (cancelled) break;
           const embedding = await getImageEmbedding(item.photo);
           const result = await lostFoundApi.submitMatchScan(item.id, embedding);
-          if (result.removed) {
+          if (result.match_detected) {
             window.dispatchEvent(new Event('campustu:lost-found-match'));
-            removedReport = true;
           }
         }
-        if (removedReport && !cancelled) await fetchItems();
       } catch (error) {
         if (!cancelled) console.warn('Could not retry deferred Lost & Found matching:', error);
       } finally {
@@ -542,6 +542,7 @@ export default function LostFound() {
   const handlePostSubmit = async (e) => {
     e.preventDefault();
     setPostError('');
+    setPostDuplicateWarning([]);
     if (processingPhotos) {
       setPostError('Wait for photo processing to finish.');
       return;
@@ -579,11 +580,18 @@ export default function LostFound() {
           payload.append(key, String(value));
         }
       });
+      if (allowDuplicatePost) {
+        payload.append('force_publish', 'true');
+        payload.append('skip_reason', postSkipReason);
+      }
       if (embedding) payload.append('embedding', JSON.stringify(embedding));
       photos.forEach((photo) => payload.append('photos', photo));
       const result = await lostFoundApi.create(payload);
       clearPhotos();
       setShowPostModal(false);
+      setPostDuplicateWarning([]);
+      setAllowDuplicatePost(false);
+      setPostSkipReason('');
       setPotentialMatches(result.potential_matches || []);
       setFormData({
         title: '',
@@ -609,6 +617,12 @@ export default function LostFound() {
       }
       await fetchItems();
     } catch (err) {
+      if (err.code === 'DUPLICATE_WARNING') {
+        setPostDuplicateWarning(err.data?.potential_matches || []);
+        setAllowDuplicatePost(false);
+        setPostSkipReason('');
+        return;
+      }
       console.error("Post error:", err);
       setPostError(embeddingWarning
         ? `${errorMessage(err)} Visual matching also failed: ${embeddingWarning}`
@@ -1458,6 +1472,39 @@ export default function LostFound() {
             <h3 className="text-lg font-bold text-slate-900 mb-4">Report Lost / Found Item</h3>
             <form onSubmit={handlePostSubmit} className="space-y-4">
               {postError && <Alert>{postError}</Alert>}
+              {postDuplicateWarning.length > 0 && (
+                <section className="rounded-xl border border-amber-300 bg-amber-50 p-3" aria-labelledby="modal-duplicate-warning">
+                  <h4 id="modal-duplicate-warning" className="font-bold text-amber-950">A very similar post may already exist</h4>
+                  <p className="mt-1 text-xs text-amber-900">Similarity can be a false positive; review before continuing.</p>
+                  <ul className="mt-2 space-y-2">
+                    {postDuplicateWarning.map((item) => (
+                      <li key={item.id} className="flex items-center gap-2 text-sm text-amber-950">
+                        {item.photo && <ItemPhoto src={item.photo} alt="" className="h-10 w-10 rounded object-cover" />}
+                        <span>{item.title} · {Math.round(item.similarity_score * 100)}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <label className="mt-3 block text-xs font-semibold text-amber-950">
+                    Explain how this item differs (at least 15 characters).
+                    <textarea
+                      value={postSkipReason}
+                      onChange={(event) => setPostSkipReason(event.target.value)}
+                      minLength={15}
+                      maxLength={1000}
+                      rows={2}
+                      className="mt-1 w-full rounded-lg border border-amber-300 bg-white p-2 text-sm"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setAllowDuplicatePost(true)}
+                    disabled={postSkipReason.trim().length < 15}
+                    className="mt-2 rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                  >
+                    Continue with explanation
+                  </button>
+                </section>
+              )}
               {moderationProgress && <p role="status" aria-live="polite" className="text-sm text-sky-800">{moderationProgress}</p>}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
@@ -1624,10 +1671,12 @@ export default function LostFound() {
                 </button>
                 <button
                   type="submit"
-                  disabled={postingItem || processingPhotos}
+                  disabled={postingItem || processingPhotos
+                    || (postDuplicateWarning.length > 0
+                      && (!allowDuplicatePost || postSkipReason.trim().length < 15))}
                   className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs py-2.5 rounded-xl disabled:cursor-wait disabled:opacity-60"
                 >
-                  {postingItem ? 'Analyzing photo & publishing…' : 'Publish Item'}
+                  {postingItem ? 'Analyzing photo & publishing…' : allowDuplicatePost ? 'Publish with explanation' : 'Publish Item'}
                 </button>
               </div>
             </form>

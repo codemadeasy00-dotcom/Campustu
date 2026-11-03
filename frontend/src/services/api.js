@@ -11,11 +11,12 @@ function reportAppError() {
 }
 
 export class ApiError extends Error {
-  constructor(message, status = 0, details = null, code = null) {
+  constructor(message, status = 0, details = null, code = null, data = null) {
     super(message)
     this.status = status
     this.details = details
     this.code = code
+    this.data = data
   }
 }
 
@@ -72,7 +73,7 @@ async function request(endpoint, { method = 'GET', json, formData } = {}) {
     } else {
       reportAppError()
     }
-    throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data?.details, data?.code)
+    throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data?.details, data?.code, data)
   }
   return data
 }
@@ -203,6 +204,11 @@ export const moderationApi = {
   reports: () => request('/moderation/admin/reports'),
   act: (reportId, action) =>
     request(`/moderation/admin/reports/${encodeURIComponent(reportId)}`, {
+      method: 'PATCH',
+      json: { action },
+    }),
+  reviewDuplicateOverride: (itemId, action) =>
+    request(`/moderation/admin/duplicate-overrides/${encodeURIComponent(itemId)}`, {
       method: 'PATCH',
       json: { action },
     }),
