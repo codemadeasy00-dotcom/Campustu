@@ -42,6 +42,22 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE admin_audit_logs
+  ADD COLUMN IF NOT EXISTS target_type text NOT NULL DEFAULT 'unknown',
+  ADD COLUMN IF NOT EXISTS target_id text NOT NULL DEFAULT 'unknown';
+
+ALTER TABLE admin_audit_logs
+  ALTER COLUMN target_id TYPE text USING target_id::text;
+
+UPDATE admin_audit_logs
+   SET target_type = COALESCE(target_type, 'unknown'),
+       target_id = COALESCE(target_id, 'unknown')
+ WHERE target_type IS NULL OR target_id IS NULL;
+
+ALTER TABLE admin_audit_logs
+  ALTER COLUMN target_type SET NOT NULL,
+  ALTER COLUMN target_id SET NOT NULL;
+
 CREATE INDEX IF NOT EXISTS admin_audit_logs_created_idx ON admin_audit_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS admin_audit_logs_target_idx ON admin_audit_logs (target_type, target_id, created_at DESC);
 
