@@ -55,8 +55,6 @@ const config = {
     apiKey: process.env.CLOUDINARY_API_KEY || '',
     apiSecret: process.env.CLOUDINARY_API_SECRET || '',
   },
-  hfAccessToken: process.env.HF_ACCESS_TOKEN || '',
-  imageModerationModel: process.env.IMAGE_MODERATION_MODEL || 'Falconsai/nsfw_image_detection',
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'http://localhost:4000').replace(/\/$/, ''),
   otp: { ttlMinutes: 10, maxAttempts: 5, resendSeconds: 60 },
   jwtExpiresIn: '7d',
@@ -74,9 +72,6 @@ if (isProd) {
   if (!config.smtp.host) throw new Error('SMTP_HOST is required in production');
   if (!config.s3.bucket && !config.cloudinary.cloudName) {
     throw new Error('Configure S3_BUCKET or CLOUDINARY_CLOUD_NAME in production: local files are not persistent');
-  }
-  if (!config.hfAccessToken) {
-    throw new Error('HF_ACCESS_TOKEN is required in production so user image uploads can be moderated');
   }
 }
 

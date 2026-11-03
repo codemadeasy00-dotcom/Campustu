@@ -69,12 +69,10 @@ A paused project means your site is down until you un-pause it in the dashboard.
    npm run db:seed        # 15 general branches, categories, item types (the same for every college)
    ```
    Use `db:init` OR `db:migrate`, not both. `db:migrate` is safe to repeat.
-   Visual matching uses PostgreSQL's `vector` extension. Migration `007_lost_found_visual_matching.sql`
-   enables it and adds the private image-embedding column and index; apply migrations before deploying
-   the backend update. Existing lost-and-found posts are not backfilled; only posts with a photo and an
-   embedding generated after this update can appear as visual matches. The first image submission in a
-   browser downloads the CLIP model for local inference. Migration `008_lost_found_report_details.sql`
-   adds the optional report metadata used by the dedicated lost-and-found report page.
+   Migration `014_remove_lost_found_visual_matching.sql` removes the image-embedding column and index
+   used by the retired visual matching feature. Apply migrations before deploying the backend update.
+   Migration `008_lost_found_report_details.sql` adds the optional report metadata used by the dedicated
+   lost-and-found report page.
    Migration `009_lost_found_lifecycle_claims.sql` adds the eight-hour deletion rule, closed/resolved
    lifecycle states, pending owner-reviewed claims, private claimant handover codes, and a retryable
    photo-cleanup queue. It resets legacy auto-approved claims to pending review and clears their old
@@ -112,9 +110,8 @@ SMTP_HOST=...  SMTP_PORT=587  SMTP_USER=...  SMTP_PASS=...  MAIL_FROM="CampusKit
 S3_BUCKET=item-photos  S3_REGION=...  S3_ENDPOINT=...  S3_ACCESS_KEY_ID=...  S3_SECRET_ACCESS_KEY=...
 S3_PUBLIC_BASE_URL=https://<project-ref>.supabase.co/storage/v1/object/public/item-photos
 CLOUDINARY_CLOUD_NAME=...  CLOUDINARY_API_KEY=...  CLOUDINARY_API_SECRET=...
-HF_ACCESS_TOKEN=...         IMAGE_MODERATION_MODEL=Falconsai/nsfw_image_detection
 ```
-Configure either the S3 variables or all three Cloudinary variables for persistent photo storage. When both are configured, new photos use Cloudinary and existing untagged S3 keys continue to use S3. Create a Hugging Face access token with Inference Providers permission and add it as `HF_ACCESS_TOKEN`; image uploads fail closed if the classifier is unavailable. Marketplace photos, Lost & Found photos, and profile avatars are validated, limited to 5 MB each, re-encoded, then classified before storage. Admins can review user reports at `/admin/moderation`; `npm run make-admin -- email@example.com` assigns the admin role. The API refuses to start in production if email, persistent photo storage, moderation credentials or strong secrets are missing. That is deliberate:
+Configure either the S3 variables or all three Cloudinary variables for persistent photo storage. When both are configured, new photos use Cloudinary and existing untagged S3 keys continue to use S3. Uploaded images are validated, limited to 5 MB each, and re-encoded before storage. Marketplace, Lost & Found, and profile-avatar forms also perform a local browser-side image check; this can be bypassed and is not server-side moderation. Admins can review user reports at `/admin/moderation`; `npm run make-admin -- email@example.com` assigns the admin role. The API refuses to start in production if email, persistent photo storage or strong secrets are missing. That is deliberate:
 read the Render log for the exact missing name.
 
 ### Browser sessions and the Vercel API proxy

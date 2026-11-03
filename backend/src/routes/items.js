@@ -5,7 +5,6 @@ const config = require('../config')
 const { query, tx } = require('../db')
 const storage = require('../storage')
 const { processPhoto } = require('../utils/images')
-const { assertPhotosAreAllowed } = require('../utils/image-moderation')
 const { createImageUpload } = require('../utils/image-upload')
 const { AppError } = require('../utils/errors')
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth')
@@ -145,7 +144,6 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
   // --- clean photos, save them, then write the DB rows in one transaction
   const itemId = crypto.randomUUID()
   const cleaned = await Promise.all(files.map((f) => processPhoto(f.buffer)))
-  await assertPhotosAreAllowed(cleaned)
   const keys = cleaned.map(() => `items/${itemId}/${crypto.randomUUID()}.webp`)
   const storedKeys = []
 

@@ -237,7 +237,7 @@ export default function NewListing() {
               </label>
             )}
           </div>
-          <p className="mt-1 text-xs text-slate-500">Photos are screened on this device first, then checked by server-side moderation before storage.</p>
+          <p className="mt-1 text-xs text-slate-500">Photos are screened on this device before upload. The server validates image type, size, and file integrity.</p>
         </div>
 
         <div className="flex items-center gap-3">

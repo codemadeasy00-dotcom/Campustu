@@ -14,7 +14,6 @@ const { generateCode, hashCode, safeEqual } = require('../utils/otp');
 const { sendOtpEmail } = require('../email');
 
 const { processPhoto } = require('../utils/images');
-const { assertImageIsAllowed } = require('../utils/image-moderation');
 const { createImageUpload } = require('../utils/image-upload');
 const storage = require('../storage');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
@@ -491,7 +490,6 @@ router.patch('/profile/avatar', requireAuth, requireActive, avatarUpload.single(
   if (!req.file) throw new AppError(400, 'Choose an image to upload.');
 
   const image = await processPhoto(req.file.buffer);
-  await assertImageIsAllowed(image);
   const newKey = `avatars/${req.user.id}/${crypto.randomUUID()}.webp`;
   const storedKey = await storage.save(newKey, image);
 

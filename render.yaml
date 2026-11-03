@@ -57,7 +57,3 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
-      - key: HF_ACCESS_TOKEN
-        sync: false
-      - key: IMAGE_MODERATION_MODEL
-        value: Falconsai/nsfw_image_detection

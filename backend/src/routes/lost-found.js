@@ -7,7 +7,6 @@ const { query, tx } = require('../db');
 const storage = require('../storage');
 const { AppError } = require('../utils/errors');
 const { processPhoto } = require('../utils/images');
-const { assertPhotosAreAllowed } = require('../utils/image-moderation');
 const { createImageUpload } = require('../utils/image-upload');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
@@ -39,15 +38,6 @@ const createItemSchema = z.object({
   radius_meters: z.coerce.number().int().min(0).max(5000).default(0),
   where_is_it: z.preprocess((value) => value === '' ? undefined : value, z.enum(['with_me', 'security_desk', 'left_at_spot']).optional()),
   location_note: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().max(255).optional()),
-  embedding: z.preprocess((value) => {
-    if (value === '' || value === undefined) return undefined;
-    if (typeof value !== 'string') return value;
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }, z.array(z.number().finite().min(-1).max(1)).length(512).optional()),
   latitude: z.coerce.number().optional(),
   longitude: z.coerce.number().optional(),
   location_name: z.string().min(2),
@@ -544,32 +534,22 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
   const data = createItemSchema.parse(req.body);
   const itemId = crypto.randomUUID();
   const files = req.files || [];
-  const embedding = data.embedding ?? null;
-  if (embedding && files.length === 0) {
-    throw new AppError(400, 'An image is required when submitting a visual embedding.');
-  }
-  if (embedding && Math.hypot(...embedding) === 0) {
-    throw new AppError(400, 'The image embedding must not be empty.');
-  }
-  const vectorString = embedding ? `[${embedding.join(',')}]` : null;
   const cleanedPhotos = await Promise.all(files.map((file) => processPhoto(file.buffer)));
-  await assertPhotosAreAllowed(cleanedPhotos);
   const keys = cleanedPhotos.map(() => `lost-found/${itemId}/${crypto.randomUUID()}.webp`);
   const storedKeys = [];
-  let matches = [];
 
   try {
     for (let index = 0; index < keys.length; index++) {
       storedKeys.push(await storage.save(keys[index], cleanedPhotos[index]));
     }
 
-    matches = await tx(async (db) => {
+    await tx(async (db) => {
       await db.query(
         `INSERT INTO lost_found_items
          (id, college_id, user_id, title, description, category, status, latitude, longitude, location_name,
-          security_question, security_answer_hash, dropoff_location, embedding, brand, colour, occurred_at,
+          security_question, security_answer_hash, dropoff_location, brand, colour, occurred_at,
           radius_meters, where_is_it, location_note)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::vector, $15, $16, $17, $18, $19, $20)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
         [
           itemId,
           req.user.college_id,
@@ -584,7 +564,6 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
           data.security_question || null,
           data.security_answer ? data.security_answer.toLowerCase().trim() : null,
           data.dropoff_location || null,
-          vectorString,
           data.brand || null,
           data.colour || null,
           data.occurred_at ?? null,
@@ -600,44 +579,13 @@ router.post('/', requireActive, requireCollege, upload.array('photos', config.ma
           [itemId, storedKeys[index], index]
         );
       }
-
-      if (!vectorString) return [];
-
-      const targetStatus = data.status === 'lost' ? 'found' : 'lost';
-      const { rows } = await db.query(
-        `SELECT lif.id, lif.title, lif.description, lif.category, lif.status,
-                lif.location_name, lif.security_question, lif.created_at,
-                (SELECT storage_key FROM lost_found_photos WHERE item_id = lif.id ORDER BY position LIMIT 1) AS photo_key,
-                1 - (lif.embedding <=> $1::vector) AS similarity_score
-           FROM lost_found_items lif
-          WHERE lif.college_id = $2
-            AND lif.status = $3
-            AND lif.lifecycle_status = 'active'
-            AND lif.user_id <> $4
-            AND lif.embedding IS NOT NULL
-          ORDER BY lif.embedding <=> $1::vector
-          LIMIT 5`,
-        [vectorString, req.user.college_id, targetStatus, req.user.id]
-      );
-      return rows.map((row) => ({
-        id: row.id,
-        title: row.title,
-        description: row.description,
-        category: row.category,
-        status: row.status,
-        location_name: row.location_name,
-        security_question: row.security_question,
-        created_at: row.created_at,
-        photo: row.photo_key ? storage.urlFor(row.photo_key) : null,
-        similarity_score: Number(row.similarity_score),
-      }));
     });
   } catch (err) {
     await Promise.all(storedKeys.map((key) => storage.remove(key).catch(() => {})));
     throw err;
   }
 
-  res.status(201).json({ success: true, itemId, potential_matches: matches });
+  res.status(201).json({ success: true, itemId });
 });
 
 // GET /lost-found/:id/claims - Only the report owner can inspect submitted proof.
