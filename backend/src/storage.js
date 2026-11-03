@@ -85,6 +85,20 @@ async function remove(key) {
   await fs.rm(resolveKey(key), { force: true });
 }
 
+async function read(key) {
+  if (key.startsWith('cloudinary:')) {
+    const response = await fetch(urlFor(key));
+    if (!response.ok) throw new Error(`Could not read stored image (HTTP ${response.status}).`);
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  if (useS3) {
+    const result = await s3.send(new S3Cmds.GetObjectCommand({ Bucket: config.s3.bucket, Key: key }));
+    return Buffer.from(await result.Body.transformToByteArray());
+  }
+  return fs.readFile(resolveKey(key));
+}
+
 function urlFor(key) {
   if (key.startsWith('cloudinary:')) {
     return cloudinary.url(key.slice('cloudinary:'.length), { secure: true, format: 'webp' });
@@ -92,4 +106,4 @@ function urlFor(key) {
   return useS3 ? `${config.s3.publicBaseUrl}/${key}` : `${config.publicBaseUrl}/uploads/${key}`;
 }
 
-module.exports = { root, useS3, useCloudinary, save, remove, urlFor };
+module.exports = { root, useS3, useCloudinary, save, remove, read, urlFor };

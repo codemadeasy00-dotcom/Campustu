@@ -431,6 +431,45 @@ export default function LostFound() {
   }, [statusFilter, search, showMine]);
 
   useEffect(() => {
+    if (!user?.id || !user?.college?.id) return undefined;
+    let cancelled = false;
+    let scanning = false;
+
+    const scanPendingReports = async () => {
+      if (cancelled || scanning) return;
+      scanning = true;
+      try {
+        const { items: pendingItems = [] } = await lostFoundApi.pendingMatches();
+        if (cancelled || pendingItems.length === 0) return;
+
+        const { getImageEmbedding } = await import('../utils/embedder.js');
+        let removedReport = false;
+        for (const item of pendingItems) {
+          if (cancelled) break;
+          const embedding = await getImageEmbedding(item.photo);
+          const result = await lostFoundApi.submitMatchScan(item.id, embedding);
+          if (result.removed) {
+            window.dispatchEvent(new Event('campustu:lost-found-match'));
+            removedReport = true;
+          }
+        }
+        if (removedReport && !cancelled) await fetchItems();
+      } catch (error) {
+        if (!cancelled) console.warn('Could not retry deferred Lost & Found matching:', error);
+      } finally {
+        scanning = false;
+      }
+    };
+
+    scanPendingReports();
+    const timer = window.setInterval(scanPendingReports, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [showToast, user?.college?.id, user?.id]);
+
+  useEffect(() => {
     if (!showMine) return undefined;
     const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -560,7 +599,7 @@ export default function LostFound() {
       });
       setModalPin(null);
       if (embeddingWarning) {
-        showToast(`Item published, but visual matching could not run: ${embeddingWarning}`);
+        showToast(`Item published. Matching will retry while Lost & Found is open and on your next visit when the model is available. ${embeddingWarning}`);
       } else if (result.potential_matches?.length) {
         showToast('Item published. Potential similar items are shown below.');
       } else if (embedding) {

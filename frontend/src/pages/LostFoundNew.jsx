@@ -319,7 +319,7 @@ export default function LostFoundNew() {
           <span aria-hidden="true" className="text-4xl">✓</span>
           <h1 className="mt-2 text-2xl font-extrabold text-brand-700">Post published</h1>
           <p className="mt-2 text-sm text-slate-600">Your {form.status} item is now visible to students at your college.</p>
-          {embeddingWarning && <p role="status" className="mt-3 text-left"><Alert kind="warn">{embeddingWarning} This report was published without visual matching.</Alert></p>}
+          {embeddingWarning && <p role="status" className="mt-3 text-left"><Alert kind="warn">{embeddingWarning} This report was published. Matching will retry while Lost & Found is open and on your next visit when the model is available.</Alert></p>}
         </div>
         {postResult.potential_matches?.length > 0 && (
           <section className="mt-6 border-t border-brand-100 pt-5">
@@ -550,7 +550,7 @@ export default function LostFoundNew() {
             Loading the on-device visual-matching model. The first download may take a little while.
           </p>
         )}
-        {embeddingWarning && <Alert kind="warn">{embeddingWarning} The report can still be published without visual matching.</Alert>}
+        {embeddingWarning && <Alert kind="warn">{embeddingWarning} The report can still be published; matching will retry while Lost & Found is open and on your next visit when the model is available.</Alert>}
         {isSubmitting && (
           <section role="status" aria-live="polite" aria-label="Publishing progress" className="rounded-xl border border-brand-100 bg-brand-50 p-4">
             <h2 className="font-bold text-brand-900">Publishing your report</h2>

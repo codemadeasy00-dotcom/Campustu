@@ -12,6 +12,8 @@ const { createImageUpload } = require('../utils/image-upload');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
 
+const DEFERRED_DUPLICATE_SIMILARITY_THRESHOLD = 0.98;
+
 const createRateLimiter = (limit) => rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: config.isProd ? limit : 1000,
@@ -67,6 +69,10 @@ const reviewClaimSchema = z.object({
 const redeemSchema = z.object({
   claim_id: z.uuid(),
   handover_code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit handover code.'),
+});
+
+const matchScanSchema = z.object({
+  embedding: z.array(z.number().finite().min(-1).max(1)).length(1024),
 });
 
 const lifecycleSchema = z.object({
@@ -181,21 +187,172 @@ router.get('/mine', requireCollege, async (req, res, next) => {
 // GET /lost-found/notifications - Pending claims on reports owned by the signed-in student.
 router.get('/notifications', requireCollege, async (req, res, next) => {
   try {
+    const [{ rows: claims }, { rows: matchNotifications }] = await Promise.all([
+      query(
+        `SELECT c.id, c.item_id, c.created_at,
+                lif.title,
+                u.display_name AS claimant_name
+           FROM item_claims c
+           JOIN lost_found_items lif ON lif.id = c.item_id
+           JOIN users u ON u.id = c.claimant_id
+          WHERE lif.user_id = $1
+            AND lif.college_id = $2
+            AND c.status = 'pending'
+          ORDER BY c.created_at DESC
+          LIMIT 100`,
+        [req.user.id, req.user.college_id],
+      ),
+      query(
+        `SELECT id, item_id, item_title, matched_item_title, similarity_score, created_at
+           FROM lost_found_match_notifications
+          WHERE owner_id = $1 AND college_id = $2
+          ORDER BY created_at DESC
+          LIMIT 100`,
+        [req.user.id, req.user.college_id],
+      ),
+    ]);
+    res.json({ success: true, notifications: claims, match_notifications: matchNotifications });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /lost-found/pending-matches - Reports that need a retry after the browser model failed to load.
+router.get('/pending-matches', requireActive, requireCollege, async (req, res, next) => {
+  try {
     const { rows } = await query(
-      `SELECT c.id, c.item_id, c.created_at,
-              lif.title,
-              u.display_name AS claimant_name
-         FROM item_claims c
-         JOIN lost_found_items lif ON lif.id = c.item_id
-         JOIN users u ON u.id = c.claimant_id
+      `SELECT lif.id, lif.title, lif.created_at,
+              (SELECT storage_key FROM lost_found_photos
+                WHERE item_id = lif.id ORDER BY position LIMIT 1) AS photo_key
+         FROM lost_found_items lif
         WHERE lif.user_id = $1
           AND lif.college_id = $2
-          AND c.status = 'pending'
-        ORDER BY c.created_at DESC
-        LIMIT 100`,
+          AND lif.lifecycle_status = 'active'
+          AND lif.embedding IS NULL
+          AND EXISTS (SELECT 1 FROM lost_found_photos WHERE item_id = lif.id)
+        ORDER BY lif.created_at
+        LIMIT 10`,
       [req.user.id, req.user.college_id],
     );
-    res.json({ success: true, notifications: rows });
+    res.json({
+      success: true,
+      items: rows.map(({ photo_key, ...item }) => ({
+        ...item,
+        photo: photo_key ? `/api/lost-found/${encodeURIComponent(item.id)}/match-image` : null,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/match-image', requireActive, requireCollege, async (req, res, next) => {
+  try {
+    const itemId = itemIdSchema.parse(req.params.id);
+    const { rows: [item] } = await query(
+      `SELECT p.storage_key
+         FROM lost_found_items lif
+         JOIN lost_found_photos p ON p.item_id = lif.id
+        WHERE lif.id = $1
+          AND lif.user_id = $2
+          AND lif.college_id = $3
+          AND lif.lifecycle_status = 'active'
+          AND lif.embedding IS NULL
+        ORDER BY p.position
+        LIMIT 1`,
+      [itemId, req.user.id, req.user.college_id],
+    );
+    if (!item) throw new AppError(404, 'The report photo was not found or no longer needs matching.');
+    const image = await storage.read(item.storage_key);
+    res.set('Content-Type', 'image/webp').set('Cache-Control', 'private, no-store').send(image);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /lost-found/:id/match-scan - Save a deferred embedding and remove very high-confidence duplicates.
+router.post('/:id/match-scan', requireActive, requireCollege, async (req, res, next) => {
+  try {
+    const itemId = itemIdSchema.parse(req.params.id);
+    const { embedding: values } = matchScanSchema.parse(req.body);
+    const magnitude = Math.hypot(...values);
+    if (magnitude === 0) throw new AppError(400, 'The image embedding must not be empty.');
+    const vectorString = `[${values.map((value) => value / magnitude).join(',')}]`;
+
+    const result = await tx(async (db) => {
+      const { rows: [item] } = await db.query(
+        `SELECT id, user_id, college_id, title, status, category, lifecycle_status,
+                embedding IS NOT NULL AS already_scanned
+           FROM lost_found_items
+          WHERE id = $1 AND college_id = $2
+          FOR UPDATE`,
+        [itemId, req.user.college_id],
+      );
+      if (!item) throw new AppError(404, 'The report was not found.');
+      if (item.user_id !== req.user.id) {
+        throw new AppError(403, 'Only the post owner can retry visual matching.');
+      }
+      if (item.lifecycle_status !== 'active') {
+        return { already_scanned: true, removed: false };
+      }
+      if (item.already_scanned) return { already_scanned: true, removed: false };
+
+      const { rows: [match] } = await db.query(
+        `SELECT id, title,
+                1 - (embedding <=> $1::vector) AS similarity_score
+           FROM lost_found_items
+          WHERE college_id = $2
+            AND id <> $3
+            AND status = $4
+            AND category = $5
+            AND lifecycle_status = 'active'
+            AND embedding IS NOT NULL
+          ORDER BY embedding <=> $1::vector
+          LIMIT 1`,
+        [vectorString, item.college_id, item.id, item.status, item.category],
+      );
+      const score = match
+        ? Math.max(0, Math.min(1, Number(match.similarity_score)))
+        : 0;
+      const isDuplicate = match && score >= DEFERRED_DUPLICATE_SIMILARITY_THRESHOLD;
+
+      await db.query(
+        `UPDATE lost_found_items
+            SET embedding = $2::vector,
+                lifecycle_status = CASE WHEN $3 THEN 'removed' ELSE lifecycle_status END,
+                moderation_reason = CASE WHEN $3
+                  THEN 'Automatically removed after a deferred visual scan found a same-category, same-status post with at least 98% visual similarity.'
+                  ELSE moderation_reason END,
+                updated_at = CASE WHEN $3 THEN now() ELSE updated_at END
+          WHERE id = $1`,
+        [item.id, vectorString, Boolean(isDuplicate)],
+      );
+
+      if (!isDuplicate) return { already_scanned: false, removed: false };
+
+      const { rows: photos } = await db.query(
+        'SELECT storage_key FROM lost_found_photos WHERE item_id = $1',
+        [item.id],
+      );
+      await enqueueCleanup(db, photos.map((photo) => photo.storage_key));
+      await db.query('DELETE FROM lost_found_photos WHERE item_id = $1', [item.id]);
+      const { rows: [notification] } = await db.query(
+        `INSERT INTO lost_found_match_notifications
+           (owner_id, college_id, item_id, matched_item_id, item_title, matched_item_title, similarity_score)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [item.user_id, item.college_id, item.id, match.id, item.title, match.title, score],
+      );
+      return {
+        already_scanned: false,
+        removed: true,
+        notification_id: notification.id,
+        match: { id: match.id, title: match.title, similarity_score: score },
+      };
+    });
+
+    if (result.removed) await cleanupAfterChange();
+    res.json({ success: true, ...result });
   } catch (err) {
     next(err);
   }

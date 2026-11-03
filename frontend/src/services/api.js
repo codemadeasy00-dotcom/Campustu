@@ -165,6 +165,9 @@ export const lostFoundApi = {
   },
   mine: () => request('/api/lost-found/mine'),
   notifications: () => request('/api/lost-found/notifications'),
+  pendingMatches: () => request('/api/lost-found/pending-matches'),
+  submitMatchScan: (id, embedding) =>
+    request(`/api/lost-found/${encodeURIComponent(id)}/match-scan`, { method: 'POST', json: { embedding } }),
   myClaims: () => request('/api/lost-found/my-claims'),
   nearby: ({ lat, lng, radius = 1000, status, search }) => {
     const params = new URLSearchParams({ lat: String(lat), lng: String(lng), radius: String(radius) })

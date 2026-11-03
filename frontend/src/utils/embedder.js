@@ -5,7 +5,7 @@ let modelPromise
 async function getModel() {
   if (!modelPromise) {
     modelPromise = import('@tensorflow-models/mobilenet')
-      .then(({ load }) => load({ version: 2, alpha: 1.0 }))
+      .then(({ load }) => load({ version: 1, alpha: 1.0 }))
       .catch((error) => {
         modelPromise = null
         throw error
@@ -20,6 +20,7 @@ export async function getImageEmbedding(imageElementOrUrl) {
 
   if (typeof imageElementOrUrl === 'string') {
     image = new Image()
+    image.crossOrigin = 'anonymous'
     image.src = imageElementOrUrl
     await new Promise((resolve, reject) => {
       if (image.complete && image.naturalWidth > 0) {

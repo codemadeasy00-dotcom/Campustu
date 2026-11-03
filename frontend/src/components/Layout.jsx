@@ -45,11 +45,14 @@ export default function Layout() {
   const notificationsRef = useRef(null)
   const mobileToggleRef = useRef(null)
   const notifiedClaimIdsRef = useRef(new Set())
+  const notifiedMatchIdsRef = useRef(new Set())
   const [mobileOpen, setMobileOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [claimNotifications, setClaimNotifications] = useState([])
+  const [matchNotifications, setMatchNotifications] = useState([])
   const [unreadClaimCount, setUnreadClaimCount] = useState(0)
+  const [unreadMatchCount, setUnreadMatchCount] = useState(0)
   const [scrollProgress, setScrollProgress] = useState(0)
   const [logoutError, setLogoutError] = useState('')
 
@@ -62,16 +65,22 @@ export default function Layout() {
   useEffect(() => {
     if (!user?.id || !user?.college) {
       setClaimNotifications([])
+      setMatchNotifications([])
       setUnreadClaimCount(0)
+      setUnreadMatchCount(0)
       return undefined
     }
 
     let cancelled = false
     let requestPending = false
     const storageKey = `campustu:seen-claims:${user.id}:${user.college.id}`
+    const matchStorageKey = `campustu:seen-match-scans:${user.id}:${user.college.id}`
     notifiedClaimIdsRef.current = new Set()
+    notifiedMatchIdsRef.current = new Set()
     setClaimNotifications([])
+    setMatchNotifications([])
     setUnreadClaimCount(0)
+    setUnreadMatchCount(0)
 
     const refreshClaimNotifications = async () => {
       if (cancelled || requestPending) return
@@ -81,7 +90,9 @@ export default function Layout() {
         if (cancelled) return
 
         const notifications = result.notifications || []
+        const matchNotices = result.match_notifications || []
         let savedIds = []
+        let savedMatchIds = []
         try {
           const parsedIds = JSON.parse(localStorage.getItem(storageKey) || '[]')
           if (Array.isArray(parsedIds)) {
@@ -90,21 +101,45 @@ export default function Layout() {
         } catch (error) {
           console.error('Could not read seen claim notifications:', error)
         }
+        try {
+          const parsedIds = JSON.parse(localStorage.getItem(matchStorageKey) || '[]')
+          if (Array.isArray(parsedIds)) {
+            savedMatchIds = parsedIds.filter((id) => typeof id === 'string')
+          }
+        } catch (error) {
+          console.error('Could not read seen visual-match notifications:', error)
+        }
         const seenIds = new Set(savedIds)
+        const seenMatchIds = new Set(savedMatchIds)
         const newClaims = notifications.filter((claim) => !seenIds.has(claim.id))
+        const newMatchNotices = matchNotices.filter((notice) => !seenMatchIds.has(notice.id))
         const claimsToAnnounce = newClaims.filter((claim) => !notifiedClaimIdsRef.current.has(claim.id))
+        const matchesToAnnounce = newMatchNotices.filter((notice) => !notifiedMatchIdsRef.current.has(notice.id))
         if (claimsToAnnounce.length) {
           showToast(`${claimsToAnnounce.length} new claim${claimsToAnnounce.length === 1 ? '' : 's'} received. Tap the bell to review.`)
           claimsToAnnounce.forEach((claim) => notifiedClaimIdsRef.current.add(claim.id))
         }
+        if (matchesToAnnounce.length) {
+          showToast(`${matchesToAnnounce.length} Lost & Found post${matchesToAnnounce.length === 1 ? '' : 's'} removed after a high-confidence duplicate scan. Tap the bell for details.`)
+          matchesToAnnounce.forEach((notice) => notifiedMatchIdsRef.current.add(notice.id))
+        }
 
         setUnreadClaimCount(newClaims.length)
+        setUnreadMatchCount(newMatchNotices.length)
         setClaimNotifications(notifications.map((claim) => ({
           id: claim.id,
           itemId: claim.item_id,
           title: claim.title,
           claimantName: claim.claimant_name,
           createdAt: claim.created_at,
+        })))
+        setMatchNotifications(matchNotices.map((notice) => ({
+          id: notice.id,
+          itemId: notice.item_id,
+          itemTitle: notice.item_title,
+          matchedItemTitle: notice.matched_item_title,
+          similarityScore: Number(notice.similarity_score),
+          createdAt: notice.created_at,
         })))
       } catch (error) {
         if (!cancelled) console.error('Could not refresh claim notifications:', error)
@@ -120,11 +155,13 @@ export default function Layout() {
     }
     window.addEventListener('focus', refreshWhenVisible)
     document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('campustu:lost-found-match', refreshClaimNotifications)
     return () => {
       cancelled = true
       window.clearInterval(timer)
       window.removeEventListener('focus', refreshWhenVisible)
       document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('campustu:lost-found-match', refreshClaimNotifications)
     }
   }, [showToast, user?.college?.id, user?.id])
 
@@ -146,12 +183,13 @@ export default function Layout() {
     }
   }, [notificationsOpen])
 
-  const pendingClaimTotal = unreadClaimCount
+  const pendingClaimTotal = unreadClaimCount + unreadMatchCount
   const markNotificationsSeen = () => {
     setNotificationsOpen((open) => !open)
     if (notificationsOpen || !user?.id || !user?.college?.id) return
     const storageKey = `campustu:seen-claims:${user.id}:${user.college.id}`
     const seenIds = new Set(claimNotifications.map((item) => item.id))
+    const seenMatchIds = new Set(matchNotifications.map((item) => item.id))
     try {
       const savedIds = JSON.parse(localStorage.getItem(storageKey) || '[]')
       if (Array.isArray(savedIds)) {
@@ -160,7 +198,16 @@ export default function Layout() {
         })
       }
       localStorage.setItem(storageKey, JSON.stringify([...seenIds].slice(-500)))
+      const matchStorageKey = `campustu:seen-match-scans:${user.id}:${user.college.id}`
+      const savedMatchIds = JSON.parse(localStorage.getItem(matchStorageKey) || '[]')
+      if (Array.isArray(savedMatchIds)) {
+        savedMatchIds.forEach((id) => {
+          if (typeof id === 'string') seenMatchIds.add(id)
+        })
+      }
+      localStorage.setItem(matchStorageKey, JSON.stringify([...seenMatchIds].slice(-500)))
       setUnreadClaimCount(0)
+      setUnreadMatchCount(0)
     } catch (error) {
       console.error('Could not save seen claim notifications:', error)
     }
@@ -294,7 +341,7 @@ export default function Layout() {
               <div className="relative" ref={notificationsRef}>
                 <button
                   type="button"
-                  aria-label={pendingClaimTotal ? `${pendingClaimTotal} claims need review` : 'Notifications'}
+                  aria-label={pendingClaimTotal ? `${pendingClaimTotal} unread notifications` : 'Notifications'}
                   aria-expanded={notificationsOpen}
                   aria-haspopup="dialog"
                   onClick={markNotificationsSeen}
@@ -319,12 +366,12 @@ export default function Layout() {
                       <div>
                         <h2 className="text-sm font-bold text-slate-900">Notifications</h2>
                         <p className="text-xs text-slate-500">
-                          {claimNotifications.length} claim{claimNotifications.length === 1 ? '' : 's'} waiting for review
+                          {claimNotifications.length} claim{claimNotifications.length === 1 ? '' : 's'} · {matchNotifications.length} visual-match notice{matchNotifications.length === 1 ? '' : 's'}
                         </p>
                       </div>
                       <span aria-hidden="true" className="text-lg">🔔</span>
                     </div>
-                    {claimNotifications.length ? (
+                    {claimNotifications.length || matchNotifications.length ? (
                       <ul className="max-h-72 overflow-y-auto p-2">
                         {claimNotifications.map((item) => (
                           <li key={item.id}>
@@ -340,9 +387,23 @@ export default function Layout() {
                             </Link>
                           </li>
                         ))}
+                        {matchNotifications.map((item) => (
+                          <li key={item.id}>
+                            <Link
+                              to="/lost-found?mine=1"
+                              onClick={() => setNotificationsOpen(false)}
+                              className="block rounded-xl px-3 py-3 transition hover:bg-brand-50"
+                            >
+                              <span className="block text-sm font-semibold text-slate-800">{item.itemTitle} was automatically removed</span>
+                              <span className="mt-1 block text-xs text-slate-500">
+                                It matched “{item.matchedItemTitle}” at {Math.round(item.similarityScore * 100)}% visual similarity · {new Date(item.createdAt).toLocaleString()}
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
                       </ul>
                     ) : (
-                      <p className="px-4 py-6 text-center text-sm text-slate-500">You’re all caught up. New claims will appear here.</p>
+                      <p className="px-4 py-6 text-center text-sm text-slate-500">You’re all caught up. New claims and matching notices will appear here.</p>
                     )}
                     <Link
                       to="/profile?tab=incoming"
