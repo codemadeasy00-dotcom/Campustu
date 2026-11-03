@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE TABLE lost_found_match_notifications (
+CREATE TABLE IF NOT EXISTS lost_found_match_notifications (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id           uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   college_id         uuid NOT NULL REFERENCES colleges(id) ON DELETE CASCADE,
@@ -13,7 +13,7 @@ CREATE TABLE lost_found_match_notifications (
   UNIQUE (item_id)
 );
 
-CREATE INDEX lost_found_match_notifications_owner_idx
+CREATE INDEX IF NOT EXISTS lost_found_match_notifications_owner_idx
   ON lost_found_match_notifications (owner_id, created_at DESC);
 
 COMMIT;
