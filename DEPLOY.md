@@ -82,7 +82,8 @@ A paused project means your site is down until you un-pause it in the dashboard.
    account roll numbers are optional and can be collected during sign-up. Image screening currently runs
    only in the browser, so its client-reported scores are not treated as an authoritative admin queue.
    Migration `019_admin_password_auth.sql` adds a separately hashed admin password and short-lived,
-   revocable admin sessions. Apply it before deploying the password-protected admin console.
+   revocable admin sessions. Migration `020_admin_audit_schema_compat.sql` reconciles audit-log columns
+   for password setup and admin events. Apply them before deploying the password-protected admin console.
    Apply migrations before deploying the backend update. Migration `008_lost_found_report_details.sql`
    adds the optional report metadata used by the dedicated lost-and-found report page.
    Migration `009_lost_found_lifecycle_claims.sql` adds the eight-hour deletion rule, closed/resolved
