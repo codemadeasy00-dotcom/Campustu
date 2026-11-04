@@ -124,7 +124,7 @@ function ModerationQueue({ onError }) {
   )
 }
 
-function UserManagement({ onError }) {
+function UserManagement({ onError, onSuccess }) {
   const [search, setSearch] = useState('')
   const [users, setUsers] = useState([])
   const [selected, setSelected] = useState(null)
@@ -203,12 +203,70 @@ function UserManagement({ onError }) {
     }
   }
 
+  async function removePost(item, type) {
+    const ownerId = selected?.user.id
+    if (!ownerId) return
+    const reason = window.prompt(`Why are you removing "${item.title}"? This reason is recorded in the admin audit log.`)
+    if (!reason || reason.trim().length < 5) return
+    if (!window.confirm('Remove this post from the site and delete its photos? This cannot be undone.')) return
+    setBusy(true)
+    try {
+      const result = await adminApi.removePost(type, item.id, reason.trim())
+      setSelected((current) => current?.user.id !== ownerId ? current : ({
+        ...current,
+        active_listings: {
+          ...current.active_listings,
+          [type]: current.active_listings[type].filter((entry) => entry.id !== item.id),
+        },
+      }))
+      setUsers((current) => current.map((entry) => entry.id === ownerId
+        ? {
+          ...entry,
+          [type === 'marketplace' ? 'active_marketplace_listings' : 'active_lost_found_listings']:
+            Math.max(0, entry[type === 'marketplace' ? 'active_marketplace_listings' : 'active_lost_found_listings'] - 1),
+        }
+        : entry))
+      onSuccess(result.message)
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function renderPosts(items, type, title) {
+    return (
+      <div className="space-y-2">
+        <h3 className="font-semibold">{title}</h3>
+        {items.length === 0 ? <p className="text-sm text-slate-600">No active posts.</p> : items.map((item) => (
+          <article key={item.id} className="grid gap-3 border p-3 sm:grid-cols-[6rem_1fr]">
+            <ItemPhoto src={item.photo_url} alt={item.title} className="h-24 w-full object-cover" />
+            <div className="min-w-0">
+              <p className="font-semibold">{item.title} · {item.status}</p>
+              <p className="text-xs text-slate-600">{type === 'marketplace' ? 'Marketplace' : 'Lost & Found'} · {new Date(item.created_at).toLocaleString()}</p>
+              {item.description && <p className="mt-1 whitespace-pre-wrap break-words text-sm">{item.description}</p>}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => removePost(item, type)}
+                className="mt-2 border border-red-700 px-3 py-1.5 text-sm font-semibold text-red-800 disabled:opacity-50"
+              >
+                Remove post &amp; photos
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5">
       <form onSubmit={searchUsers} className="flex flex-col gap-2 sm:flex-row">
         <input required minLength={2} maxLength={120} className={inputClass} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by email or roll number" />
         <button className="border bg-teal-900 px-5 py-2 font-semibold text-white">Search</button>
       </form>
+      <p className="text-sm text-slate-700">Open <strong>Details</strong> to review a student’s active posts and photos. Remove a specific post there, or suspend/ban the account using the account actions.</p>
       {users.length > 0 && (
         <div className="overflow-x-auto border bg-white">
           <table className="w-full min-w-[760px] border-collapse text-left text-sm">
@@ -251,8 +309,12 @@ function UserManagement({ onError }) {
           <p>{selected.user.email} · {selected.user.roll_number || 'No roll number'} · {selected.user.status}</p>
           {selected.user.frozen_reason && <p className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><strong>Account restriction reason:</strong> {selected.user.frozen_reason}</p>}
           <p>Completed handovers: <strong>{selected.user.completed_handovers}</strong></p>
-          <div><h3 className="font-semibold">Active marketplace listings</h3>{selected.active_listings.marketplace.map((item) => <p key={item.id}>{item.title} · {item.status}</p>)}</div>
-          <div><h3 className="font-semibold">Active Lost &amp; Found posts</h3>{selected.active_listings.lost_found.map((item) => <p key={item.id}>{item.title} · {item.status}</p>)}</div>
+          <section className="space-y-3">
+            <h3 className="font-bold">Student posts &amp; activity</h3>
+            <p className="text-sm text-slate-700">Review the post text and photo. Post removal is permanent and recorded in the audit log; account suspension or ban is available separately above.</p>
+            {renderPosts(selected.active_listings.marketplace, 'marketplace', 'Marketplace post history')}
+            {renderPosts(selected.active_listings.lost_found, 'lost_found', 'Lost & Found post history')}
+          </section>
           <div><h3 className="font-semibold">Reports received</h3>{selected.reports_received.map((report) => <p key={report.id}>{report.item_title}: {report.reason} · {report.status}</p>)}</div>
         </section>
       )}
@@ -937,7 +999,7 @@ export default function AdminDashboard() {
                 className="min-h-96 p-4 focus-visible:outline-2 focus-visible:outline-teal-700 sm:p-6"
               >
                 {tab === item.id && item.id === 'moderation' && <ModerationQueue onError={showError} />}
-                {tab === item.id && item.id === 'users' && <UserManagement onError={showError} />}
+                {tab === item.id && item.id === 'users' && <UserManagement onError={showError} onSuccess={showSuccess} />}
                 {tab === item.id && item.id === 'support' && <SupportRequests onError={showError} onSuccess={showSuccess} />}
                 {tab === item.id && item.id === 'colleges' && <AddCollege onError={showError} onSuccess={showSuccess} />}
                 {tab === item.id && item.id === 'controls' && <SystemSafety onError={showError} />}

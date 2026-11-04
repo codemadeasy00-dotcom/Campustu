@@ -51,6 +51,8 @@ See `../DEPLOY.md` (free-tier plan: Supabase + Render + Brevo).
 | POST | /moderation/reports | session cookie, active | JSON: item_type (`marketplace` or `lost_found`), item_id, reason |
 | GET | /moderation/admin/reports | admin | Pending content reports |
 | PATCH | /moderation/admin/reports/:id | admin | JSON action: `dismiss`, `remove`, or `ban`; removal also deletes stored photos |
+| GET | /api/admin/users/:id | admin | Account details, active posts with photos/descriptions, and received reports |
+| POST | /api/admin/posts/:type/:id/remove | admin | JSON `{ "reason": "..." }`; removes one marketplace or Lost & Found post, deletes its photos, rejects pending claims, and writes an audit entry |
 | GET | /items/mine | Bearer | |
 | GET | /items/:id | Bearer | 404 if the item belongs to another college |
 

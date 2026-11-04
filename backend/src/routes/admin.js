@@ -150,6 +150,9 @@ const accountStatusSchema = z.object({
   status: z.enum(['active', 'frozen']),
   reason: z.string().trim().min(5).max(1000),
 });
+const removePostSchema = z.object({
+  reason: z.string().trim().min(5).max(1000),
+});
 
 const collegeSchema = z.object({
   name: z.string().trim().min(3).max(150),
@@ -461,15 +464,21 @@ router.get('/users/:id', async (req, res) => {
   if (!user) throw new AppError(404, 'User not found.');
   const [{ rows: marketplace }, { rows: lostFound }, { rows: reports }] = await Promise.all([
     query(
-      `SELECT id, title, status, created_at FROM items
-        WHERE seller_id = $1 AND status IN ('available', 'reserved')
-        ORDER BY created_at DESC LIMIT 100`,
+      `SELECT i.id, i.title, i.description, i.status, i.created_at,
+              (SELECT p.storage_key FROM item_photos p
+                WHERE p.item_id = i.id ORDER BY p.position LIMIT 1) AS photo_key
+         FROM items i
+        WHERE i.seller_id = $1 AND i.status <> 'removed'
+        ORDER BY i.created_at DESC LIMIT 100`,
       [userId],
     ),
     query(
-      `SELECT id, title, status, lifecycle_status, created_at FROM lost_found_items
-        WHERE user_id = $1 AND lifecycle_status = 'active'
-        ORDER BY created_at DESC LIMIT 100`,
+      `SELECT lif.id, lif.title, lif.description, lif.status, lif.lifecycle_status, lif.created_at,
+              (SELECT p.storage_key FROM lost_found_photos p
+                WHERE p.item_id = lif.id ORDER BY p.position LIMIT 1) AS photo_key
+         FROM lost_found_items lif
+        WHERE lif.user_id = $1 AND lif.lifecycle_status <> 'removed'
+        ORDER BY lif.created_at DESC LIMIT 100`,
       [userId],
     ),
     query(
@@ -485,7 +494,97 @@ router.get('/users/:id', async (req, res) => {
       [userId],
     ),
   ]);
-  res.json({ success: true, user, active_listings: { marketplace, lost_found: lostFound }, reports_received: reports });
+  res.json({
+    success: true,
+    user,
+    active_listings: {
+      marketplace: marketplace.map(({ photo_key: photoKey, ...item }) => ({
+        ...item,
+        photo_url: photoKey ? storage.urlFor(photoKey) : null,
+      })),
+      lost_found: lostFound.map(({ photo_key: photoKey, ...item }) => ({
+        ...item,
+        photo_url: photoKey ? storage.urlFor(photoKey) : null,
+      })),
+    },
+    reports_received: reports,
+  });
+});
+
+router.post('/posts/:type/:id/remove', async (req, res) => {
+  const type = z.enum(['marketplace', 'lost_found']).parse(req.params.type);
+  const itemId = z.uuid().parse(req.params.id);
+  const { reason } = removePostSchema.parse(req.body);
+  assertUserTextIsAllowed([reason]);
+
+  await tx(async (db) => {
+    const marketplace = type === 'marketplace';
+    const itemTable = marketplace ? 'items' : 'lost_found_items';
+    const photoTable = marketplace ? 'item_photos' : 'lost_found_photos';
+    const ownerColumn = marketplace ? 'seller_id' : 'user_id';
+    const activeCondition = marketplace
+      ? "status <> 'removed'"
+      : "lifecycle_status <> 'removed'";
+    const { rows: [item] } = await db.query(
+      `SELECT id, ${ownerColumn} AS owner_id
+         FROM ${itemTable}
+        WHERE id = $1 AND ${activeCondition}
+        FOR UPDATE`,
+      [itemId],
+    );
+    if (!item) throw new AppError(404, 'Post not found or already removed.');
+
+    const { rows: photos } = await db.query(
+      `SELECT storage_key FROM ${photoTable} WHERE item_id = $1`,
+      [itemId],
+    );
+    await enqueueCleanup(db, photos.map((photo) => photo.storage_key));
+
+    if (marketplace) {
+      await db.query(
+        `UPDATE items
+            SET status = 'removed', removed_reason = $2, updated_at = now()
+          WHERE id = $1`,
+        [itemId, reason],
+      );
+    } else {
+      await db.query(
+        `UPDATE lost_found_items
+            SET lifecycle_status = 'removed', moderation_reason = $2,
+                flagged_for_review = false, updated_at = now()
+          WHERE id = $1`,
+        [itemId, reason],
+      );
+      await db.query(
+        `UPDATE item_claims
+            SET status = 'rejected', reviewed_at = now()
+          WHERE item_id = $1 AND status = 'pending'`,
+        [itemId],
+      );
+    }
+
+    await db.query(`DELETE FROM ${photoTable} WHERE item_id = $1`, [itemId]);
+    const reportItemColumn = marketplace ? 'marketplace_item_id' : 'lost_found_item_id';
+    await db.query(
+      `UPDATE item_reports
+          SET status = 'actioned', reviewed_at = now(), reviewed_by = $2
+        WHERE ${reportItemColumn} = $1 AND status = 'pending'`,
+      [itemId, req.user.id],
+    );
+    await writeAudit(db, req, 'remove_post', type, itemId, {
+      owner_id: item.owner_id,
+      reason,
+    });
+  });
+
+  const mediaCleanupPending = (await processQueuedMediaCleanup()) > 0;
+  res.json({
+    success: true,
+    message: mediaCleanupPending
+      ? 'Post removed. Photo deletion is queued and will be retried automatically.'
+      : 'Post and its photos removed.',
+    media_cleanup_pending: mediaCleanupPending,
+  });
 });
 
 router.post('/users/:id/ban', async (req, res) => {
