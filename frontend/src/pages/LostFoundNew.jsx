@@ -5,7 +5,6 @@ import { Alert, inputClass } from '../components/ui.jsx'
 import { lostFoundApi, errorMessage } from '../services/api.js'
 import { processAndCompressImage } from '../utils/imageCompressor.js'
 import { checkImagesSafety } from '../utils/moderation.js'
-import { suggestItemDetails } from '../utils/itemPhotoSuggestions.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 
@@ -116,8 +115,6 @@ export default function LostFoundNew() {
   const [photoPreviews, setPhotoPreviews] = useState([])
   const [processingPhotos, setProcessingPhotos] = useState(false)
   const [photoStepComplete, setPhotoStepComplete] = useState(false)
-  const [photoAnalysis, setPhotoAnalysis] = useState({ status: 'idle', detectedText: '', labels: [], message: '' })
-  const analysisRunRef = useRef(0)
   const editedFieldsRef = useRef(new Set())
   const [duplicateWarning, setDuplicateWarning] = useState([])
   const [allowDuplicate, setAllowDuplicate] = useState(false)
@@ -159,57 +156,6 @@ export default function LostFoundNew() {
     setSkipReason('')
   }
 
-  const analyzePhoto = async (photo) => {
-    const runId = ++analysisRunRef.current
-    const objectUrl = URL.createObjectURL(photo)
-    setPhotoStepComplete(false)
-    setPhotoAnalysis({ status: 'running', detectedText: '', labels: [], message: 'Preparing on-device OCR and item recognition…' })
-    try {
-      const suggestions = await suggestItemDetails(photo, objectUrl, (status, progress) => {
-        if (analysisRunRef.current !== runId) return
-        const percent = Number.isFinite(progress) ? ` ${Math.round(progress * 100)}%` : ''
-        setPhotoAnalysis((current) => ({
-          ...current,
-          message: `${status}${percent}`,
-        }))
-      })
-      if (analysisRunRef.current !== runId) return
-      setPhotoAnalysis({
-        status: 'complete',
-        detectedText: suggestions.detectedText,
-        labels: suggestions.labels,
-        message: suggestions.classificationUnavailable
-          ? 'Text recognition finished. Item-name suggestions are unavailable, but you can still review any detected text.'
-          : suggestions.detectedText
-            ? 'Photo analysis finished. Review and edit the suggested details.'
-            : 'No readable text was found. Try a sharper, closer photo or enter the details yourself.',
-      })
-      setForm((current) => ({
-        ...current,
-        title: !editedFieldsRef.current.has('title') && !current.title ? suggestions.title : current.title,
-        description: !editedFieldsRef.current.has('description') && !current.description
-          ? suggestions.description
-          : current.description,
-        category: !editedFieldsRef.current.has('category') && suggestions.category
-          ? suggestions.category
-          : current.category,
-      }))
-      setDraftReady(true)
-    } catch (photoError) {
-      if (analysisRunRef.current !== runId) return
-      console.error('Could not analyze lost-and-found photo:', photoError)
-      setPhotoAnalysis({
-        status: 'unavailable',
-        detectedText: '',
-        labels: [],
-        message: photoError.message || 'Text recognition could not start. Reload the page and retry.',
-      })
-    } finally {
-      URL.revokeObjectURL(objectUrl)
-      if (analysisRunRef.current === runId) setPhotoStepComplete(true)
-    }
-  }
-
   const handlePhotoChange = async (event) => {
     const selectedFiles = Array.from(event.target.files || [])
     event.target.value = ''
@@ -244,7 +190,7 @@ export default function LostFoundNew() {
       const oversized = processed.find((photo) => photo.size > MAX_PHOTO_BYTES)
       if (oversized) throw new Error(`${oversized.name} is still larger than 5 MB after compression.`)
       setPhotos((current) => [...current, ...processed].slice(0, MAX_PHOTOS))
-      if (photos.length === 0) await analyzePhoto(processed[0])
+      setPhotoStepComplete(true)
       if (validationErrors.length) setError(validationErrors.join(' '))
     } catch (photoError) {
       console.error('Could not prepare lost-and-found photo:', photoError)
@@ -257,15 +203,7 @@ export default function LostFoundNew() {
   const removePhoto = (index) => {
     const nextPhotos = photos.filter((_, photoIndex) => photoIndex !== index)
     setPhotos(nextPhotos)
-    if (index === 0) {
-      if (nextPhotos[0]) {
-        void analyzePhoto(nextPhotos[0])
-      } else {
-        analysisRunRef.current += 1
-        setPhotoStepComplete(false)
-        setPhotoAnalysis({ status: 'idle', detectedText: '', labels: [], message: '' })
-      }
-    }
+    if (nextPhotos.length === 0) setPhotoStepComplete(false)
   }
 
   const clearSavedDraft = () => {
@@ -512,9 +450,9 @@ export default function LostFoundNew() {
             className="mt-2 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-700 disabled:opacity-60"
           />
           <p className="mt-1 text-xs text-slate-500">
-            {processingPhotos ? 'Preparing and analyzing photo on this device…' : `${photos.length} of ${MAX_PHOTOS} photos selected. The first photo is used for suggestions and visual matching.`}
+            {processingPhotos ? 'Preparing photo…' : `${photos.length} of ${MAX_PHOTOS} photos selected. Photos are screened and visually matched before publishing.`}
           </p>
-          <p className="mt-1 text-xs text-amber-700">Photos stay in your browser during OCR and item recognition. Do not publish IDs, serial numbers, or other sensitive text.</p>
+          <p className="mt-1 text-xs text-amber-700">Avoid including personal information or sensitive details in photos.</p>
           {photoPreviews.length > 0 && (
             <ul className="mt-3 flex flex-wrap gap-3">
               {photoPreviews.map((preview, index) => (
@@ -533,45 +471,11 @@ export default function LostFoundNew() {
               ))}
             </ul>
           )}
-          {photoAnalysis.message && (
-            <p role="status" aria-live="polite" className={`mt-3 rounded-lg p-3 text-sm ${photoAnalysis.status === 'unavailable' ? 'bg-amber-50 text-amber-900' : 'bg-sky-50 text-sky-900'}`}>
-              {photoAnalysis.message}
-            </p>
-          )}
-          {photoAnalysis.status === 'unavailable' && photos[0] && (
-            <button
-              type="button"
-              onClick={() => void analyzePhoto(photos[0])}
-              className="mt-2 rounded-lg border border-brand-700 px-3 py-2 text-sm font-semibold text-brand-800"
-            >
-              Retry text recognition
-            </button>
-          )}
-          {photoAnalysis.labels.length > 0 && (
-            <p className="mt-2 text-xs text-slate-600">
-              Visual suggestions: {photoAnalysis.labels.map((label) => `${label.name} (${Math.round(label.confidence * 100)}%)`).join(', ')}
-            </p>
-          )}
-          {photoAnalysis.detectedText && (
-            <details className="mt-3 rounded-lg border border-slate-200 p-3">
-              <summary className="cursor-pointer text-sm font-semibold">Review text detected in the photo (private until you add it)</summary>
-              <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700">{photoAnalysis.detectedText}</p>
-              <button
-                type="button"
-                onClick={() => updateForm('description', [form.description, photoAnalysis.detectedText].filter(Boolean).join('\n'))}
-                className="mt-2 border border-brand-700 px-3 py-1.5 text-xs font-semibold text-brand-800"
-              >
-                Add detected text to description
-              </button>
-              <p className="mt-2 text-xs text-amber-800">Check for personal, identifying, or sensitive text before adding it. Anything in the description will be visible in the post.</p>
-            </details>
-          )}
           {!photoStepComplete && (
             <button
               type="button"
               disabled={processingPhotos}
               onClick={() => {
-                setPhotoAnalysis({ status: 'skipped', detectedText: '', labels: [], message: 'You chose to continue without a photo. Item scans will be skipped.' })
                 setPhotoStepComplete(true)
               }}
               className="mt-3 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
@@ -582,7 +486,7 @@ export default function LostFoundNew() {
         </section>
 
         {photoStepComplete && <>
-        <p className="text-sm font-semibold text-brand-800">Step 2: Review and edit the suggested item details. All photo safety and matching scans run before the post is uploaded.</p>
+        <p className="text-sm font-semibold text-brand-800">Step 2: Enter the item details. Photo safety and visual matching scans run before the post is uploaded.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-sm font-semibold text-slate-700">Title *</span>

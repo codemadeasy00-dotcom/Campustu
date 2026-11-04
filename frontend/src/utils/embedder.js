@@ -47,31 +47,3 @@ export async function getImageEmbedding(imageElementOrUrl) {
     tensor?.dispose()
   }
 }
-
-export async function classifyImage(imageElementOrUrl) {
-  const model = await getModel()
-  let image = imageElementOrUrl
-
-  if (typeof imageElementOrUrl === 'string') {
-    image = new Image()
-    image.crossOrigin = 'anonymous'
-    image.src = imageElementOrUrl
-    await new Promise((resolve, reject) => {
-      if (image.complete && image.naturalWidth > 0) {
-        resolve()
-      } else {
-        image.onload = resolve
-        image.onerror = () => reject(new Error('The image could not be loaded for item suggestions.'))
-      }
-    })
-  }
-
-  const predictions = await model.classify(image, 3)
-  if (!Array.isArray(predictions) || predictions.some((prediction) => (
-    typeof prediction?.className !== 'string'
-    || !Number.isFinite(prediction.probability)
-  ))) {
-    throw new Error('The image classifier returned invalid suggestions.')
-  }
-  return predictions
-}

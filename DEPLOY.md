@@ -138,10 +138,8 @@ From `backend/`, generate one Web Push VAPID key pair with `npx web-push generat
 Keep the private key secret and stable; changing it invalidates existing browser subscriptions.
 Users explicitly opt in from Profile & Settings. Push is sent for visual matches at or above the
 existing 70% suggestion threshold; notifications contain no item title or sensitive details.
-The Lost & Found report now begins with local photo OCR and MobileNet suggestions. Image analysis
-is performed in the browser; OCR text is shown for review and is not copied into a public description
-unless the user chooses to add it. Final photo safety screening and visual matching still complete
-before the report is uploaded.
+Lost & Found report details are entered manually. Photo safety screening and visual matching still
+complete before the report is uploaded.
 
 Campuses use a shared app origin and shared PostgreSQL database with `college_id` row scoping,
 college-specific email-domain checks, coordinates, search radii, and a central admin console. This
