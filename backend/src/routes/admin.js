@@ -94,8 +94,8 @@ router.post('/auth/unlock', passwordAttemptLimiter, async (req, res) => {
   await query(
     `INSERT INTO admin_audit_logs
        (admin_id, action, action_type, target_type, target_id, details, ip_address, user_agent)
-     VALUES ($1, 'unlock_admin_console', 'unlock_admin_console', 'user', $1::text, '{}'::jsonb, $2, $3)`,
-    [req.user.id, req.ip || null, req.get('user-agent') || null],
+     VALUES ($1, 'unlock_admin_console', 'unlock_admin_console', 'user', $2, '{}'::jsonb, $3, $4)`,
+    [req.user.id, String(req.user.id), req.ip || null, req.get('user-agent') || null],
   );
   res.json({ success: true, unlocked: true });
 });
@@ -179,8 +179,8 @@ async function writeAudit(db, req, action, targetType, targetId, details = {}) {
   await db.query(
     `INSERT INTO admin_audit_logs
        (admin_id, action, action_type, target_type, target_id, details, ip_address, user_agent)
-     VALUES ($1, $2, $2, $3, $4, $5::jsonb, $6, $7)`,
-    [req.user.id, action, targetType, String(targetId), JSON.stringify(details), ipAddress, userAgent],
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
+    [req.user.id, action, action, targetType, String(targetId), JSON.stringify(details), ipAddress, userAgent],
   );
 }
 
