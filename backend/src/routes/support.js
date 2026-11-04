@@ -15,7 +15,7 @@ const requestLimiter = rateLimit({
 });
 
 const createRequestSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email()).max(254),
+  email: z.string().trim().max(254).toLowerCase().pipe(z.email()),
   full_name: z.string().trim().min(2).max(100),
   category: z.enum(['account_access', 'suspension', 'ban_appeal', 'other']),
   subject: z.string().trim().min(5).max(160),
