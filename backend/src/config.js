@@ -56,6 +56,11 @@ const config = {
     apiSecret: process.env.CLOUDINARY_API_SECRET || '',
   },
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'http://localhost:4000').replace(/\/$/, ''),
+  webPush: {
+    publicKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '',
+    privateKey: process.env.WEB_PUSH_VAPID_PRIVATE_KEY || '',
+    subject: process.env.WEB_PUSH_VAPID_SUBJECT || '',
+  },
   otp: { ttlMinutes: 10, maxAttempts: 5, resendSeconds: 60 },
   jwtExpiresIn: '7d',
   newUserMaxPrice: int('NEW_USER_MAX_PRICE', 500),
@@ -73,6 +78,10 @@ if (isProd) {
   if (!config.s3.bucket && !config.cloudinary.cloudName) {
     throw new Error('Configure S3_BUCKET or CLOUDINARY_CLOUD_NAME in production: local files are not persistent');
   }
+}
+
+if (Object.values(config.webPush).some(Boolean) && Object.values(config.webPush).some((value) => !value)) {
+  throw new Error('WEB_PUSH_VAPID_PUBLIC_KEY, WEB_PUSH_VAPID_PRIVATE_KEY and WEB_PUSH_VAPID_SUBJECT must be set together');
 }
 
 if (config.s3.bucket && (!config.s3.accessKeyId || !config.s3.secretAccessKey || !config.s3.publicBaseUrl)) {

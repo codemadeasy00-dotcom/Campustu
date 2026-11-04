@@ -323,10 +323,19 @@ export default function LostFound() {
   const [moderationProgress, setModerationProgress] = useState('');
   const photoPreviewsRef = React.useRef([]);
 
-  // Default Campus Coordinates (DBATU Lonere)
-  const defaultCenter = [18.1678, 73.3364];
+  const defaultCenter = user?.college?.center_lat != null
+    && user?.college?.center_lng != null
+    && Number.isFinite(Number(user.college.center_lat))
+    && Number.isFinite(Number(user?.college?.center_lng))
+    ? [Number(user.college.center_lat), Number(user.college.center_lng)]
+    : [18.1678, 73.3364];
   const [modalPin, setModalPin] = useState(null);
   const [selectedLayer, setSelectedLayer] = useState('standard');
+
+  useEffect(() => {
+    const campusRadius = Number(user?.college?.search_radius_meters);
+    if (Number.isFinite(campusRadius) && campusRadius > 0) setRadiusMeters(campusRadius);
+  }, [user?.college?.id, user?.college?.search_radius_meters]);
 
   const [formData, setFormData] = useState({
     title: '',

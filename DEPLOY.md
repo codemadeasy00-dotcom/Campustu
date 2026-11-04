@@ -85,7 +85,11 @@ A paused project means your site is down until you un-pause it in the dashboard.
    revocable admin sessions. Migration `020_admin_audit_schema_compat.sql` reconciles audit-log columns
    for password setup and admin events. Migration `021_admin_audit_action_type.sql` supports databases
    with the legacy required `action_type` column. Migration `022_account_support_requests.sql` adds the
-   support inbox for people who cannot sign in. Apply these before deploying the updated admin console.
+   support inbox for people who cannot sign in. Migration `023_web_push_subscriptions.sql` adds
+   per-account browser push subscriptions.
+   Migration `024_lost_found_match_notification_pair_unique.sql` allows each report to notify its
+   owner about multiple distinct matches without duplicate notices. Apply these before deploying
+   the updated application.
    Apply migrations before deploying the backend update. Migration `008_lost_found_report_details.sql`
    adds the optional report metadata used by the dedicated lost-and-found report page.
    Migration `009_lost_found_lifecycle_claims.sql` adds the eight-hour deletion rule, closed/resolved
@@ -126,8 +130,23 @@ S3_BUCKET=item-photos  S3_REGION=...  S3_ENDPOINT=...  S3_ACCESS_KEY_ID=...  S3_
 S3_PUBLIC_BASE_URL=https://<project-ref>.supabase.co/storage/v1/object/public/item-photos
 CLOUDINARY_CLOUD_NAME=...  CLOUDINARY_API_KEY=...  CLOUDINARY_API_SECRET=...
 ```
-Configure either the S3 variables or all three Cloudinary variables for persistent photo storage. When both are configured, new photos use Cloudinary and existing untagged S3 keys continue to use S3. Uploaded images are validated, limited to 5 MB each, and re-encoded before storage. Marketplace, Lost & Found, and profile-avatar forms also perform a local browser-side image check; this can be bypassed and is not server-side moderation. Lost & Found photo matching uses a browser-loaded MobileNet V1 model; the first use downloads model weights from TensorFlow Hub. If visual matching fails during a post, it is queued for retry when its owner next opens Lost & Found while the model is available. Duplicate decisions are computed on the server, only comparing active posts at the same college, status, and category. A high-confidence (88%+) match prompts for a 15-character explanation; owners can proceed at most three times per 24 hours, and those overrides are queued for admin review. Lower similarities do not interrupt publishing. Deferred scans at 98% or higher notify the owner but never hide or delete a post automatically. Admins can review override explanations and clear the review flag or remove a post at `/admin/moderation`. User-submitted text is screened on the server against word lists for English, Arabic, German, Spanish, French, Hindi, Korean, Russian, Mandarin Chinese, and Brazilian Portuguese; unsupported writing systems are rejected rather than accepted without screening. Word lists cannot guarantee detection of every phrase or evasion in every language. `npm run make-admin -- email@example.com` assigns the admin role. The API refuses to start in production if email, persistent photo storage or strong secrets are missing. That is deliberate:
+Configure either the S3 variables or all three Cloudinary variables for persistent photo storage. When both are configured, new photos use Cloudinary and existing untagged S3 keys continue to use S3. Uploaded images are validated, limited to 5 MB each, and re-encoded before storage. Marketplace, Lost & Found, and profile-avatar forms also perform a local browser-side image check; this can be bypassed and is not server-side moderation. Lost & Found photo matching uses a browser-loaded MobileNet V1 model; the first use downloads model weights from TensorFlow Hub. If visual matching fails during a post, it is queued for retry when its owner next opens Lost & Found while the model is available. Duplicate decisions are computed on the server, only comparing active posts at the same college, status, and category. A high-confidence (88%+) match prompts for a 15-character explanation; owners can proceed at most three times per 24 hours, and those overrides are queued for admin review. Lower similarities do not interrupt publishing. Deferred same-status scans at 98% or higher notify the reporting owner; opposite-status matches at the 70% suggestion threshold notify the other post's owner. These notices never hide or delete a post automatically. Admins can review override explanations and clear the review flag or remove a post at `/admin/moderation`. User-submitted text is screened on the server against word lists for English, Arabic, German, Spanish, French, Hindi, Korean, Russian, Mandarin Chinese, and Brazilian Portuguese; unsupported writing systems are rejected rather than accepted without screening. Word lists cannot guarantee detection of every phrase or evasion in every language. `npm run make-admin -- email@example.com` assigns the admin role. The API refuses to start in production if email, persistent photo storage or strong secrets are missing. That is deliberate:
 read the Render log for the exact missing name.
+
+From `backend/`, generate one Web Push VAPID key pair with `npx web-push generate-vapid-keys`, then set
+`WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, and `WEB_PUSH_VAPID_SUBJECT` on Render.
+Keep the private key secret and stable; changing it invalidates existing browser subscriptions.
+Users explicitly opt in from Profile & Settings. Push is sent for visual matches at or above the
+existing 70% suggestion threshold; notifications contain no item title or sensitive details.
+The Lost & Found report now begins with local photo OCR and MobileNet suggestions. Image analysis
+is performed in the browser; OCR text is shown for review and is not copied into a public description
+unless the user chooses to add it. Final photo safety screening and visual matching still complete
+before the report is uploaded.
+
+Campuses use a shared app origin and shared PostgreSQL database with `college_id` row scoping,
+college-specific email-domain checks, coordinates, search radii, and a central admin console. This
+is the recommended fit for the current Vercel/Render deployment; per-campus subdomains are not
+required and would require wildcard DNS/domain setup plus explicit host-to-campus validation.
 
 ### Browser sessions and the Vercel API proxy
 

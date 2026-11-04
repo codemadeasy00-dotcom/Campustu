@@ -141,6 +141,12 @@ function Dashboard() {
       imageUrl: item.photo,
     })),
   ], [recent, lostFound])
+  const campusCenter = user.college?.center_lat != null
+    && user.college?.center_lng != null
+    && Number.isFinite(Number(user.college.center_lat))
+    && Number.isFinite(Number(user.college.center_lng))
+    ? [Number(user.college.center_lat), Number(user.college.center_lng)]
+    : [18.1678, 73.3364]
 
   const submitSearch = (event) => {
     event.preventDefault()
@@ -321,7 +327,7 @@ function Dashboard() {
         </section>
       </div>
 
-      <CampusMap items={mapItems} />
+      <CampusMap items={mapItems} center={campusCenter} />
     </div>
   )
 }

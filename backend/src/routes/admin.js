@@ -226,6 +226,8 @@ router.get('/reports', async (_req, res) => {
               reporter.display_name AS reporter_name, reporter.email AS reporter_email,
               COALESCE(mi.title, lif.title) AS item_title,
               COALESCE(mi.seller_id, lif.user_id) AS target_user_id,
+              COALESCE(mi.college_id, lif.college_id) AS college_id,
+              campus.name AS college_name,
               target.display_name AS target_user_name,
               CASE WHEN r.marketplace_item_id IS NOT NULL THEN 'marketplace' ELSE 'lost_found' END AS item_type,
               COALESCE(mi.status::text, lif.lifecycle_status) AS item_status,
@@ -238,17 +240,20 @@ router.get('/reports', async (_req, res) => {
          LEFT JOIN items mi ON mi.id = r.marketplace_item_id
          LEFT JOIN lost_found_items lif ON lif.id = r.lost_found_item_id
          LEFT JOIN users target ON target.id = COALESCE(mi.seller_id, lif.user_id)
+         LEFT JOIN colleges campus ON campus.id = COALESCE(mi.college_id, lif.college_id)
         WHERE r.status = 'pending'
         ORDER BY r.created_at ASC
         LIMIT 200`,
     ),
     query(
       `SELECT lif.id, lif.title, lif.description, lif.category, lif.status, lif.skip_reason,
+              lif.college_id, campus.name AS college_name,
               lif.created_at, u.display_name AS target_user_name, u.email AS target_user_email,
               (SELECT p.storage_key FROM lost_found_photos p
                 WHERE p.item_id = lif.id ORDER BY p.position LIMIT 1) AS photo_key
          FROM lost_found_items lif
          JOIN users u ON u.id = lif.user_id
+         LEFT JOIN colleges campus ON campus.id = lif.college_id
         WHERE lif.flagged_for_review = true AND lif.lifecycle_status = 'active'
         ORDER BY lif.created_at ASC
         LIMIT 200`,

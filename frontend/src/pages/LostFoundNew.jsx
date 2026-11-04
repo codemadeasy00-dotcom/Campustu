@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import CampusMap from '../components/CampusMap.jsx'
 import { Alert, inputClass } from '../components/ui.jsx'
 import { lostFoundApi, errorMessage } from '../services/api.js'
 import { processAndCompressImage } from '../utils/imageCompressor.js'
 import { checkImagesSafety } from '../utils/moderation.js'
+import { suggestItemDetails } from '../utils/itemPhotoSuggestions.js'
+import { useAuth } from '../context/AuthContext.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 
 const DRAFT_STORAGE_KEY = 'campustu_lost_found_draft_v1'
@@ -30,7 +32,7 @@ function localDateTimeValue(date = new Date()) {
   return localDate.toISOString().slice(0, 16)
 }
 
-function emptyForm() {
+function emptyForm(defaultRadius = 100) {
   return {
     status: 'lost',
     title: '',
@@ -41,7 +43,7 @@ function emptyForm() {
     occurred_at: localDateTimeValue(),
     latitude: null,
     longitude: null,
-    radius_meters: 100,
+    radius_meters: defaultRadius,
     location_name: '',
     location_note: '',
     where_is_it: 'with_me',
@@ -73,7 +75,7 @@ function readDraft() {
       draft.latitude = Number(parsed.latitude)
       draft.longitude = Number(parsed.longitude)
     }
-    draft.radius_meters = Math.min(1000, Math.max(50, Number(parsed.radius_meters) || 100))
+    draft.radius_meters = Math.min(5000, Math.max(50, Number(parsed.radius_meters) || 100))
     if (!['with_me', 'security_desk', 'left_at_spot'].includes(parsed.where_is_it)) {
       draft.where_is_it = 'with_me'
     }
@@ -97,14 +99,26 @@ function draftFields(form) {
 
 export default function LostFoundNew() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const campusDefaultRadius = Math.min(5000, Math.max(50, Number(user?.college?.search_radius_meters) || 100))
+  const campusCenter = user?.college?.center_lat != null
+    && user?.college?.center_lng != null
+    && Number.isFinite(Number(user.college.center_lat))
+    && Number.isFinite(Number(user?.college?.center_lng))
+    ? [Number(user.college.center_lat), Number(user.college.center_lng)]
+    : DEFAULT_CENTER
   const [draftState] = useState(readDraft)
-  const [form, setForm] = useState(emptyForm)
+  const [form, setForm] = useState(() => emptyForm(campusDefaultRadius))
   const [draftReady, setDraftReady] = useState(false)
   const [showDraftPrompt, setShowDraftPrompt] = useState(Boolean(draftState.draft))
   const [draftError, setDraftError] = useState(draftState.error)
   const [photos, setPhotos] = useState([])
   const [photoPreviews, setPhotoPreviews] = useState([])
   const [processingPhotos, setProcessingPhotos] = useState(false)
+  const [photoStepComplete, setPhotoStepComplete] = useState(false)
+  const [photoAnalysis, setPhotoAnalysis] = useState({ status: 'idle', detectedText: '', labels: [], message: '' })
+  const analysisRunRef = useRef(0)
+  const editedFieldsRef = useRef(new Set())
   const [duplicateWarning, setDuplicateWarning] = useState([])
   const [allowDuplicate, setAllowDuplicate] = useState(false)
   const [skipReason, setSkipReason] = useState('')
@@ -137,11 +151,59 @@ export default function LostFoundNew() {
   }, [draftReady, form, postResult])
 
   const updateForm = (key, value) => {
+    editedFieldsRef.current.add(key)
     setForm((current) => ({ ...current, [key]: value }))
     setDraftReady(true)
     setDuplicateWarning([])
     setAllowDuplicate(false)
     setSkipReason('')
+  }
+
+  const analyzePhoto = async (photo) => {
+    const runId = ++analysisRunRef.current
+    const objectUrl = URL.createObjectURL(photo)
+    setPhotoStepComplete(false)
+    setPhotoAnalysis({ status: 'running', detectedText: '', labels: [], message: 'Preparing on-device OCR and item recognition…' })
+    try {
+      const suggestions = await suggestItemDetails(photo, objectUrl, (status, progress) => {
+        if (analysisRunRef.current !== runId) return
+        const percent = Number.isFinite(progress) ? ` ${Math.round(progress * 100)}%` : ''
+        setPhotoAnalysis((current) => ({
+          ...current,
+          message: `${status}${percent}`,
+        }))
+      })
+      if (analysisRunRef.current !== runId) return
+      setPhotoAnalysis({
+        status: 'complete',
+        detectedText: suggestions.detectedText,
+        labels: suggestions.labels,
+        message: 'Photo analysis finished. Review and edit the suggested details.',
+      })
+      setForm((current) => ({
+        ...current,
+        title: !editedFieldsRef.current.has('title') && !current.title ? suggestions.title : current.title,
+        description: !editedFieldsRef.current.has('description') && !current.description
+          ? suggestions.description
+          : current.description,
+        category: !editedFieldsRef.current.has('category') && suggestions.category
+          ? suggestions.category
+          : current.category,
+      }))
+      setDraftReady(true)
+    } catch (photoError) {
+      if (analysisRunRef.current !== runId) return
+      console.error('Could not analyze lost-and-found photo:', photoError)
+      setPhotoAnalysis({
+        status: 'unavailable',
+        detectedText: '',
+        labels: [],
+        message: 'On-device suggestions could not load. You can still enter the details yourself.',
+      })
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+      if (analysisRunRef.current === runId) setPhotoStepComplete(true)
+    }
   }
 
   const handlePhotoChange = async (event) => {
@@ -178,6 +240,7 @@ export default function LostFoundNew() {
       const oversized = processed.find((photo) => photo.size > MAX_PHOTO_BYTES)
       if (oversized) throw new Error(`${oversized.name} is still larger than 5 MB after compression.`)
       setPhotos((current) => [...current, ...processed].slice(0, MAX_PHOTOS))
+      if (photos.length === 0) await analyzePhoto(processed[0])
       if (validationErrors.length) setError(validationErrors.join(' '))
     } catch (photoError) {
       console.error('Could not prepare lost-and-found photo:', photoError)
@@ -188,7 +251,17 @@ export default function LostFoundNew() {
   }
 
   const removePhoto = (index) => {
-    setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index))
+    const nextPhotos = photos.filter((_, photoIndex) => photoIndex !== index)
+    setPhotos(nextPhotos)
+    if (index === 0) {
+      if (nextPhotos[0]) {
+        void analyzePhoto(nextPhotos[0])
+      } else {
+        analysisRunRef.current += 1
+        setPhotoStepComplete(false)
+        setPhotoAnalysis({ status: 'idle', detectedText: '', labels: [], message: '' })
+      }
+    }
   }
 
   const clearSavedDraft = () => {
@@ -205,6 +278,9 @@ export default function LostFoundNew() {
   const restoreDraft = () => {
     if (!draftState.draft) return
     setForm(draftState.draft)
+    for (const key of ['title', 'description', 'category']) {
+      if (draftState.draft[key]) editedFieldsRef.current.add(key)
+    }
     clearSavedDraft()
     setDraftReady(true)
   }
@@ -418,6 +494,82 @@ export default function LostFoundNew() {
       )}
 
       <form id="lost-found-report-form" onSubmit={handleSubmit} className="space-y-5">
+        <section className="rounded-2xl border-2 border-brand-200 bg-white p-4 sm:p-5">
+          <label className="block text-sm font-bold text-slate-800" htmlFor="lost-found-report-photo">
+            Step 1: Add item photos <span className="font-normal text-slate-500">(optional, up to {MAX_PHOTOS}; 5 MB each)</span>
+          </label>
+          <input
+            id="lost-found-report-photo"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            disabled={processingPhotos || isSubmitting || photos.length >= MAX_PHOTOS}
+            onChange={handlePhotoChange}
+            className="mt-2 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-700 disabled:opacity-60"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            {processingPhotos ? 'Preparing and analyzing photo on this device…' : `${photos.length} of ${MAX_PHOTOS} photos selected. The first photo is used for suggestions and visual matching.`}
+          </p>
+          <p className="mt-1 text-xs text-amber-700">Photos stay in your browser during OCR and item recognition. Do not publish IDs, serial numbers, or other sensitive text.</p>
+          {photoPreviews.length > 0 && (
+            <ul className="mt-3 flex flex-wrap gap-3">
+              {photoPreviews.map((preview, index) => (
+                <li key={preview} className="relative h-28 w-28 overflow-hidden rounded-xl border border-slate-200">
+                  <img src={preview} alt={`Selected item photo ${index + 1}`} className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(index)}
+                    disabled={isSubmitting || processingPhotos}
+                    className="absolute right-1 top-1 rounded-full bg-slate-900/80 px-2 py-1 text-xs font-bold text-white disabled:opacity-60"
+                    aria-label={`Remove photo ${index + 1}`}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {photoAnalysis.message && (
+            <p role="status" aria-live="polite" className={`mt-3 rounded-lg p-3 text-sm ${photoAnalysis.status === 'unavailable' ? 'bg-amber-50 text-amber-900' : 'bg-sky-50 text-sky-900'}`}>
+              {photoAnalysis.message}
+            </p>
+          )}
+          {photoAnalysis.labels.length > 0 && (
+            <p className="mt-2 text-xs text-slate-600">
+              Visual suggestions: {photoAnalysis.labels.map((label) => `${label.name} (${Math.round(label.confidence * 100)}%)`).join(', ')}
+            </p>
+          )}
+          {photoAnalysis.detectedText && (
+            <details className="mt-3 rounded-lg border border-slate-200 p-3">
+              <summary className="cursor-pointer text-sm font-semibold">Review text detected in the photo (private until you add it)</summary>
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700">{photoAnalysis.detectedText}</p>
+              <button
+                type="button"
+                onClick={() => updateForm('description', [form.description, photoAnalysis.detectedText].filter(Boolean).join('\n'))}
+                className="mt-2 border border-brand-700 px-3 py-1.5 text-xs font-semibold text-brand-800"
+              >
+                Add detected text to description
+              </button>
+              <p className="mt-2 text-xs text-amber-800">Check for personal, identifying, or sensitive text before adding it. Anything in the description will be visible in the post.</p>
+            </details>
+          )}
+          {!photoStepComplete && (
+            <button
+              type="button"
+              disabled={processingPhotos}
+              onClick={() => {
+                setPhotoAnalysis({ status: 'skipped', detectedText: '', labels: [], message: 'You chose to continue without a photo. Item scans will be skipped.' })
+                setPhotoStepComplete(true)
+              }}
+              className="mt-3 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+            >
+              Continue without a photo
+            </button>
+          )}
+        </section>
+
+        {photoStepComplete && <>
+        <p className="text-sm font-semibold text-brand-800">Step 2: Review and edit the suggested item details. All photo safety and matching scans run before the post is uploaded.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-sm font-semibold text-slate-700">Title *</span>
@@ -458,7 +610,7 @@ export default function LostFoundNew() {
           <h2 className="mb-1 text-sm font-semibold text-slate-700">{form.status === 'lost' ? 'Approximate location lost *' : 'Where found *'}</h2>
           <p className="mb-3 text-xs text-slate-500">Click the map, search for a place, or use Recenter me. A pin is required to publish.</p>
           <CampusMap
-            center={DEFAULT_CENTER}
+            center={campusCenter}
             onSelectLocation={(coords) => {
               setForm((current) => ({ ...current, latitude: coords.lat, longitude: coords.lng }))
               setDraftReady(true)
@@ -478,7 +630,7 @@ export default function LostFoundNew() {
             <span className="mb-1 block text-sm font-semibold text-slate-700">
               Approximate search radius: <strong className="text-brand-700">{form.radius_meters} metres</strong>
             </span>
-            <input type="range" min="50" max="1000" step="50" value={form.radius_meters} onChange={(event) => updateForm('radius_meters', Number(event.target.value))} className="w-full accent-brand-700" />
+            <input type="range" min="50" max="5000" step="50" value={form.radius_meters} onChange={(event) => updateForm('radius_meters', Number(event.target.value))} className="w-full accent-brand-700" />
           </label>
         )}
 
@@ -511,34 +663,6 @@ export default function LostFoundNew() {
           </label>
           <p className="text-[11px] text-slate-600">Security answers are not saved in browser drafts or returned in item listings.</p>
         </fieldset>
-
-        <section>
-          <label className="block text-sm font-semibold text-slate-700" htmlFor="lost-found-report-photo">Photos <span className="font-normal text-slate-500">(optional, up to {MAX_PHOTOS}; 5 MB each)</span></label>
-          <input id="lost-found-report-photo" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={processingPhotos || isSubmitting || photos.length >= MAX_PHOTOS} onChange={handlePhotoChange} className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-700 disabled:opacity-60" />
-          <p className="mt-1 text-xs text-slate-500">
-            {processingPhotos ? 'Preparing selected photos…' : `${photos.length} of ${MAX_PHOTOS} photos selected. The first photo is compared with opposite-status reports.`}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">Photos are screened on this device before upload.</p>
-          <p className="mt-1 text-xs text-amber-700">Avoid photos that expose ID numbers or other sensitive personal information.</p>
-          {photoPreviews.length > 0 && (
-            <ul className="mt-3 flex flex-wrap gap-3">
-              {photoPreviews.map((preview, index) => (
-                <li key={preview} className="relative h-28 w-28 overflow-hidden rounded-xl border border-slate-200">
-                  <img src={preview} alt={`Selected item photo ${index + 1}`} className="h-full w-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => removePhoto(index)}
-                    disabled={isSubmitting}
-                    className="absolute right-1 top-1 rounded-full bg-slate-900/80 px-2 py-1 text-xs font-bold text-white disabled:opacity-60"
-                    aria-label={`Remove photo ${index + 1}`}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
 
         <section className="border-t border-brand-100 pt-4">
           <button type="button" onClick={() => setShowPreview((visible) => !visible)} className="text-sm font-semibold text-brand-700 underline">
@@ -606,17 +730,18 @@ export default function LostFoundNew() {
           </section>
         )}
         <div className="flex flex-col gap-3 border-t border-brand-100 pt-4 sm:flex-row">
-          <button type="submit" disabled={isSubmitting || processingPhotos} className="flex-1 rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-brand-600 disabled:cursor-wait disabled:opacity-60">
+          <button type="submit" disabled={isSubmitting || processingPhotos || !photoStepComplete} className="flex-1 rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-brand-600 disabled:cursor-wait disabled:opacity-60">
             {processingPhotos
               ? 'Preparing photos…'
               : modelLoading
                 ? 'Loading visual model…'
                 : isSubmitting
-                  ? 'Publishing…'
-                  : `Publish ${form.status} item`}
+                  ? 'Scanning & publishing…'
+                  : `Scan & publish ${form.status} item`}
           </button>
           <button type="button" onClick={() => navigate('/lost-found')} disabled={isSubmitting} className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Cancel</button>
         </div>
+        </>}
       </form>
     </main>
   )

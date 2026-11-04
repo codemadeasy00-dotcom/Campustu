@@ -93,6 +93,18 @@ export const supportApi = {
   createRequest: (payload) => request('/api/support/requests', { method: 'POST', json: payload }),
 }
 
+export const pushApi = {
+  configuration: () => request('/api/push/vapid-public-key'),
+  subscribe: (subscription) => request('/api/push/subscriptions', {
+    method: 'POST',
+    json: subscription,
+  }),
+  unsubscribe: (endpoint) => request('/api/push/subscriptions', {
+    method: 'DELETE',
+    json: { endpoint },
+  }),
+}
+
 export const metaApi = {
   get: () => request('/meta'),
 }

@@ -58,6 +58,7 @@ app.use('/items', require('./routes/items'));
 app.use('/moderation', require('./routes/moderation'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/support', require('./routes/support'));
+app.use('/api/push', require('./routes/push'));
 app.use('/conversations', conversationsRouter);
 
 app.use('/kits', kitsRouter);

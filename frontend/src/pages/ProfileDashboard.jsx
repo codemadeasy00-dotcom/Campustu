@@ -6,6 +6,7 @@ import { authApi, errorMessage, lostFoundApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 import { checkImageSafety } from '../utils/moderation.js'
+import PushNotifications from '../components/PushNotifications.jsx'
 
 const DELETE_WINDOW_MS = 8 * 60 * 60 * 1000
 
@@ -478,6 +479,8 @@ export default function ProfileDashboard() {
           </div>
         ))}
       </div>
+
+      {user?.college && <PushNotifications />}
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-slate-500">Your account and campus activity</p>

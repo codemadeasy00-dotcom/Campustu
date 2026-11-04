@@ -19,19 +19,29 @@ const ADMIN_PASSWORD_PATTERN = '(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-
 function ModerationQueue({ onError }) {
   const [reports, setReports] = useState([])
   const [overrides, setOverrides] = useState([])
+  const [colleges, setColleges] = useState([])
+  const [collegeFilter, setCollegeFilter] = useState('all')
   const [busy, setBusy] = useState('')
 
   const refresh = useCallback(async () => {
     try {
-      const result = await adminApi.reports()
+      const [result, campusResult] = await Promise.all([adminApi.reports(), adminApi.colleges()])
       setReports(result.reports || [])
       setOverrides(result.duplicate_overrides || [])
+      setColleges(campusResult.colleges || [])
     } catch (error) {
       onError(errorMessage(error))
     }
   }, [onError])
 
   useEffect(() => { refresh() }, [refresh])
+
+  const filteredReports = reports.filter((report) => (
+    collegeFilter === 'all' || String(report.college_id) === collegeFilter
+  ))
+  const filteredOverrides = overrides.filter((item) => (
+    collegeFilter === 'all' || String(item.college_id) === collegeFilter
+  ))
 
   async function actOnReport(report, action) {
     const prompts = {
@@ -68,20 +78,29 @@ function ModerationQueue({ onError }) {
 
   return (
     <div className="space-y-8">
+      {colleges.length > 1 && (
+        <label className="block max-w-sm text-sm font-semibold">
+          Moderation campus
+          <select className={`${inputClass} mt-1`} value={collegeFilter} onChange={(event) => setCollegeFilter(event.target.value)}>
+            <option value="all">All campuses</option>
+            {colleges.map((college) => <option key={college.id} value={String(college.id)}>{college.name}</option>)}
+          </select>
+        </label>
+      )}
       <section>
         <h2 className="mb-3 text-xl font-bold">Student reports</h2>
-        {reports.length === 0 ? <p className="border bg-white p-4">No pending reports.</p> : (
+        {filteredReports.length === 0 ? <p className="border bg-white p-4">No pending reports for this campus.</p> : (
           <div className="overflow-x-auto border bg-white">
             <table className="w-full min-w-[760px] border-collapse text-left text-sm">
               <thead className="bg-teal-900 text-white">
                 <tr>{['Reporter', 'Reason', 'Post', 'Owner', 'Actions'].map((title) => <th key={title} className="border p-3">{title}</th>)}</tr>
               </thead>
               <tbody>
-                {reports.map((report) => (
+                {filteredReports.map((report) => (
                   <tr key={report.id} className="border-b align-top">
                     <td className="border p-3">{report.reporter_email || report.reporter_name}</td>
                     <td className="border p-3">{report.reason}</td>
-                    <td className="border p-3">{report.item_title}<small className="block text-slate-500">{report.item_type}</small></td>
+                    <td className="border p-3">{report.item_title}<small className="block text-slate-500">{report.item_type} · {report.college_name || 'Campus unavailable'}</small></td>
                     <td className="border p-3">{report.target_user_name}</td>
                     <td className="space-x-1 whitespace-nowrap p-3">
                       <button disabled={Boolean(busy)} onClick={() => actOnReport(report, 'dismiss')} className="border px-2 py-1 disabled:opacity-50">Dismiss</button>
@@ -98,14 +117,14 @@ function ModerationQueue({ onError }) {
       <section>
         <h2 className="mb-3 text-xl font-bold">Duplicate-warning overrides</h2>
         <p className="mb-3 text-sm">These posts were published with an explanation after a high-similarity warning. Similarity alone does not trigger a flag.</p>
-        {overrides.length === 0 ? <p className="border bg-white p-4">No posts are awaiting review.</p> : (
+        {filteredOverrides.length === 0 ? <p className="border bg-white p-4">No posts are awaiting review for this campus.</p> : (
           <ul className="space-y-3">
-            {overrides.map((item) => (
+            {filteredOverrides.map((item) => (
               <li key={item.id} className="grid gap-3 border bg-white p-4 sm:grid-cols-[7rem_1fr]">
                 <ItemPhoto src={item.photo_url} alt={item.title} className="h-24 w-full object-cover" />
                 <div>
                   <h3 className="font-bold">{item.title} · {item.status}</h3>
-                  <p className="text-sm">Owner: {item.target_user_name} ({item.target_user_email})</p>
+                  <p className="text-sm">Owner: {item.target_user_name} ({item.target_user_email}) · {item.college_name || 'Campus unavailable'}</p>
                   <p className="mt-1 text-sm"><strong>Explanation:</strong> {item.skip_reason}</p>
                   <div className="mt-3 flex gap-2">
                     <button disabled={Boolean(busy)} onClick={() => actOnOverride(item, 'dismiss')} className="border px-3 py-1.5">Clear flag &amp; keep post</button>

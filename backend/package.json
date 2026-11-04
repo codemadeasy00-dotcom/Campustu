@@ -28,6 +28,7 @@
     "pg": "^8.23.1",
     "profanity-guard": "^1.1.17",
     "sharp": "^0.35.5",
+    "web-push": "^3.6.7",
     "zod": "^4.6.7"
   },
   "private": true,

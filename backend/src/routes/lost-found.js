@@ -10,6 +10,7 @@ const { processPhoto } = require('../utils/images');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 const { createImageUpload } = require('../utils/image-upload');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
+const { notifyUser: notifyUserPush } = require('../utils/web-push');
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
 const { requireImageUploadsEnabled } = require('../middleware/system-controls');
 
@@ -332,22 +333,84 @@ router.post('/:id/match-scan', requireActive, requireCollege, async (req, res, n
         [item.id, vectorString],
       );
 
-      if (!strongSimilarity) return { already_scanned: false, match_detected: false };
-      const { rows: [notification] } = await db.query(
-        `INSERT INTO lost_found_match_notifications
-           (owner_id, college_id, item_id, matched_item_id, item_title, matched_item_title, similarity_score)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id`,
-        [item.user_id, item.college_id, item.id, match.id, item.title, match.title, score],
+      let notificationId = null;
+      if (strongSimilarity) {
+        const { rows: [notification] } = await db.query(
+          `INSERT INTO lost_found_match_notifications
+             (owner_id, college_id, item_id, matched_item_id, item_title, matched_item_title, similarity_score)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id`,
+          [item.user_id, item.college_id, item.id, match.id, item.title, match.title, score],
+        );
+        notificationId = notification.id;
+      }
+
+      const oppositeStatus = item.status === 'lost' ? 'found' : 'lost';
+      const { rows: oppositeMatches } = await db.query(
+        `SELECT id, user_id, title,
+                1 - (embedding <=> $1::vector) AS similarity_score
+           FROM lost_found_items
+          WHERE college_id = $2
+            AND id <> $3
+            AND user_id <> $4
+            AND status = $5
+            AND lifecycle_status = 'active'
+            AND embedding IS NOT NULL
+          ORDER BY embedding <=> $1::vector
+          LIMIT 5`,
+        [vectorString, item.college_id, item.id, item.user_id, oppositeStatus],
       );
+      const notifiedOwners = [];
+      for (const oppositeMatch of oppositeMatches) {
+        const oppositeScore = Math.max(0, Math.min(1, Number(oppositeMatch.similarity_score)));
+        if (oppositeScore < DUPLICATE_SUGGESTION_THRESHOLD) continue;
+        const { rows: [oppositeNotification] } = await db.query(
+          `INSERT INTO lost_found_match_notifications
+             (owner_id, college_id, item_id, matched_item_id, item_title, matched_item_title, similarity_score)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (item_id, matched_item_id) DO NOTHING
+           RETURNING id`,
+          [
+            oppositeMatch.user_id,
+            item.college_id,
+            oppositeMatch.id,
+            item.id,
+            oppositeMatch.title,
+            item.title,
+            oppositeScore,
+          ],
+        );
+        if (oppositeNotification) notifiedOwners.push(oppositeMatch.user_id);
+      }
+
       return {
         already_scanned: false,
-        match_detected: true,
-        notification_id: notification.id,
-        match: { id: match.id, title: match.title, similarity_score: score },
+        match_detected: Boolean(strongSimilarity),
+        notification_id: notificationId,
+        match: strongSimilarity ? { id: match.id, title: match.title, similarity_score: score } : null,
+        notifiedOwners,
       };
     });
 
+    const pushTasks = (result.notifiedOwners || []).map((ownerId) => (
+      notifyUserPush(ownerId, {
+        title: 'Potential Lost & Found match',
+        body: 'A new campus post may match your report. Open Campustu to review it.',
+        url: '/lost-found',
+      }).catch((pushError) => {
+        console.error(`Could not send deferred-match push to account ${ownerId}:`, pushError);
+      })
+    ));
+    if (result.match_detected) {
+      pushTasks.push(notifyUserPush(req.user.id, {
+          title: 'Potential Lost & Found match',
+          body: 'A similar post may match your report. Open Campustu to review it.',
+          url: '/lost-found',
+        }).catch((pushError) => {
+          console.error('Could not send deferred-match push notification:', pushError);
+        }));
+    }
+    await Promise.all(pushTasks);
     res.json({ success: true, ...result });
   } catch (err) {
     next(err);
@@ -841,7 +904,7 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
 
       const targetStatus = data.status === 'lost' ? 'found' : 'lost';
       const { rows } = await db.query(
-        `SELECT lif.id, lif.title, lif.description, lif.category, lif.status,
+        `SELECT lif.id, lif.user_id, lif.title, lif.description, lif.category, lif.status,
                 lif.location_name, lif.security_question, lif.created_at,
                 (SELECT storage_key FROM lost_found_photos WHERE item_id = lif.id ORDER BY position LIMIT 1) AS photo_key,
                 1 - (lif.embedding <=> $1::vector) AS similarity_score
@@ -867,7 +930,29 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
         photo: row.photo_key ? storage.urlFor(row.photo_key) : null,
         similarity_score: Number(row.similarity_score),
       }));
-      return { potentialMatches, similarItems };
+      const notifiedOwners = [];
+      for (const match of rows) {
+        const score = Math.max(0, Math.min(1, Number(match.similarity_score)));
+        if (score < DUPLICATE_SUGGESTION_THRESHOLD) continue;
+        const { rows: [notification] } = await db.query(
+          `INSERT INTO lost_found_match_notifications
+             (owner_id, college_id, item_id, matched_item_id, item_title, matched_item_title, similarity_score)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (item_id, matched_item_id) DO NOTHING
+           RETURNING id`,
+          [
+            match.user_id,
+            req.user.college_id,
+            match.id,
+            itemId,
+            match.title,
+            data.title,
+            score,
+          ],
+        );
+        if (notification) notifiedOwners.push(match.user_id);
+      }
+      return { potentialMatches, similarItems, notifiedOwners };
     });
   } catch (err) {
     await Promise.all(storedKeys.map((key) => storage.remove(key).catch(() => {})));
@@ -884,6 +969,18 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
       media_cleanup_pending: mediaCleanupPending,
     });
   }
+
+  await Promise.all((created.notifiedOwners || []).map(async (ownerId) => {
+    try {
+      await notifyUserPush(ownerId, {
+        title: 'Potential Lost & Found match',
+        body: 'A new campus post may match your report. Open Campustu to review it.',
+        url: '/lost-found',
+      });
+    } catch (pushError) {
+      console.error(`Could not send Lost & Found match push to account ${ownerId}:`, pushError);
+    }
+  }));
 
   res.status(201).json({
     success: true,
