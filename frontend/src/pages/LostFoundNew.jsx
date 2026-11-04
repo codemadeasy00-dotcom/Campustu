@@ -178,7 +178,11 @@ export default function LostFoundNew() {
         status: 'complete',
         detectedText: suggestions.detectedText,
         labels: suggestions.labels,
-        message: 'Photo analysis finished. Review and edit the suggested details.',
+        message: suggestions.classificationUnavailable
+          ? 'Text recognition finished. Item-name suggestions are unavailable, but you can still review any detected text.'
+          : suggestions.detectedText
+            ? 'Photo analysis finished. Review and edit the suggested details.'
+            : 'No readable text was found. Try a sharper, closer photo or enter the details yourself.',
       })
       setForm((current) => ({
         ...current,
@@ -198,7 +202,7 @@ export default function LostFoundNew() {
         status: 'unavailable',
         detectedText: '',
         labels: [],
-        message: 'On-device suggestions could not load. You can still enter the details yourself.',
+        message: photoError.message || 'Text recognition could not start. Reload the page and retry.',
       })
     } finally {
       URL.revokeObjectURL(objectUrl)
@@ -533,6 +537,15 @@ export default function LostFoundNew() {
             <p role="status" aria-live="polite" className={`mt-3 rounded-lg p-3 text-sm ${photoAnalysis.status === 'unavailable' ? 'bg-amber-50 text-amber-900' : 'bg-sky-50 text-sky-900'}`}>
               {photoAnalysis.message}
             </p>
+          )}
+          {photoAnalysis.status === 'unavailable' && photos[0] && (
+            <button
+              type="button"
+              onClick={() => void analyzePhoto(photos[0])}
+              className="mt-2 rounded-lg border border-brand-700 px-3 py-2 text-sm font-semibold text-brand-800"
+            >
+              Retry text recognition
+            </button>
           )}
           {photoAnalysis.labels.length > 0 && (
             <p className="mt-2 text-xs text-slate-600">

@@ -12,6 +12,7 @@
   "dependencies": {
     "@tensorflow-models/mobilenet": "^2.1.1",
     "@tensorflow/tfjs": "^4.22.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "leaflet": "^1.9.4",
     "leaflet-geosearch": "^5.1.0",
     "nsfwjs": "^4.3.0",
