@@ -157,7 +157,11 @@ const collegeSchema = z.object({
   city: z.string().trim().min(2).max(80),
   state: z.string().trim().max(80).optional(),
   email_domain: z.preprocess(
-    (value) => typeof value === 'string' && !value.trim() ? null : value,
+    (value) => {
+      if (typeof value !== 'string') return value;
+      const domain = value.trim().replace(/^@+/, '').toLowerCase();
+      return domain || null;
+    },
     z.string().trim().toLowerCase().regex(/^(?!-)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/).nullable(),
   ),
   latitude: z.coerce.number().finite().min(-90).max(90),
