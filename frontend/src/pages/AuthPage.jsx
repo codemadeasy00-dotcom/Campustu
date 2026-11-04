@@ -240,6 +240,9 @@ export default function AuthPage({ mode }) {
         )}
       </p>
       <p className="mt-2 text-center text-xs text-slate-500">No password: we email you a 6-digit code each time.</p>
+      <p className="mt-3 text-center text-sm text-slate-700">
+        Account access or suspension issue? <Link to="/support" className="font-semibold text-brand-700 underline">Contact Campustu support</Link>
+      </p>
     </div>
   )
 }

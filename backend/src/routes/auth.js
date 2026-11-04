@@ -410,7 +410,7 @@ async function publicProfile(userId) {
 
   const { rows } = await query(
 
-    `SELECT u.id, u.email, u.full_name, u.display_name, u.role, u.status, u.branch_id, u.branch_other, u.admission_year,
+    `SELECT u.id, u.email, u.full_name, u.display_name, u.role, u.status, u.frozen_reason, u.branch_id, u.branch_other, u.admission_year,
 
             u.college_id, u.avatar_key, c.name AS college_name, c.city AS college_city,
             c.email_domain, c.status AS college_status, u.email_verified_at,

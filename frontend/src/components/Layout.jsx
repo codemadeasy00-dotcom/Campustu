@@ -501,6 +501,15 @@ export default function Layout() {
         {logoutError && <p role="alert" className="mx-auto max-w-[90rem] px-3 pb-2 text-sm text-red-700 sm:px-5 lg:px-8">{logoutError}</p>}
       </header>
       <main className="mx-auto w-full max-w-[90rem] min-w-0 px-3 py-5 sm:px-5 sm:py-8 lg:px-8">
+        {user?.status === 'frozen' && (
+          <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              <strong>Your account is suspended.</strong>{' '}
+              {user.frozen_reason || 'Some account actions are unavailable while this is reviewed.'}
+            </p>
+            <Link to="/support" className="shrink-0 font-semibold underline">Contact support</Link>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

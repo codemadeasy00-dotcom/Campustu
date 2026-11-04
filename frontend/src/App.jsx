@@ -14,6 +14,7 @@ import LostFoundNew from './pages/LostFoundNew.jsx'
 import ProfileDashboard from './pages/ProfileDashboard.jsx'
 import Messages from './pages/Messages.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
+import SupportPage from './pages/SupportPage.jsx'
 
 function NotFound() {
   return (
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/signup" element={<AuthPage mode="signup" />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
+        <Route path="/support" element={<SupportPage />} />
         <Route path="/sell" element={guard(<NewListing />)} />
         <Route path="/my-listings" element={guard(<MyListings />)} />
         <Route path="/items/:id" element={guard(<ItemPage />)} />

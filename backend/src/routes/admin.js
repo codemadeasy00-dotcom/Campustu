@@ -191,7 +191,8 @@ router.get('/dashboard', async (_req, res) => {
        (SELECT count(*)::int FROM users WHERE status = 'active' AND deleted_at IS NULL) AS active_users,
        (SELECT count(*)::int FROM item_reports WHERE status = 'pending') AS pending_reports,
        (SELECT count(*)::int FROM lost_found_items WHERE flagged_for_review AND lifecycle_status = 'active') AS duplicate_overrides,
-       (SELECT count(*)::int FROM colleges WHERE status = 'pending') AS pending_colleges`,
+       (SELECT count(*)::int FROM colleges WHERE status = 'pending') AS pending_colleges,
+       (SELECT count(*)::int FROM support_requests WHERE status IN ('open', 'in_progress')) AS support_requests`,
   );
   res.json({ success: true, summary });
 });
@@ -481,6 +482,38 @@ router.post('/users/:id/ban', async (req, res) => {
     success: true,
     message: 'Account banned, active listings removed, and sessions revoked.',
     media_cleanup_pending: mediaCleanupPending,
+  });
+});
+
+router.post('/users/:id/unban', async (req, res) => {
+  const userId = z.uuid().parse(req.params.id);
+  const { reason } = banSchema.parse(req.body);
+  assertUserTextIsAllowed([reason]);
+  if (userId === req.user.id) throw new AppError(400, 'You cannot change your own account status.');
+  await tx(async (db) => {
+    const { rows: [target] } = await db.query(
+      'SELECT role, status FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [userId],
+    );
+    if (!target || target.role === 'admin') throw new AppError(404, 'Account not found or cannot be managed.');
+    if (target.status !== 'banned') throw new AppError(409, 'This account is not banned.');
+    await db.query(
+      `UPDATE users
+          SET status = 'active',
+              frozen_reason = NULL,
+              auth_version = auth_version + 1
+        WHERE id = $1`,
+      [userId],
+    );
+    await writeAudit(db, req, 'unban_user', 'user', userId, {
+      reason,
+      listings_restored: false,
+    });
+  });
+  res.json({
+    success: true,
+    message: 'Account access restored. Listings removed during the ban were not restored; the user must sign in again.',
+    listings_restored: false,
   });
 });
 

@@ -84,7 +84,8 @@ A paused project means your site is down until you un-pause it in the dashboard.
    Migration `019_admin_password_auth.sql` adds a separately hashed admin password and short-lived,
    revocable admin sessions. Migration `020_admin_audit_schema_compat.sql` reconciles audit-log columns
    for password setup and admin events. Migration `021_admin_audit_action_type.sql` supports databases
-   with the legacy required `action_type` column. Apply them before deploying the password-protected admin console.
+   with the legacy required `action_type` column. Migration `022_account_support_requests.sql` adds the
+   support inbox for people who cannot sign in. Apply these before deploying the updated admin console.
    Apply migrations before deploying the backend update. Migration `008_lost_found_report_details.sql`
    adds the optional report metadata used by the dedicated lost-and-found report page.
    Migration `009_lost_found_lifecycle_claims.sql` adds the eight-hour deletion rule, closed/resolved
@@ -146,7 +147,10 @@ On Render, set `CORS_ORIGIN=https://campustu.vercel.app` (add any other exact fr
    a number, and a symbol). Later visits require that password as well as the verified account session.
    Admin unlock expires after 30 minutes; use the **Lock console** button to lock it sooner. Change the
    admin password from the console's **Change admin password** section. Do not share the password or use
-   the admin account as a shared student login.
+   the admin account as a shared student login. Banned accounts can be unbanned from **User Management**;
+   this restores sign-in but does not restore listings or photos removed during the ban. Suspended or
+   banned users can submit an unauthenticated support request at `/support`; review it in the console's
+   **Support Requests** tab and reply to the provided email address.
 
 ## Free-tier habits you must have
 - Render free web services sleep after idle time; open `/health` a few minutes before any demo.

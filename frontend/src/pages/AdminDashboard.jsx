@@ -8,6 +8,7 @@ import ItemPhoto from '../components/ItemPhoto.jsx'
 const TABS = [
   { id: 'moderation', label: 'Moderation Queue' },
   { id: 'users', label: 'User Management' },
+  { id: 'support', label: 'Support Requests' },
   { id: 'colleges', label: 'Add College' },
   { id: 'controls', label: 'System & Safety' },
   { id: 'audit', label: 'Audit Logs' },
@@ -178,6 +179,30 @@ function UserManagement({ onError }) {
     }
   }
 
+  async function unban(user) {
+    const reason = window.prompt(`Reason for restoring ${user.display_name}'s account access?`)
+    if (!reason || reason.trim().length < 5) return
+    const confirmed = window.confirm(
+      'Restore account access? The listings removed during the ban and their photos cannot be restored.',
+    )
+    if (!confirmed) return
+    setBusy(true)
+    try {
+      await adminApi.unbanUser(user.id, reason.trim())
+      setUsers((current) => current.map((entry) => entry.id === user.id ? { ...entry, status: 'active' } : entry))
+      if (selected?.user.id === user.id) {
+        setSelected((current) => ({
+          ...current,
+          user: { ...current.user, status: 'active', frozen_reason: null },
+        }))
+      }
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
       <form onSubmit={searchUsers} className="flex flex-col gap-2 sm:flex-row">
@@ -208,6 +233,11 @@ function UserManagement({ onError }) {
                         <button disabled={busy} onClick={() => ban(user)} className="text-red-700 underline">Ban</button>
                       </>
                     )}
+                    {user.role !== 'admin' && user.status === 'banned' && (
+                      <button disabled={busy} onClick={() => unban(user)} className="text-teal-900 underline">
+                        Unban
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -219,6 +249,7 @@ function UserManagement({ onError }) {
         <section className="space-y-3 border bg-white p-4">
           <h2 className="text-lg font-bold">{selected.user.display_name} · Account details</h2>
           <p>{selected.user.email} · {selected.user.roll_number || 'No roll number'} · {selected.user.status}</p>
+          {selected.user.frozen_reason && <p className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><strong>Account restriction reason:</strong> {selected.user.frozen_reason}</p>}
           <p>Completed handovers: <strong>{selected.user.completed_handovers}</strong></p>
           <div><h3 className="font-semibold">Active marketplace listings</h3>{selected.active_listings.marketplace.map((item) => <p key={item.id}>{item.title} · {item.status}</p>)}</div>
           <div><h3 className="font-semibold">Active Lost &amp; Found posts</h3>{selected.active_listings.lost_found.map((item) => <p key={item.id}>{item.title} · {item.status}</p>)}</div>
@@ -227,6 +258,119 @@ function UserManagement({ onError }) {
       )}
       {search && users.length === 0 && <p className="border bg-white p-4">No matching accounts found.</p>}
     </div>
+  )
+}
+
+function SupportRequests({ onError, onSuccess }) {
+  const [requests, setRequests] = useState([])
+  const [busy, setBusy] = useState('')
+  const [noteDrafts, setNoteDrafts] = useState({})
+
+  const refresh = useCallback(async () => {
+    try {
+      const result = await adminApi.supportRequests()
+      setRequests(result.requests || [])
+    } catch (error) {
+      onError(errorMessage(error))
+    }
+  }, [onError])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  async function updateStatus(ticket, status) {
+    setBusy(ticket.id)
+    try {
+      const result = await adminApi.updateSupportRequest(ticket.id, { status })
+      setRequests((current) => current.map((entry) => entry.id === ticket.id
+        ? { ...entry, ...result.request }
+        : entry))
+      onSuccess(`Request ${ticket.id} marked ${status.replace('_', ' ')}.`)
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function saveNote(ticket) {
+    setBusy(ticket.id)
+    try {
+      const result = await adminApi.updateSupportRequest(ticket.id, {
+        status: ticket.status,
+        admin_note: (noteDrafts[ticket.id] || '').trim(),
+      })
+      setRequests((current) => current.map((entry) => entry.id === ticket.id
+        ? { ...entry, ...result.request }
+        : entry))
+      onSuccess(`Internal note saved for request ${ticket.id}.`)
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-bold">Student support inbox</h2>
+        <p className="mt-1 text-sm text-slate-700">Reply by email. Requests are private to admins and are not exposed through the public API.</p>
+      </div>
+      {requests.length === 0 ? <p className="border bg-white p-4">No support requests have been submitted.</p> : (
+        <ul className="space-y-3">
+          {requests.map((ticket) => {
+            const subject = `Re: ${ticket.subject} [Campustu support ${ticket.id}]`
+            const body = `Hi ${ticket.full_name},\n\nRegarding your Campustu support request ${ticket.id}:\n\n`
+            return (
+              <li key={ticket.id} className="space-y-3 border bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold">{ticket.subject}</h3>
+                    <p className="text-sm">{ticket.full_name} · <a className="text-teal-900 underline" href={`mailto:${encodeURIComponent(ticket.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}>{ticket.email}</a></p>
+                    <p className="text-xs text-slate-600">{ticket.category.replaceAll('_', ' ')} · {new Date(ticket.created_at).toLocaleString()} · Ref {ticket.id}</p>
+                  </div>
+                  <span className="border px-2 py-1 text-xs font-semibold">{ticket.status.replace('_', ' ')}</span>
+                </div>
+                <p className="whitespace-pre-wrap break-words text-sm">{ticket.message}</p>
+                {ticket.admin_note && <p className="border-l-2 border-teal-700 pl-3 text-sm text-slate-700"><strong>Internal note:</strong> {ticket.admin_note}</p>}
+                <label className="block text-sm font-semibold">
+                  Internal note
+                  <textarea
+                    className={`${inputClass} mt-1 min-h-20`}
+                    maxLength={2000}
+                    value={noteDrafts[ticket.id] ?? ticket.admin_note ?? ''}
+                    onChange={(event) => setNoteDrafts((current) => ({ ...current, [ticket.id]: event.target.value }))}
+                    placeholder="Add a private note for other admins"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <a href={`mailto:${encodeURIComponent(ticket.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`} className="border border-teal-800 px-3 py-1.5 text-sm font-semibold text-teal-950">
+                    Reply by email
+                  </a>
+                  <button disabled={busy === ticket.id} onClick={() => saveNote(ticket)} className="border px-3 py-1.5 text-sm disabled:opacity-50">
+                    Save internal note
+                  </button>
+                  {ticket.status !== 'in_progress' && ticket.status !== 'resolved' && (
+                    <button disabled={busy === ticket.id} onClick={() => updateStatus(ticket, 'in_progress')} className="border px-3 py-1.5 text-sm disabled:opacity-50">
+                      Mark in progress
+                    </button>
+                  )}
+                  {ticket.status !== 'resolved' ? (
+                    <button disabled={busy === ticket.id} onClick={() => updateStatus(ticket, 'resolved')} className="border border-teal-800 px-3 py-1.5 text-sm text-teal-950 disabled:opacity-50">
+                      Resolve
+                    </button>
+                  ) : (
+                    <button disabled={busy === ticket.id} onClick={() => updateStatus(ticket, 'open')} className="border px-3 py-1.5 text-sm disabled:opacity-50">
+                      Reopen
+                    </button>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -635,6 +779,7 @@ export default function AdminDashboard() {
               {[
                 ['users', 'User management', summary.users],
                 ['moderation', 'Pending reports', summary.pending_reports],
+                ['support', 'Support requests', summary.support_requests],
                 ['moderation', 'Duplicate reviews', summary.duplicate_overrides],
                 ['colleges', 'Pending campuses', summary.pending_colleges],
                 ['controls', 'Safety controls', 'Open'],
@@ -703,6 +848,7 @@ export default function AdminDashboard() {
               >
                 {tab === item.id && item.id === 'moderation' && <ModerationQueue onError={showError} />}
                 {tab === item.id && item.id === 'users' && <UserManagement onError={showError} />}
+                {tab === item.id && item.id === 'support' && <SupportRequests onError={showError} onSuccess={showSuccess} />}
                 {tab === item.id && item.id === 'colleges' && <AddCollege onError={showError} onSuccess={showSuccess} />}
                 {tab === item.id && item.id === 'controls' && <SystemSafety onError={showError} />}
                 {tab === item.id && item.id === 'audit' && <AuditLogs onError={showError} />}

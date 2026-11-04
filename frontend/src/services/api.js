@@ -89,6 +89,10 @@ export const authApi = {
   removeAvatar: () => request('/auth/profile/avatar', { method: 'DELETE' }),
 }
 
+export const supportApi = {
+  createRequest: (payload) => request('/api/support/requests', { method: 'POST', json: payload }),
+}
+
 export const metaApi = {
   get: () => request('/meta'),
 }
@@ -231,6 +235,10 @@ export const adminApi = {
     method: 'POST',
     json: { reason },
   }),
+  unbanUser: (id, reason) => request(`/api/admin/users/${encodeURIComponent(id)}/unban`, {
+    method: 'POST',
+    json: { reason },
+  }),
   setUserStatus: (id, status, reason) => request(`/api/admin/users/${encodeURIComponent(id)}/status`, {
     method: 'PATCH',
     json: { status, reason },
@@ -251,5 +259,10 @@ export const adminApi = {
   reviewReport: (id, action) => request(`/api/admin/reports/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     json: { action },
+  }),
+  supportRequests: () => request('/api/support/admin/requests'),
+  updateSupportRequest: (id, payload) => request(`/api/support/admin/requests/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    json: payload,
   }),
 }
