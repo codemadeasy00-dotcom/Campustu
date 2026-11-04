@@ -12,12 +12,8 @@ const TABS = [
   { id: 'controls', label: 'System & Safety' },
   { id: 'audit', label: 'Audit Logs' },
 ]
-
-const ginghamStyle = {
-  backgroundColor: '#f9f8ef',
-  backgroundImage: 'linear-gradient(rgba(18, 137, 143, .16) 2px, transparent 2px), linear-gradient(90deg, rgba(18, 137, 143, .16) 2px, transparent 2px)',
-  backgroundSize: '36px 36px',
-}
+const ADMIN_SESSION_MS = 30 * 60 * 1000
+const ADMIN_PASSWORD_PATTERN = '(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{14,128}'
 
 function ModerationQueue({ onError }) {
   const [reports, setReports] = useState([])
@@ -411,16 +407,164 @@ function AuditLogs({ onError }) {
   )
 }
 
+function AdminPasswordGate({ configured, onUnlocked, onError }) {
+  const [password, setPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(event) {
+    event.preventDefault()
+    if (!configured && password !== confirmation) {
+      onError('The passwords do not match.')
+      return
+    }
+    setBusy(true)
+    try {
+      if (configured) await adminApi.unlock(password)
+      else await adminApi.setupPassword(password)
+      setPassword('')
+      setConfirmation('')
+      onUnlocked()
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="mx-auto max-w-lg border-2 border-teal-900 bg-[#fbfaf3] p-5 sm:p-8">
+      <h2 className="text-xl font-bold text-teal-950">
+        {configured ? 'Unlock admin console' : 'Set your admin password'}
+      </h2>
+      <p className="mt-2 text-sm text-slate-700">
+        {configured
+          ? 'Your verified administrator account also needs its private admin password. The console locks again after 30 minutes.'
+          : 'Create a separate password used only for admin actions. Use at least 14 characters with uppercase, lowercase, a number, and a symbol.'}
+      </p>
+      <form onSubmit={submit} className="mt-5 space-y-4">
+        <label className="block space-y-1 text-sm font-semibold">
+          <span>{configured ? 'Admin password' : 'New admin password'}</span>
+          <input
+            required
+            type="password"
+            autoComplete={configured ? 'current-password' : 'new-password'}
+            minLength={configured ? 1 : 14}
+            maxLength={128}
+            pattern={configured ? undefined : ADMIN_PASSWORD_PATTERN}
+            title={configured ? undefined : 'Use at least 14 characters with uppercase, lowercase, a number, and a symbol.'}
+            className={inputClass}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        {!configured && (
+          <label className="block space-y-1 text-sm font-semibold">
+            <span>Confirm admin password</span>
+            <input
+              required
+              type="password"
+              autoComplete="new-password"
+              minLength={14}
+              maxLength={128}
+              pattern={ADMIN_PASSWORD_PATTERN}
+              title="Use at least 14 characters with uppercase, lowercase, a number, and a symbol."
+              className={inputClass}
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+            />
+          </label>
+        )}
+        <button disabled={busy} className="w-full border bg-teal-900 px-4 py-3 font-semibold text-white disabled:opacity-50">
+          {busy ? 'Please wait…' : configured ? 'Unlock admin console' : 'Set password and continue'}
+        </button>
+      </form>
+    </section>
+  )
+}
+
+function ChangeAdminPassword({ onError, onSuccess }) {
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(event) {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      const result = await adminApi.changePassword(currentPassword, newPassword)
+      setCurrentPassword('')
+      setNewPassword('')
+      onSuccess(result.message)
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <details className="border-t border-teal-200 px-4 py-3">
+      <summary className="w-fit cursor-pointer font-semibold text-teal-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
+        Change admin password
+      </summary>
+      <form onSubmit={submit} className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="space-y-1 text-sm font-semibold">
+          <span>Current password</span>
+          <input required type="password" autoComplete="current-password" className={inputClass} value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+        </label>
+        <label className="space-y-1 text-sm font-semibold">
+          <span>New password (14+ characters)</span>
+          <input required type="password" minLength={14} maxLength={128} pattern={ADMIN_PASSWORD_PATTERN} title="Use at least 14 characters with uppercase, lowercase, a number, and a symbol." autoComplete="new-password" className={inputClass} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+        </label>
+        <button disabled={busy} className="w-fit border bg-teal-900 px-4 py-2 font-semibold text-white disabled:opacity-50 sm:col-span-2">
+          {busy ? 'Changing…' : 'Change password'}
+        </button>
+      </form>
+    </details>
+  )
+}
+
 export default function AdminDashboard() {
   const { user } = useAuth()
   const [tab, setTab] = useState('moderation')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [summary, setSummary] = useState(null)
+  const [authStatus, setAuthStatus] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
 
   useEffect(() => {
-    adminApi.dashboard().then((result) => setSummary(result.summary)).catch((requestError) => setError(errorMessage(requestError)))
-  }, [])
+    if (user?.role !== 'admin') return
+    let active = true
+    adminApi.authStatus()
+      .then((result) => { if (active) setAuthStatus(result) })
+      .catch((requestError) => { if (active) setError(errorMessage(requestError)) })
+      .finally(() => { if (active) setAuthLoading(false) })
+    return () => { active = false }
+  }, [user?.role])
+
+  useEffect(() => {
+    if (!authStatus?.unlocked) return
+    let active = true
+    adminApi.dashboard()
+      .then((result) => { if (active) setSummary(result.summary) })
+      .catch((requestError) => { if (active) setError(errorMessage(requestError)) })
+    return () => { active = false }
+  }, [authStatus?.unlocked])
+
+  useEffect(() => {
+    if (!authStatus?.unlocked) return undefined
+    const timeout = window.setTimeout(() => {
+      adminApi.lock().catch((requestError) => {
+        console.error('Could not clear the expired admin session cookie:', requestError)
+      })
+      setAuthStatus((current) => ({ ...current, unlocked: false }))
+      setSummary(null)
+      setNotice('Admin session expired. Enter your admin password to continue.')
+    }, ADMIN_SESSION_MS)
+    return () => window.clearTimeout(timeout)
+  }, [authStatus?.unlocked])
 
   const showError = useCallback((message) => {
     setNotice('')
@@ -432,32 +576,141 @@ export default function AdminDashboard() {
     setNotice(message)
   }, [])
 
+  function selectTab(nextTab) {
+    setTab(nextTab)
+    setError('')
+    setNotice('')
+  }
+
+  function onTabKeyDown(event) {
+    const currentIndex = TABS.findIndex((item) => item.id === tab)
+    let nextIndex = currentIndex
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % TABS.length
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + TABS.length) % TABS.length
+    else if (event.key === 'Home') nextIndex = 0
+    else if (event.key === 'End') nextIndex = TABS.length - 1
+    else return
+    event.preventDefault()
+    selectTab(TABS[nextIndex].id)
+    document.getElementById(`admin-tab-${TABS[nextIndex].id}`)?.focus()
+  }
+
+  async function unlockComplete() {
+    setAuthStatus({ password_configured: true, unlocked: true })
+    setSummary(null)
+    setError('')
+    setNotice('')
+  }
+
+  async function lockConsole() {
+    try {
+      await adminApi.lock()
+      setAuthStatus((current) => ({ ...current, unlocked: false }))
+      setSummary(null)
+      setNotice('Admin console locked.')
+    } catch (requestError) {
+      showError(errorMessage(requestError))
+    }
+  }
+
   if (user?.role !== 'admin') return <Navigate to="/" replace />
 
   return (
-    <main className="min-h-full p-3 sm:p-6" style={ginghamStyle}>
+    <main className="min-h-screen p-3 sm:p-6">
       <div className="mx-auto max-w-7xl border-2 border-teal-900 bg-[#fbfaf3]">
         <header className="border-b-2 border-teal-900 bg-white p-5">
-          <h1 className="text-2xl font-black text-teal-950 sm:text-3xl">Campustu Admin Console</h1>
-          <p className="mt-1 text-sm text-slate-700">Administrative actions are permission-checked on the server and written to the audit log.</p>
-          {summary && <p className="mt-3 text-sm font-semibold">Users: {summary.users} · Active: {summary.active_users} · Reports: {summary.pending_reports} · Duplicate reviews: {summary.duplicate_overrides} · Pending campuses: {summary.pending_colleges}</p>}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-black text-teal-950 sm:text-3xl">Campustu Admin Console</h1>
+              <p className="mt-1 text-sm text-slate-700">Administrative actions are permission-checked on the server and written to the audit log.</p>
+            </div>
+            {authStatus?.unlocked && (
+              <button type="button" onClick={lockConsole} className="border border-teal-800 px-3 py-2 text-sm font-semibold text-teal-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
+                Lock console
+              </button>
+            )}
+          </div>
+          {authStatus?.unlocked && summary && (
+            <div aria-label="Admin dashboard shortcuts" className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              {[
+                ['users', 'User management', summary.users],
+                ['moderation', 'Pending reports', summary.pending_reports],
+                ['moderation', 'Duplicate reviews', summary.duplicate_overrides],
+                ['colleges', 'Pending campuses', summary.pending_colleges],
+                ['controls', 'Safety controls', 'Open'],
+                ['audit', 'Audit history', 'Open'],
+              ].map(([destination, label, value]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => selectTab(destination)}
+                  className="border border-teal-200 bg-[#fbfaf3] p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+                >
+                  <span className="block text-xs font-semibold text-slate-600">{label}</span>
+                  <span className="mt-1 block text-xl font-bold text-teal-950">{value}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </header>
-        <nav aria-label="Admin modules" className="flex flex-wrap border-b-2 border-teal-900 bg-teal-50">
-          {TABS.map((item) => (
-            <button key={item.id} type="button" aria-current={tab === item.id ? 'page' : undefined} onClick={() => { setTab(item.id); setError(''); setNotice('') }} className={`rounded-none border-r border-teal-900 px-3 py-3 text-sm font-bold sm:px-5 ${tab === item.id ? 'bg-teal-900 text-white' : 'bg-white text-teal-950'}`}>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <div className="min-h-96 p-4 sm:p-6">
-          {error && <div className="mb-4"><Alert>{error}</Alert></div>}
-          {notice && <div role="status" className="mb-4 border border-teal-700 bg-teal-50 p-3 text-sm text-teal-950">{notice}</div>}
-          {tab === 'moderation' && <ModerationQueue onError={showError} />}
-          {tab === 'users' && <UserManagement onError={showError} />}
-          {tab === 'colleges' && <AddCollege onError={showError} onSuccess={showSuccess} />}
-          {tab === 'controls' && <SystemSafety onError={showError} />}
-          {tab === 'audit' && <AuditLogs onError={showError} />}
-        </div>
+        {error && <div className="m-4" role="alert"><Alert>{error}</Alert></div>}
+        {notice && <div role="status" className="m-4 border border-teal-700 bg-teal-50 p-3 text-sm text-teal-950">{notice}</div>}
+        {authLoading ? (
+          <p role="status" className="p-6">Checking admin access…</p>
+        ) : !authStatus ? (
+          <p role="status" className="p-6">Could not verify admin password status. Refresh the page to try again.</p>
+        ) : !authStatus?.unlocked ? (
+          <div className="p-4 sm:p-8">
+            <AdminPasswordGate
+              configured={Boolean(authStatus?.password_configured)}
+              onUnlocked={unlockComplete}
+              onError={showError}
+            />
+          </div>
+        ) : (
+          <>
+            <nav
+              aria-label="Admin modules"
+              role="tablist"
+              onKeyDown={onTabKeyDown}
+              className="sticky top-0 z-30 flex overflow-x-auto border-b-2 border-teal-900 bg-teal-50"
+            >
+              {TABS.map((item) => (
+                <button
+                  key={item.id}
+                  id={`admin-tab-${item.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === item.id}
+                  aria-controls={`admin-panel-${item.id}`}
+                  tabIndex={tab === item.id ? 0 : -1}
+                  onClick={() => selectTab(item.id)}
+                  className={`shrink-0 rounded-none border-r border-teal-900 px-3 py-3 text-sm font-bold focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-teal-700 sm:px-5 ${tab === item.id ? 'bg-teal-900 text-white' : 'bg-white text-teal-950'}`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+            {TABS.map((item) => (
+              <div
+                key={item.id}
+                id={`admin-panel-${item.id}`}
+                role="tabpanel"
+                aria-labelledby={`admin-tab-${item.id}`}
+                tabIndex={0}
+                hidden={tab !== item.id}
+                className="min-h-96 p-4 focus-visible:outline-2 focus-visible:outline-teal-700 sm:p-6"
+              >
+                {tab === item.id && item.id === 'moderation' && <ModerationQueue onError={showError} />}
+                {tab === item.id && item.id === 'users' && <UserManagement onError={showError} />}
+                {tab === item.id && item.id === 'colleges' && <AddCollege onError={showError} onSuccess={showSuccess} />}
+                {tab === item.id && item.id === 'controls' && <SystemSafety onError={showError} />}
+                {tab === item.id && item.id === 'audit' && <AuditLogs onError={showError} />}
+              </div>
+            ))}
+            <ChangeAdminPassword onError={showError} onSuccess={showSuccess} />
+          </>
+        )}
       </div>
     </main>
   )

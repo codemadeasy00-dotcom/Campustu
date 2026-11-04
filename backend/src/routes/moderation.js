@@ -5,6 +5,7 @@ const config = require('../config');
 const { query, tx } = require('../db');
 const { AppError } = require('../utils/errors');
 const { requireAuth, requireActive, requireAdmin, requireCollege } = require('../middleware/auth');
+const { requireAdminPassword } = require('../utils/admin-auth');
 const storage = require('../storage');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
@@ -73,7 +74,7 @@ router.post('/reports', limiter, requireActive, requireCollege, async (req, res)
   res.status(201).json({ success: true, message: 'Your report was sent to the moderation team.' });
 });
 
-router.get('/admin/reports', limiter, requireAdmin, async (_req, res) => {
+router.get('/admin/reports', limiter, requireAdmin, requireAdminPassword, async (_req, res) => {
   const [{ rows }, { rows: duplicateOverrides }] = await Promise.all([
     query(
     `SELECT r.id, r.marketplace_item_id, r.lost_found_item_id, r.reason, r.created_at,
@@ -123,7 +124,7 @@ router.get('/admin/reports', limiter, requireAdmin, async (_req, res) => {
   });
 });
 
-router.patch('/admin/duplicate-overrides/:id', requireAdmin, async (req, res) => {
+router.patch('/admin/duplicate-overrides/:id', requireAdmin, requireAdminPassword, async (req, res) => {
   const itemId = z.uuid().parse(req.params.id);
   const { action } = z.object({ action: z.enum(['dismiss', 'remove']) }).parse(req.body);
 
@@ -175,7 +176,7 @@ router.patch('/admin/duplicate-overrides/:id', requireAdmin, async (req, res) =>
   res.json({ success: true, message: 'The post was removed after moderation review.', media_cleanup_pending: mediaCleanupPending });
 });
 
-router.patch('/admin/reports/:id', requireAdmin, async (req, res) => {
+router.patch('/admin/reports/:id', requireAdmin, requireAdminPassword, async (req, res) => {
   const reportId = z.uuid().parse(req.params.id);
   const { action } = actionSchema.parse(req.body);
 

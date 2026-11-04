@@ -215,6 +215,14 @@ export const moderationApi = {
 }
 
 export const adminApi = {
+  authStatus: () => request('/api/admin/auth/status'),
+  setupPassword: (password) => request('/api/admin/auth/setup-password', { method: 'POST', json: { password } }),
+  unlock: (password) => request('/api/admin/auth/unlock', { method: 'POST', json: { password } }),
+  lock: () => request('/api/admin/auth/lock', { method: 'POST' }),
+  changePassword: (current_password, new_password) => request('/api/admin/auth/change-password', {
+    method: 'POST',
+    json: { current_password, new_password },
+  }),
   dashboard: () => request('/api/admin/dashboard'),
   reports: () => request('/api/admin/reports'),
   searchUsers: (q) => request(`/api/admin/users?q=${encodeURIComponent(q)}`),

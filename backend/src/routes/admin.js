@@ -1,13 +1,142 @@
 const router = require('express').Router();
+const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
 const { query, tx } = require('../db');
 const { AppError } = require('../utils/errors');
+const config = require('../config');
 const { requireAuth, requireActive, requireAdmin } = require('../middleware/auth');
+const {
+  hashAdminPassword,
+  verifyAdminPassword,
+  setAdminSessionCookie,
+  clearAdminSessionCookie,
+  hasValidAdminSession,
+  requireAdminPassword,
+} = require('../utils/admin-auth');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const storage = require('../storage');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 
 router.use(requireAuth, requireActive, requireAdmin);
+
+const passwordSchema = z.string()
+  .min(14, 'Use at least 14 characters.')
+  .max(128, 'Password must be 128 characters or fewer.')
+  .regex(/[a-z]/, 'Include a lowercase letter.')
+  .regex(/[A-Z]/, 'Include an uppercase letter.')
+  .regex(/[0-9]/, 'Include a number.')
+  .regex(/[^A-Za-z0-9]/, 'Include a symbol.');
+const passwordAttemptLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: config.isProd ? 5 : 100,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+});
+const adminPasswordLoginSchema = z.object({ password: z.string().min(1).max(128) });
+const changeAdminPasswordSchema = z.object({
+  current_password: z.string().min(1).max(128),
+  new_password: passwordSchema,
+});
+
+router.get('/auth/status', async (req, res) => {
+  const { rows: [user] } = await query(
+    'SELECT admin_password_hash IS NOT NULL AS password_configured FROM users WHERE id = $1',
+    [req.user.id],
+  );
+  res.json({
+    success: true,
+    password_configured: Boolean(user?.password_configured),
+    unlocked: user?.password_configured ? await hasValidAdminSession(req, req.user.id) : false,
+  });
+});
+
+router.post('/auth/setup-password', passwordAttemptLimiter, async (req, res) => {
+  const { password } = adminPasswordLoginSchema.extend({ password: passwordSchema }).parse(req.body);
+  const encodedHash = await hashAdminPassword(password);
+  const { rows: [user] } = await tx(async (db) => {
+    const { rows: [lockedUser] } = await db.query(
+      'SELECT admin_password_hash FROM users WHERE id = $1 FOR UPDATE',
+      [req.user.id],
+    );
+    if (!lockedUser) throw new AppError(404, 'Admin account not found.');
+    if (lockedUser.admin_password_hash) {
+      throw new AppError(409, 'An admin password is already configured. Unlock the console first.');
+    }
+    const { rows: [updated] } = await db.query(
+      `UPDATE users
+          SET admin_password_hash = $2,
+              admin_password_version = admin_password_version + 1
+        WHERE id = $1
+        RETURNING admin_password_version`,
+      [req.user.id, encodedHash],
+    );
+    await writeAudit(db, req, 'set_admin_password', 'user', req.user.id);
+    return { rows: [updated] };
+  });
+  setAdminSessionCookie(res, req.user.id, Number(user.admin_password_version));
+  res.json({ success: true, unlocked: true });
+});
+
+router.post('/auth/unlock', passwordAttemptLimiter, async (req, res) => {
+  const { password } = adminPasswordLoginSchema.parse(req.body);
+  const { rows: [user] } = await query(
+    `SELECT admin_password_hash, admin_password_version
+       FROM users WHERE id = $1`,
+    [req.user.id],
+  );
+  if (!user?.admin_password_hash) {
+    throw new AppError(409, 'Set an admin password before unlocking the console.', 'ADMIN_PASSWORD_SETUP_REQUIRED');
+  }
+  if (!(await verifyAdminPassword(password, user.admin_password_hash))) {
+    throw new AppError(403, 'The admin password is incorrect.', 'ADMIN_PASSWORD_INCORRECT');
+  }
+  setAdminSessionCookie(res, req.user.id, Number(user.admin_password_version));
+  await query(
+    `INSERT INTO admin_audit_logs
+       (admin_id, action, target_type, target_id, details, ip_address, user_agent)
+     VALUES ($1, 'unlock_admin_console', 'user', $1::text, '{}'::jsonb, $2, $3)`,
+    [req.user.id, req.ip || null, req.get('user-agent') || null],
+  );
+  res.json({ success: true, unlocked: true });
+});
+
+router.post('/auth/lock', async (req, res) => {
+  clearAdminSessionCookie(res);
+  res.json({ success: true, unlocked: false });
+});
+
+router.use(requireAdminPassword);
+
+router.post('/auth/change-password', passwordAttemptLimiter, async (req, res) => {
+  const { current_password: currentPassword, new_password: newPassword } =
+    changeAdminPasswordSchema.parse(req.body);
+  if (currentPassword === newPassword) {
+    throw new AppError(400, 'Choose a new password different from the current one.');
+  }
+
+  const { rows: [user] } = await tx(async (db) => {
+    const { rows: [lockedUser] } = await db.query(
+      'SELECT admin_password_hash FROM users WHERE id = $1 FOR UPDATE',
+      [req.user.id],
+    );
+    if (!lockedUser?.admin_password_hash || !(await verifyAdminPassword(currentPassword, lockedUser.admin_password_hash))) {
+      throw new AppError(403, 'The current admin password is incorrect.');
+    }
+    const encodedHash = await hashAdminPassword(newPassword);
+    const { rows: [updated] } = await db.query(
+      `UPDATE users
+          SET admin_password_hash = $2,
+              admin_password_version = admin_password_version + 1
+        WHERE id = $1
+        RETURNING admin_password_version`,
+      [req.user.id, encodedHash],
+    );
+    await writeAudit(db, req, 'change_admin_password', 'user', req.user.id);
+    return { rows: [updated] };
+  });
+  setAdminSessionCookie(res, req.user.id, Number(user.admin_password_version));
+  res.json({ success: true, message: 'Admin password changed. Other admin sessions were locked.' });
+});
 
 const userSearchSchema = z.object({
   q: z.string().trim().min(2).max(120),

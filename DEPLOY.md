@@ -81,6 +81,8 @@ A paused project means your site is down until you un-pause it in the dashboard.
    the updated backend. The admin console is available at `/admin` for accounts with the `admin` role;
    account roll numbers are optional and can be collected during sign-up. Image screening currently runs
    only in the browser, so its client-reported scores are not treated as an authoritative admin queue.
+   Migration `019_admin_password_auth.sql` adds a separately hashed admin password and short-lived,
+   revocable admin sessions. Apply it before deploying the password-protected admin console.
    Apply migrations before deploying the backend update. Migration `008_lost_found_report_details.sql`
    adds the optional report metadata used by the dedicated lost-and-found report page.
    Migration `009_lost_found_lifecycle_claims.sql` adds the eight-hour deletion rule, closed/resolved
@@ -135,8 +137,14 @@ On Render, set `CORS_ORIGIN=https://campustu.vercel.app` (add any other exact fr
 2. Open `/meta` -> your real branches/categories/spots.
 3. Sign up with a real email (Postman: POST `/auth/signup`), read the code from the email, POST `/auth/verify`,
    then create a listing with a photo (POST `/items`, form-data). Open the returned photo link in a browser.
-4. Make yourself admin: temporarily point your local `.env` DATABASE_URL at Supabase and run
-   `npm run make-admin -- you@example.com`.
+4. Make yourself admin: temporarily point your local `.env` DATABASE_URL at the production database and run
+   `npm run make-admin -- you@example.com` for an account that has already verified its email. Then deploy
+   the latest frontend and backend, sign in with that account, and open `https://your-site-domain/admin`.
+   The first visit asks you to create an admin-only password (14+ characters with uppercase, lowercase,
+   a number, and a symbol). Later visits require that password as well as the verified account session.
+   Admin unlock expires after 30 minutes; use the **Lock console** button to lock it sooner. Change the
+   admin password from the console's **Change admin password** section. Do not share the password or use
+   the admin account as a shared student login.
 
 ## Free-tier habits you must have
 - Render free web services sleep after idle time; open `/health` a few minutes before any demo.
