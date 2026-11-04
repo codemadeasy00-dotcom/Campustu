@@ -93,8 +93,8 @@ router.post('/auth/unlock', passwordAttemptLimiter, async (req, res) => {
   setAdminSessionCookie(res, req.user.id, Number(user.admin_password_version));
   await query(
     `INSERT INTO admin_audit_logs
-       (admin_id, action, target_type, target_id, details, ip_address, user_agent)
-     VALUES ($1, 'unlock_admin_console', 'user', $1::text, '{}'::jsonb, $2, $3)`,
+       (admin_id, action, action_type, target_type, target_id, details, ip_address, user_agent)
+     VALUES ($1, 'unlock_admin_console', 'unlock_admin_console', 'user', $1::text, '{}'::jsonb, $2, $3)`,
     [req.user.id, req.ip || null, req.get('user-agent') || null],
   );
   res.json({ success: true, unlocked: true });
@@ -178,8 +178,8 @@ async function writeAudit(db, req, action, targetType, targetId, details = {}) {
   const { ip_address: ipAddress, user_agent: userAgent } = requestDetails(req);
   await db.query(
     `INSERT INTO admin_audit_logs
-       (admin_id, action, target_type, target_id, details, ip_address, user_agent)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+       (admin_id, action, action_type, target_type, target_id, details, ip_address, user_agent)
+     VALUES ($1, $2, $2, $3, $4, $5::jsonb, $6, $7)`,
     [req.user.id, action, targetType, String(targetId), JSON.stringify(details), ipAddress, userAgent],
   );
 }

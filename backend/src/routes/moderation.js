@@ -28,8 +28,8 @@ router.use(requireAuth);
 async function writeAudit(db, req, action, targetType, targetId, details = {}) {
   await db.query(
     `INSERT INTO admin_audit_logs
-       (admin_id, action, target_type, target_id, details, ip_address, user_agent)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+       (admin_id, action, action_type, target_type, target_id, details, ip_address, user_agent)
+     VALUES ($1, $2, $2, $3, $4, $5::jsonb, $6, $7)`,
     [
       req.user.id,
       action,
