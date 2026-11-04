@@ -244,6 +244,10 @@ export const adminApi = {
     json: { status, reason },
   }),
   colleges: () => request('/api/admin/colleges'),
+  updateCollege: (id, college) => request(`/api/admin/colleges/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    json: college,
+  }),
   setCollegeStatus: (id, status, reason) => request(`/api/admin/colleges/${encodeURIComponent(id)}/status`, {
     method: 'PATCH',
     json: { status, reason },

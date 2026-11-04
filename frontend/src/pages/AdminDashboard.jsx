@@ -381,6 +381,8 @@ function AddCollege({ onError, onSuccess }) {
   })
   const [busy, setBusy] = useState(false)
   const [colleges, setColleges] = useState([])
+  const [editingCollege, setEditingCollege] = useState(null)
+  const [savingCollege, setSavingCollege] = useState(false)
 
   useEffect(() => {
     adminApi.colleges().then((result) => setColleges(result.colleges || [])).catch((error) => onError(errorMessage(error)))
@@ -421,12 +423,53 @@ function AddCollege({ onError, onSuccess }) {
     }
   }
 
+  function editCollege(college) {
+    setEditingCollege({
+      id: college.id,
+      name: college.name,
+      short_code: college.short_code || '',
+      city: college.city,
+      state: college.state || '',
+      email_domain: college.email_domain || '',
+      latitude: college.center_lat == null ? '' : String(college.center_lat),
+      longitude: college.center_lng == null ? '' : String(college.center_lng),
+      search_radius_meters: String(college.search_radius_meters || 1000),
+    })
+  }
+
+  async function saveCollege(approve = false) {
+    if (!editingCollege) return
+    const reason = approve
+      ? window.prompt(`Approval reason for ${editingCollege.name}?`)
+      : undefined
+    if (approve && (!reason || reason.trim().length < 5)) return
+
+    setSavingCollege(true)
+    try {
+      const { id, ...collegeDetails } = editingCollege
+      const result = await adminApi.updateCollege(id, {
+        ...collegeDetails,
+        latitude: Number(editingCollege.latitude),
+        longitude: Number(editingCollege.longitude),
+        search_radius_meters: Number(editingCollege.search_radius_meters),
+        ...(approve ? { status: 'approved', reason: reason.trim() } : {}),
+      })
+      setColleges((current) => current.map((entry) => entry.id === id ? result.college : entry))
+      setEditingCollege(null)
+      onSuccess(approve ? `${result.college.name} updated and approved.` : `${result.college.name} updated.`)
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setSavingCollege(false)
+    }
+  }
+
   const fields = [
     ['name', 'College name', 'text'],
     ['short_code', 'Short code', 'text'],
     ['city', 'City', 'text'],
     ['state', 'State', 'text'],
-    ['email_domain', 'Email domain (example: dbatu.ac.in)', 'text'],
+    ['email_domain', 'Email domain (optional, e.g. dbatu.ac.in)', 'text'],
     ['latitude', 'Latitude', 'number'],
     ['longitude', 'Longitude', 'number'],
     ['search_radius_meters', 'Search radius (meters)', 'number'],
@@ -443,18 +486,65 @@ function AddCollege({ onError, onSuccess }) {
         ))}
         <button disabled={busy} className="border bg-teal-900 px-4 py-2 font-semibold text-white disabled:opacity-50 sm:col-span-2">{busy ? 'Adding…' : 'Add approved campus'}</button>
       </form>
+      {editingCollege && (
+        <form
+          className="grid gap-4 border-2 border-teal-800 bg-teal-50 p-5 sm:grid-cols-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            saveCollege(event.nativeEvent.submitter?.value === 'approve')
+          }}
+        >
+          <div className="sm:col-span-2">
+            <h2 className="text-lg font-bold">Edit {editingCollege.name}</h2>
+            <p className="text-sm text-slate-700">Check the campus details and map center before approving.</p>
+          </div>
+          {fields.map(([key, label, type]) => (
+            <label key={key} className="space-y-1 text-sm font-semibold">
+              <span>{label}</span>
+              <input
+                required={!['state', 'email_domain'].includes(key)}
+                type={type}
+                step={type === 'number' && key !== 'search_radius_meters' ? 'any' : undefined}
+                min={key === 'latitude' ? -90 : key === 'longitude' ? -180 : key === 'search_radius_meters' ? 100 : undefined}
+                max={key === 'latitude' ? 90 : key === 'longitude' ? 180 : key === 'search_radius_meters' ? 50000 : undefined}
+                className={inputClass}
+                value={editingCollege[key]}
+                onChange={(event) => setEditingCollege((current) => ({ ...current, [key]: event.target.value }))}
+              />
+            </label>
+          ))}
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
+            <button type="submit" value="save" disabled={savingCollege} className="border bg-white px-4 py-2 font-semibold text-teal-950 disabled:opacity-50">
+              {savingCollege ? 'Saving…' : 'Save changes'}
+            </button>
+            {colleges.find((college) => college.id === editingCollege.id)?.status === 'pending' && (
+              <button type="submit" value="approve" disabled={savingCollege} className="border bg-teal-900 px-4 py-2 font-semibold text-white disabled:opacity-50">
+                Save changes &amp; approve
+              </button>
+            )}
+            <button type="button" disabled={savingCollege} onClick={() => setEditingCollege(null)} className="border bg-white px-4 py-2 disabled:opacity-50">
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
       <section>
         <h2 className="mb-2 text-lg font-bold">Campuses ({colleges.length})</h2>
         <ul className="space-y-2">
           {colleges.map((college) => (
             <li key={college.id} className="flex flex-col justify-between gap-2 border bg-white p-3 text-sm sm:flex-row sm:items-center">
-              <span>{college.name} ({college.short_code}) · {college.city} · @{college.email_domain} · {college.status}</span>
-              {college.status === 'pending' && (
-                <span className="flex gap-2">
+              <span>
+                {college.name} ({college.short_code || 'no short code'}) · {college.city}
+                {college.email_domain ? ` · @${college.email_domain}` : ' · no email-domain restriction'}
+                {` · map center ${college.center_lat ?? 'not set'}, ${college.center_lng ?? 'not set'} · ${college.status}`}
+              </span>
+              <span className="flex gap-2">
+                <button type="button" onClick={() => editCollege(college)} className="border px-2 py-1 text-teal-900">Edit</button>
+                {college.status === 'pending' && <>
                   <button type="button" onClick={() => setCollegeStatus(college, 'approved')} className="border px-2 py-1 text-teal-900">Approve</button>
                   <button type="button" onClick={() => setCollegeStatus(college, 'rejected')} className="border px-2 py-1 text-red-800">Reject</button>
-                </span>
-              )}
+                </>}
+              </span>
             </li>
           ))}
         </ul>

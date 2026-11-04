@@ -156,10 +156,25 @@ const collegeSchema = z.object({
   short_code: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,14}$/),
   city: z.string().trim().min(2).max(80),
   state: z.string().trim().max(80).optional(),
-  email_domain: z.string().trim().toLowerCase().regex(/^(?!-)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/),
+  email_domain: z.preprocess(
+    (value) => typeof value === 'string' && !value.trim() ? null : value,
+    z.string().trim().toLowerCase().regex(/^(?!-)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/).nullable(),
+  ),
   latitude: z.coerce.number().finite().min(-90).max(90),
   longitude: z.coerce.number().finite().min(-180).max(180),
   search_radius_meters: z.coerce.number().int().min(100).max(50000).default(1000),
+});
+const collegeUpdateSchema = collegeSchema.extend({
+  status: z.literal('approved').optional(),
+  reason: z.string().trim().min(5).max(1000).optional(),
+}).superRefine((college, context) => {
+  if (college.status === 'approved' && !college.reason) {
+    context.addIssue({
+      code: 'custom',
+      path: ['reason'],
+      message: 'An approval reason is required.',
+    });
+  }
 });
 
 const controlSchema = z.object({
@@ -549,6 +564,62 @@ router.get('/colleges', async (_req, res) => {
        FROM colleges ORDER BY name`,
   );
   res.json({ success: true, colleges: rows });
+});
+
+router.patch('/colleges/:id', async (req, res) => {
+  const collegeId = z.coerce.number().int().positive().parse(req.params.id);
+  const college = collegeUpdateSchema.parse(req.body);
+  assertUserTextIsAllowed([college.name, college.city, college.state, college.short_code, college.reason]);
+  const { rows: [updatedCollege] } = await tx(async (db) => {
+    const { rows: [updated] } = await db.query(
+      `UPDATE colleges
+          SET name = $2,
+              short_code = $3,
+              city = $4,
+              state = $5,
+              email_domain = $6,
+              center_lat = $7,
+              center_lng = $8,
+              search_radius_meters = $9,
+              status = CASE WHEN $10 THEN 'approved' ELSE status END
+        WHERE id = $1
+        RETURNING id, name, short_code, city, state, email_domain, center_lat, center_lng,
+                  search_radius_meters, status, created_at`,
+      [
+        collegeId,
+        college.name,
+        college.short_code,
+        college.city,
+        college.state || null,
+        college.email_domain,
+        college.latitude,
+        college.longitude,
+        college.search_radius_meters,
+        college.status === 'approved',
+      ],
+    );
+    if (!updated) throw new AppError(404, 'College not found.');
+    await writeAudit(
+      db,
+      req,
+      college.status === 'approved' ? 'approve_college' : 'update_college',
+      'college',
+      collegeId,
+      {
+        reason: college.reason || null,
+        name: updated.name,
+        short_code: updated.short_code,
+        city: updated.city,
+        state: updated.state,
+        email_domain: updated.email_domain,
+        center_lat: updated.center_lat,
+        center_lng: updated.center_lng,
+        search_radius_meters: updated.search_radius_meters,
+      },
+    );
+    return { rows: [updated] };
+  });
+  res.json({ success: true, college: updatedCollege });
 });
 
 router.patch('/colleges/:id/status', async (req, res) => {
