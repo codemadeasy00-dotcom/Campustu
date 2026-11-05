@@ -4,6 +4,7 @@ import { adminApi, errorMessage, moderationApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { Alert, inputClass } from '../components/ui.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
+import UserBadges from '../components/UserBadges.jsx'
 
 const TABS = [
   { id: 'moderation', label: 'Moderation Queue' },
@@ -15,6 +16,84 @@ const TABS = [
 ]
 const ADMIN_SESSION_MS = 30 * 60 * 1000
 const ADMIN_PASSWORD_PATTERN = '(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{14,128}'
+const USER_BADGE_OPTIONS = [
+  { id: 'college_verified', label: 'College Verified' },
+  { id: 'admin', label: 'ADMIN' },
+  { id: 'power_trader', label: 'POWER TRADER' },
+  { id: 'trusted_member', label: 'Trusted Member' },
+  { id: 'lost_found_hero', label: 'Lost & Found Hero' },
+  { id: 'suspended', label: 'Suspended' },
+  { id: 'banned', label: 'Banned' },
+]
+const ITEM_BADGE_OPTIONS = {
+  marketplace_item: [
+    { id: 'under_review', label: 'Under Moderation Review' },
+    { id: 'claimed_resolved', label: 'Claimed / Resolved' },
+  ],
+  lost_found_item: [
+    { id: 'under_review', label: 'Under Moderation Review' },
+    { id: 'urgent', label: 'Urgent' },
+    { id: 'verified_match', label: 'Verified Match' },
+    { id: 'claimed_resolved', label: 'Claimed / Resolved' },
+  ],
+}
+
+function BadgeAssignment({ userId, targetType, itemId, badges, overrides, options, onError, onSuccess }) {
+  const [selectedBadges, setSelectedBadges] = useState(() => {
+    const savedOverrides = Array.isArray(overrides) ? overrides : []
+    return new Set(savedOverrides.length
+      ? savedOverrides.filter((override) => override.enabled).map((override) => override.badge_id)
+      : (badges || []).map((badge) => badge.id))
+  })
+  const [saving, setSaving] = useState(false)
+
+  async function saveBadges() {
+    const reason = window.prompt('Reason for changing these badges? This will be recorded in the admin audit log.')
+    if (!reason || reason.trim().length < 5) return
+    setSaving(true)
+    try {
+      await adminApi.setUserBadges(userId, {
+        target_type: targetType,
+        ...(itemId ? { item_id: itemId } : {}),
+        badges: [...selectedBadges],
+        reason: reason.trim(),
+      })
+      onSuccess('Badge settings saved.')
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <fieldset className="space-y-2 border border-slate-200 bg-slate-50 p-3">
+      <legend className="px-1 text-sm font-bold">Admin badge controls</legend>
+      <p className="text-xs text-slate-600">These choices override automatic badge rules; they do not change account permissions, verification, or item state. Assigning Under Moderation Review also hides the post from other students and blocks related actions until cleared.</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {options.map((badge) => (
+          <label key={badge.id} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={selectedBadges.has(badge.id)}
+              onChange={(event) => setSelectedBadges((current) => {
+                const next = new Set(current)
+                if (event.target.checked) next.add(badge.id)
+                else next.delete(badge.id)
+                return next
+              })}
+            />
+            {badge.label}
+          </label>
+        ))}
+      </div>
+      <UserBadges badges={options.filter((badge) => selectedBadges.has(badge.id))} />
+      <button type="button" disabled={saving} onClick={saveBadges} className="border border-teal-900 px-3 py-1.5 text-xs font-bold text-teal-950 disabled:opacity-50">
+        {saving ? 'Saving…' : 'Save badge settings'}
+      </button>
+    </fieldset>
+  )
+}
 
 function ModerationQueue({ onError }) {
   const [reports, setReports] = useState([])
@@ -264,6 +343,16 @@ function UserManagement({ onError, onSuccess }) {
               <p className="font-semibold">{item.title} · {item.status}</p>
               <p className="text-xs text-slate-600">{type === 'marketplace' ? 'Marketplace' : 'Lost & Found'} · {new Date(item.created_at).toLocaleString()}</p>
               {item.description && <p className="mt-1 whitespace-pre-wrap break-words text-sm">{item.description}</p>}
+              <BadgeAssignment
+                userId={selected?.user.id}
+                targetType={type === 'marketplace' ? 'marketplace_item' : 'lost_found_item'}
+                itemId={item.id}
+                badges={item.badges}
+                overrides={item.badge_overrides}
+                options={ITEM_BADGE_OPTIONS[type === 'marketplace' ? 'marketplace_item' : 'lost_found_item']}
+                onError={onError}
+                onSuccess={onSuccess}
+              />
               <button
                 type="button"
                 disabled={busy}
@@ -326,6 +415,15 @@ function UserManagement({ onError, onSuccess }) {
         <section className="space-y-3 border bg-white p-4">
           <h2 className="text-lg font-bold">{selected.user.display_name} · Account details</h2>
           <p>{selected.user.email} · {selected.user.roll_number || 'No roll number'} · {selected.user.status}</p>
+          <BadgeAssignment
+            userId={selected.user.id}
+            targetType="user"
+            badges={selected.user.badges}
+            overrides={selected.user.badge_overrides}
+            options={USER_BADGE_OPTIONS}
+            onError={onError}
+            onSuccess={onSuccess}
+          />
           {selected.user.frozen_reason && <p className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><strong>Account restriction reason:</strong> {selected.user.frozen_reason}</p>}
           <p>Completed handovers: <strong>{selected.user.completed_handovers}</strong></p>
           <section className="space-y-3">

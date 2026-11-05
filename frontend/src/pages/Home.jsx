@@ -284,6 +284,7 @@ function Dashboard() {
                       <div className="truncate text-sm font-semibold">{item.title}</div>
                       <div className="text-sm font-bold text-brand-700">{formatPrice(item.price)}</div>
                       <UserBadges badges={item.seller.badges} className="mt-2" />
+                      <UserBadges badges={item.badges} className="mt-2" />
                     </div>
                   </Link>
                 </li>
@@ -320,12 +321,7 @@ function Dashboard() {
                     className="mt-3 h-32 w-full rounded-xl object-cover"
                   />
                   <h3 className="mt-3 truncate text-sm font-bold text-slate-900">{item.title}</h3>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {item.urgent && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-800">Urgent</span>}
-                    {item.verified_match && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">Verified Match</span>}
-                    {item.lifecycle_status === 'resolved' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">Claimed / Resolved</span>}
-                    {item.under_review && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">Under Moderation Review</span>}
-                  </div>
+                  <UserBadges badges={item.item_badges} className="mt-2" />
                   <p className="mt-1 line-clamp-2 text-xs text-slate-600">{item.description}</p>
                   <UserBadges badges={item.poster_badges} className="mt-2" />
                   <p className="mt-3 truncate text-xs text-slate-500">{item.location_name}</p>

@@ -90,11 +90,16 @@ A paused project means your site is down until you un-pause it in the dashboard.
    Migration `024_lost_found_match_notification_pair_unique.sql` allows each report to notify its
    owner about multiple distinct matches without duplicate notices. Migration
    `025_lost_found_urgent_badge.sql` adds the poster-controlled urgent flag for lost-item reports.
+   Migration `026_admin_badge_overrides.sql` enables audited admin badge assignment for accounts and
+   individual posts; apply it before deploying the updated backend.
    Apply these before deploying the updated application.
    User badges show college-email verification, staff role, and Power Trader eligibility (2 or more
    completed handovers with no pending reports). Lost-item urgent status is chosen by its poster;
    Verified Match is only shown after a handover code successfully resolves a claim. Pending reports
    and moderation flags are visible only to the post owner and admins, and are hidden from other students.
+   Badge overrides do not grant admin permissions or alter verification, handover, or lifecycle records.
+   Assigning Under Moderation Review also hides a post from other students and blocks related actions
+   until an admin clears the badge.
    Apply migrations before deploying the backend update. Migration `008_lost_found_report_details.sql`
    adds the optional report metadata used by the dedicated lost-and-found report page.
    Migration `009_lost_found_lifecycle_claims.sql` adds the eight-hour deletion rule, closed/resolved

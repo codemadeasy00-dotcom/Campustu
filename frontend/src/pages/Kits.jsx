@@ -4,6 +4,7 @@ import { kitsApi, metaApi, wishlistApi, errorMessage } from '../services/api.js'
 import { conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
 import ItemPhoto from '../components/ItemPhoto.jsx'
+import UserBadges from '../components/UserBadges.jsx'
 import { Alert, Button, inputClass } from '../components/ui.jsx'
 import PageHero from '../components/PageHero.jsx'
 
@@ -201,6 +202,8 @@ export default function Kits() {
                           {conditionLabel(chosen.condition)} · {chosen.seller.display_name}
                           {chosen.seller.is_trusted && <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 font-medium text-emerald-800">Trusted</span>}
                         </div>
+                        <UserBadges badges={chosen.seller.badges} className="mt-1" />
+                        <UserBadges badges={chosen.badges} className="mt-1" />
                       </div>
                     </div>
                   )}

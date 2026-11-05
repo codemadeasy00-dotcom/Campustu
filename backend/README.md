@@ -41,7 +41,10 @@ at least two completed handovers and no pending reports against that user's post
 mark a report urgent; a Found report cannot be marked urgent. Verified Match is reserved for claims whose
 handover code has been successfully redeemed. Pending reports and moderation flags are shown only to the
 post owner and admins; other students do not see those posts while they are under review. Migration
-`025_lost_found_urgent_badge.sql` adds the stored urgent flag.
+`025_lost_found_urgent_badge.sql` adds the stored urgent flag. Migration
+`026_admin_badge_overrides.sql` enables audited admin overrides for account and post badges. Overrides
+do not change permissions, verification, or lifecycle state; assigning Under Moderation Review also
+hides the post from other students and blocks related actions until cleared.
 
 ## Endpoints
 | Method | Path | Auth | Notes |

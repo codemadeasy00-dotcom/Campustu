@@ -16,6 +16,12 @@ const {
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const storage = require('../storage');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
+const {
+  USER_BADGES,
+  ITEM_BADGES,
+  applyBadgeOverrides,
+  buildUserBadges,
+} = require('../utils/user-badges');
 
 router.use(requireAuth, requireActive, requireAdmin);
 
@@ -152,6 +158,16 @@ const accountStatusSchema = z.object({
 });
 const removePostSchema = z.object({
   reason: z.string().trim().min(5).max(1000),
+});
+const userBadgeSchema = z.object({
+  target_type: z.enum(['user', 'marketplace_item', 'lost_found_item']),
+  item_id: z.uuid().optional(),
+  badges: z.array(z.string()).max(11),
+  reason: z.string().trim().min(5).max(1000),
+}).strict().superRefine((value, context) => {
+  if ((value.target_type === 'user') === Boolean(value.item_id)) {
+    context.addIssue({ code: 'custom', path: ['item_id'], message: 'Select an item only for item badge overrides.' });
+  }
 });
 
 const collegeSchema = z.object({
@@ -458,8 +474,27 @@ router.get('/users/:id', async (req, res) => {
   const { rows: [user] } = await query(
     `SELECT u.id, u.email, u.roll_number, u.full_name, u.display_name, u.status, u.role,
             u.college_id, c.name AS college_name, u.created_at, u.frozen_reason,
+            u.email_verified_at, c.email_domain, c.status AS college_status,
             COALESCE(t.completed_handovers, 0)::int AS completed_handovers,
-            COALESCE(t.trust_score, 0)::int AS trust_score
+            COALESCE(t.trust_score, 0)::int AS trust_score,
+            COALESCE(t.is_trusted, false) AS is_trusted,
+            (SELECT count(*)::int
+               FROM item_claims ic
+               JOIN lost_found_items lif ON lif.id = ic.item_id
+              WHERE lif.user_id = u.id
+                AND lif.lifecycle_status = 'resolved'
+                AND ic.status = 'completed') AS completed_returns,
+            (SELECT count(*)::int
+               FROM item_reports ir
+               LEFT JOIN items mi ON mi.id = ir.marketplace_item_id
+               LEFT JOIN lost_found_items lif ON lif.id = ir.lost_found_item_id
+              WHERE ir.status = 'pending'
+                AND (mi.seller_id = u.id OR lif.user_id = u.id)) AS pending_reports_received,
+            COALESCE((
+              SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                FROM admin_badge_overrides abo
+               WHERE abo.user_id = u.id
+            ), '[]'::json) AS badge_overrides
        FROM users u
        LEFT JOIN colleges c ON c.id = u.college_id
        LEFT JOIN user_trust t ON t.user_id = u.id
@@ -467,9 +502,23 @@ router.get('/users/:id', async (req, res) => {
     [userId],
   );
   if (!user) throw new AppError(404, 'User not found.');
+  user.badges = buildUserBadges(user, user.badge_overrides);
   const [{ rows: marketplace }, { rows: lostFound }, { rows: reports }] = await Promise.all([
     query(
       `SELECT i.id, i.title, i.description, i.status, i.created_at,
+              EXISTS (
+                SELECT 1 FROM item_reports ir
+                 WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+              ) OR EXISTS (
+                SELECT 1 FROM admin_badge_overrides abo
+                 WHERE abo.marketplace_item_id = i.id
+                   AND abo.badge_id = 'under_review' AND abo.enabled
+              ) AS under_review,
+              COALESCE((
+                SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                  FROM admin_badge_overrides abo
+                 WHERE abo.marketplace_item_id = i.id
+              ), '[]'::json) AS badge_overrides,
               (SELECT p.storage_key FROM item_photos p
                 WHERE p.item_id = i.id ORDER BY p.position LIMIT 1) AS photo_key
          FROM items i
@@ -479,6 +528,24 @@ router.get('/users/:id', async (req, res) => {
     ),
     query(
       `SELECT lif.id, lif.title, lif.description, lif.status, lif.lifecycle_status, lif.created_at,
+              lif.urgent, lif.flagged_for_review,
+              EXISTS (
+                SELECT 1 FROM item_reports ir
+                 WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+              ) OR EXISTS (
+                SELECT 1 FROM admin_badge_overrides abo
+                 WHERE abo.lost_found_item_id = lif.id
+                   AND abo.badge_id = 'under_review' AND abo.enabled
+              ) AS has_pending_reports,
+              EXISTS (
+                SELECT 1 FROM item_claims ic
+                 WHERE ic.item_id = lif.id AND ic.status = 'completed'
+              ) AS verified_match,
+              COALESCE((
+                SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                  FROM admin_badge_overrides abo
+                 WHERE abo.lost_found_item_id = lif.id
+              ), '[]'::json) AS badge_overrides,
               (SELECT p.storage_key FROM lost_found_photos p
                 WHERE p.item_id = lif.id ORDER BY p.position LIMIT 1) AS photo_key
          FROM lost_found_items lif
@@ -503,17 +570,96 @@ router.get('/users/:id', async (req, res) => {
     success: true,
     user,
     active_listings: {
-      marketplace: marketplace.map(({ photo_key: photoKey, ...item }) => ({
+      marketplace: marketplace.map(({ photo_key: photoKey, badge_overrides: overrides, under_review: underReview, ...item }) => ({
         ...item,
         photo_url: photoKey ? storage.urlFor(photoKey) : null,
+        badge_overrides: overrides,
+        badges: applyBadgeOverrides([
+          ...(underReview ? [{ id: 'under_review', label: 'Under Moderation Review' }] : []),
+          ...(item.status === 'sold' ? [{ id: 'claimed_resolved', label: 'Claimed / Resolved' }] : []),
+        ], overrides, ITEM_BADGES.marketplace_item),
       })),
-      lost_found: lostFound.map(({ photo_key: photoKey, ...item }) => ({
+      lost_found: lostFound.map(({
+        photo_key: photoKey,
+        badge_overrides: overrides,
+        flagged_for_review: flaggedForReview,
+        has_pending_reports: hasPendingReports,
+        ...item
+      }) => ({
         ...item,
         photo_url: photoKey ? storage.urlFor(photoKey) : null,
+        badge_overrides: overrides,
+        badges: applyBadgeOverrides([
+          ...(flaggedForReview || hasPendingReports ? [{ id: 'under_review', label: 'Under Moderation Review' }] : []),
+          ...(item.urgent ? [{ id: 'urgent', label: 'Urgent' }] : []),
+          ...(item.verified_match ? [{ id: 'verified_match', label: 'Verified Match' }] : []),
+          ...(item.lifecycle_status === 'resolved' ? [{ id: 'claimed_resolved', label: 'Claimed / Resolved' }] : []),
+        ], overrides, ITEM_BADGES.lost_found_item),
       })),
     },
     reports_received: reports,
   });
+});
+
+router.put('/users/:id/badges', async (req, res) => {
+  const userId = z.uuid().parse(req.params.id);
+  const data = userBadgeSchema.parse(req.body);
+  assertUserTextIsAllowed([data.reason]);
+  const definitions = data.target_type === 'user' ? USER_BADGES : ITEM_BADGES[data.target_type];
+  const allowedIds = new Set(definitions.map(({ id }) => id));
+  if (new Set(data.badges).size !== data.badges.length || data.badges.some((id) => !allowedIds.has(id))) {
+    throw new AppError(400, 'One or more selected badges are not valid for this target.');
+  }
+
+  await tx(async (db) => {
+    const { rows: [user] } = await db.query(
+      'SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [userId],
+    );
+    if (!user) throw new AppError(404, 'User not found.');
+
+    let targetColumn;
+    if (data.target_type === 'user') {
+      targetColumn = 'user_id';
+    } else {
+      targetColumn = data.target_type === 'marketplace_item' ? 'marketplace_item_id' : 'lost_found_item_id';
+      const { rows: [post] } = await db.query(
+        `SELECT id FROM ${data.target_type === 'marketplace_item' ? 'items' : 'lost_found_items'}
+          WHERE id = $1 AND ${data.target_type === 'marketplace_item' ? 'seller_id' : 'user_id'} = $2
+          FOR UPDATE`,
+        [data.item_id, userId],
+      );
+      if (!post) throw new AppError(404, 'The selected post was not found for this user.');
+    }
+
+    await db.query(
+      `DELETE FROM admin_badge_overrides WHERE ${targetColumn} = $1`,
+      [data.target_type === 'user' ? userId : data.item_id],
+    );
+    for (const { id } of definitions) {
+      await db.query(
+        `INSERT INTO admin_badge_overrides
+           (user_id, marketplace_item_id, lost_found_item_id, badge_id, enabled, reason, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          data.target_type === 'user' ? userId : null,
+          data.target_type === 'marketplace_item' ? data.item_id : null,
+          data.target_type === 'lost_found_item' ? data.item_id : null,
+          id,
+          data.badges.includes(id),
+          data.reason,
+          req.user.id,
+        ],
+      );
+    }
+    await writeAudit(db, req, 'set_badges', data.target_type, data.target_type === 'user' ? userId : data.item_id, {
+      user_id: userId,
+      badges: data.badges,
+      reason: data.reason,
+    });
+  });
+
+  res.json({ success: true, badge_overrides: data.badges });
 });
 
 router.post('/posts/:type/:id/remove', async (req, res) => {

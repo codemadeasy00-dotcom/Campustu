@@ -1021,6 +1021,7 @@ export default function LostFound() {
                           {item.status}
                         </span>
                         <h4 className="font-bold text-sm mt-1 mb-0.5">{item.title}</h4>
+                        <UserBadges badges={item.item_badges} className="mt-1" />
                         <p className="text-xs text-slate-600 m-0">📍 {item.location_name}</p>
                         {item.distance_meters != null && (
                           <p className="mt-1 text-xs font-semibold text-brand-700">{Number(item.distance_meters)} m away</p>
@@ -1100,23 +1101,12 @@ export default function LostFound() {
                     }`}>
                       {item.status.replace('_', ' ')}
                     </span>
-                    {item.urgent && (
-                      <span className="rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-bold uppercase text-red-800">Urgent</span>
-                    )}
-                    {item.verified_match && (
-                      <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[10px] font-bold uppercase text-sky-800">Verified Match</span>
-                    )}
-                    {item.lifecycle_status === 'resolved' && (
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-700">Claimed / Resolved</span>
-                    )}
-                    {item.under_review && (
-                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-900">Under Moderation Review</span>
-                    )}
-                    {item.lifecycle_status !== 'active' && item.lifecycle_status !== 'resolved' && (
+                    {item.lifecycle_status !== 'active' && (
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">
                         {item.lifecycle_status.replace('_', ' ')}
                       </span>
                     )}
+                    <UserBadges badges={item.item_badges} />
                     <span className="text-xs text-slate-400 truncate max-w-[120px]">📍 {item.location_name}</span>
                   </div>
                   <h3 className="font-bold text-slate-900 mb-1 line-clamp-1">{item.title}</h3>

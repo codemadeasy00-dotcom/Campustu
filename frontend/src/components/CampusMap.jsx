@@ -3,6 +3,7 @@ import { Circle, CircleMarker, MapContainer, Marker, Popup, TileLayer, ZoomContr
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import MapPlaceSearch from './MapPlaceSearch.jsx'
+import UserBadges from './UserBadges.jsx'
 import 'leaflet/dist/leaflet.css'
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css'
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css'
@@ -335,6 +336,7 @@ export default function CampusMap({
                         {item.type === 'marketplace' ? 'Marketplace' : item.status}
                       </span>
                       <h3 className="mb-1 mt-2 font-bold text-slate-900">{item.title}</h3>
+                      <UserBadges badges={item.type === 'marketplace' ? item.badges : item.item_badges} className="mb-2" />
                       {item.description && <p className="text-xs text-slate-600">{item.description}</p>}
                       {item.price != null && <p className="mt-2 text-sm font-bold text-brand-700">₹{item.price}</p>}
                       {item.locationName && <p className="mt-2 text-xs text-slate-500">{item.locationName}</p>}

@@ -429,7 +429,12 @@ async function publicProfile(userId) {
                LEFT JOIN lost_found_items lif ON lif.id = ir.lost_found_item_id
               WHERE ir.status = 'pending'
                 AND (mi.seller_id = u.id OR lif.user_id = u.id)) AS pending_reports_received,
-            t.trust_score::int AS trust_score, t.is_trusted, t.completed_handovers::int AS completed_handovers
+            t.trust_score::int AS trust_score, t.is_trusted, t.completed_handovers::int AS completed_handovers,
+            COALESCE((
+              SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                FROM admin_badge_overrides abo
+               WHERE abo.user_id = u.id
+            ), '[]'::json) AS badge_overrides
 
        FROM users u
 
@@ -455,6 +460,7 @@ async function publicProfile(userId) {
     email_verified_at,
     completed_returns,
     pending_reports_received,
+    badge_overrides,
     ...u
   } = rows[0]
   const badges = buildUserBadges({
@@ -464,7 +470,7 @@ async function publicProfile(userId) {
     email_verified_at,
     completed_returns,
     pending_reports_received,
-  })
+  }, badge_overrides)
 
   return {
     ...u,

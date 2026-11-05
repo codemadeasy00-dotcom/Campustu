@@ -6,6 +6,10 @@ const BADGE_STYLES = {
   lost_found_hero: 'border-amber-300 bg-amber-50 text-amber-900',
   suspended: 'border-red-300 bg-red-100 text-red-900',
   banned: 'border-red-500 bg-red-700 text-white',
+  under_review: 'border-amber-300 bg-amber-100 text-amber-900',
+  urgent: 'border-red-300 bg-red-100 text-red-900',
+  verified_match: 'border-sky-300 bg-sky-100 text-sky-900',
+  claimed_resolved: 'border-slate-300 bg-slate-100 text-slate-700',
 }
 
 export default function UserBadges({ badges = [], className = '' }) {

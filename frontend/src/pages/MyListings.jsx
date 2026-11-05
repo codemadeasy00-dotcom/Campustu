@@ -76,11 +76,7 @@ export default function MyListings() {
                 </div>
                 <div className="p-3">
                   <div className="truncate font-semibold">{item.title}</div>
-                  {item.under_review && (
-                    <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-                      Under Moderation Review
-                    </span>
-                  )}
+                  <UserBadges badges={item.badges} className="mt-2" />
                   {item.seller.badges?.length > 0 && <UserBadges badges={item.seller.badges} className="mt-2" />}
                   <div className="mt-1 flex items-center justify-between text-sm">
                     <span className="font-bold text-brand-700">{formatPrice(item.price)}</span>

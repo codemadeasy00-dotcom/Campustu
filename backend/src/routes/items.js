@@ -8,7 +8,7 @@ const { processPhoto } = require('../utils/images')
 const { assertUserTextIsAllowed } = require('../utils/text-moderation')
 const { createImageUpload } = require('../utils/image-upload')
 const { AppError } = require('../utils/errors')
-const { buildUserBadges } = require('../utils/user-badges')
+const { buildUserBadges, ITEM_BADGES, applyBadgeOverrides } = require('../utils/user-badges')
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth')
 const { requireImageUploadsEnabled, requireMarketplaceWritable } = require('../middleware/system-controls')
 
@@ -90,6 +90,21 @@ const ITEM_SELECT = `
             WHERE ir.status = 'pending'
               AND (reported_marketplace.seller_id = u.id OR reported_lost_found.user_id = u.id)
          ) AS seller_has_pending_reports,
+         COALESCE((
+           SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+             FROM admin_badge_overrides abo
+            WHERE abo.user_id = u.id
+         ), '[]'::json) AS seller_badge_overrides,
+         COALESCE((
+           SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+             FROM admin_badge_overrides abo
+            WHERE abo.marketplace_item_id = i.id
+         ), '[]'::json) AS item_badge_overrides,
+         EXISTS (
+           SELECT 1 FROM admin_badge_overrides abo
+            WHERE abo.marketplace_item_id = i.id
+              AND abo.badge_id = 'under_review' AND abo.enabled
+         ) AS has_admin_review_badge,
          CASE WHEN i.share_email AND u.email_verified_at IS NOT NULL THEN u.email END AS seller_email,
          COALESCE((SELECT array_agg(p.storage_key ORDER BY p.position) FROM item_photos p WHERE p.item_id = i.id), '{}') AS photo_keys
     FROM items i
@@ -98,6 +113,12 @@ const ITEM_SELECT = `
     LEFT JOIN colleges c ON c.id = u.college_id`
 
 function shape(row, viewer) {
+  const canSeeModeration = viewer?.role === 'admin' || viewer?.id === row.seller_id
+  const itemBadges = applyBadgeOverrides([
+    ...(row.has_pending_reports ? [{ id: 'under_review', label: 'Under Moderation Review' }] : []),
+    ...(row.status === 'sold' ? [{ id: 'claimed_resolved', label: 'Claimed / Resolved' }] : []),
+  ], row.item_badge_overrides, ITEM_BADGES.marketplace_item)
+    .filter((badge) => badge.id !== 'under_review' || canSeeModeration)
   return {
     id: row.id,
     title: row.title,
@@ -105,10 +126,8 @@ function shape(row, viewer) {
     condition: row.condition,
     price: Number(row.price),
     status: row.status,
-    under_review: Boolean(
-      row.has_pending_reports
-      && (viewer?.role === 'admin' || viewer?.id === row.seller_id),
-    ),
+    under_review: itemBadges.some(({ id }) => id === 'under_review'),
+    badges: itemBadges,
     category_id: row.category_id,
     item_type_id: row.item_type_id,
     branch_id: row.branch_id,
@@ -133,7 +152,7 @@ function shape(row, viewer) {
         pending_reports_received: row.seller_has_pending_reports,
         is_trusted: row.is_trusted,
         completed_returns: row.completed_returns,
-      }),
+      }, row.seller_badge_overrides),
     },
   }
 }
@@ -144,6 +163,7 @@ function visibleTo(viewer, row) {
   if (viewer.role === 'admin') return true
   if (row.status === 'removed' && viewer.id !== row.seller_id) return false
   if (row.has_pending_reports && viewer.id !== row.seller_id) return false
+  if (row.has_admin_review_badge && viewer.id !== row.seller_id) return false
   return row.college_id === viewer.college_id
 }
 
@@ -239,6 +259,11 @@ router.get('/', requireCollege, async (req, res) => {
        SELECT 1 FROM item_reports ir
         WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
      ) OR i.seller_id = $2 OR $3 = 'admin')`,
+    `(NOT EXISTS (
+       SELECT 1 FROM admin_badge_overrides abo
+        WHERE abo.marketplace_item_id = i.id
+          AND abo.badge_id = 'under_review' AND abo.enabled
+     ) OR i.seller_id = $2 OR $3 = 'admin')`,
   ]
   const add = (sql, value) => { params.push(value); where.push(sql.replace('?', `$${params.length}`)) }
 
@@ -296,6 +321,10 @@ router.post('/:id/reservations', requireActive, requireCollege, async (req, res)
               EXISTS (
                 SELECT 1 FROM item_reports ir
                  WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+              ) OR EXISTS (
+                SELECT 1 FROM admin_badge_overrides abo
+                 WHERE abo.marketplace_item_id = i.id
+                   AND abo.badge_id = 'under_review' AND abo.enabled
               ) AS has_pending_reports
          FROM items i
         WHERE i.id = $1
@@ -337,6 +366,10 @@ router.patch('/reservations/:id', requireActive, requireCollege, async (req, res
               EXISTS (
                 SELECT 1 FROM item_reports ir
                  WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+              ) OR EXISTS (
+                SELECT 1 FROM admin_badge_overrides abo
+                 WHERE abo.marketplace_item_id = i.id
+                   AND abo.badge_id = 'under_review' AND abo.enabled
               ) AS has_pending_reports
          FROM reservations r
          JOIN items i ON i.id = r.item_id
@@ -397,6 +430,10 @@ router.post('/reservations/:id/confirm', requireActive, requireCollege, async (r
               EXISTS (
                 SELECT 1 FROM item_reports ir
                  WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+              ) OR EXISTS (
+                SELECT 1 FROM admin_badge_overrides abo
+                 WHERE abo.marketplace_item_id = i.id
+                   AND abo.badge_id = 'under_review' AND abo.enabled
               ) AS has_pending_reports
          FROM reservations r
          JOIN items i ON i.id = r.item_id
@@ -486,11 +523,21 @@ router.patch('/:id/status', async (req, res) => {
 
   await tx(async (db) => {
     const { rows: [item] } = await db.query(
-      'SELECT seller_id, status FROM items WHERE id = $1 FOR UPDATE',
+      `SELECT seller_id, status,
+              EXISTS (
+                SELECT 1 FROM item_reports ir
+                 WHERE ir.marketplace_item_id = items.id AND ir.status = 'pending'
+              ) OR EXISTS (
+                SELECT 1 FROM admin_badge_overrides abo
+                 WHERE abo.marketplace_item_id = items.id
+                   AND abo.badge_id = 'under_review' AND abo.enabled
+              ) AS under_review
+         FROM items WHERE id = $1 FOR UPDATE`,
       [id]
     )
     if (!item) throw new AppError(404, 'Listing not found')
     if (item.seller_id !== req.user.id) throw new AppError(403, 'Only the seller can update this listing')
+    if (item.under_review) throw new AppError(409, 'This listing is temporarily unavailable while it is under moderation review')
     if (!['available', 'sold'].includes(item.status)) {
       throw new AppError(409, 'Reserved or withdrawn listings cannot be changed here')
     }

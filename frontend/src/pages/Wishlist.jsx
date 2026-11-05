@@ -65,6 +65,7 @@ export default function Wishlist() {
                   <span>{item.seller.display_name}</span>
                 </div>
                 <UserBadges badges={item.seller.badges} className="mt-2" />
+                <UserBadges badges={item.badges} className="mt-2" />
               </div>
               <button type="button" disabled={busyId === item.id} onClick={() => remove(item.id)}
                 className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">

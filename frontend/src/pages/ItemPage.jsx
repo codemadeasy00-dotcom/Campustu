@@ -181,11 +181,7 @@ export default function ItemPage() {
 
       <div>
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${STATUS_STYLES[item.status] || ''}`}>{item.status}</span>
-        {item.under_review && (
-          <span className="ml-2 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900">
-            Under Moderation Review
-          </span>
-        )}
+        <UserBadges badges={item.badges} className="mt-2" />
         <h1 className="mt-2 text-2xl font-bold">{item.title}</h1>
         <p className="mt-1 text-3xl font-bold text-brand-700">{formatPrice(item.price)}</p>
         <p className="text-xs text-slate-500">Asking price. Pay the seller directly when you meet.</p>

@@ -46,11 +46,7 @@ function ListingCard({ item, categoryName, currentUserId }) {
           <h2 className="truncate font-semibold text-slate-900 group-hover:text-brand-700">{item.title}</h2>
           <p className="mt-1 truncate text-xs text-slate-500">{categoryName || 'Campus item'}</p>
           <UserBadges badges={item.seller.badges} className="mt-2" />
-          {item.under_review && (
-            <span className="mt-2 inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-              Under Moderation Review
-            </span>
-          )}
+          <UserBadges badges={item.badges} className="mt-2" />
           <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
             <span>{conditionLabel(item.condition)}</span>
             <span className="font-medium text-brand-700">View details <span aria-hidden="true">→</span></span>

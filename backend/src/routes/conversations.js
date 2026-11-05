@@ -71,6 +71,10 @@ router.post('/', requireActive, async (req, res) => {
                 EXISTS (
                   SELECT 1 FROM item_reports ir
                    WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+                ) OR EXISTS (
+                  SELECT 1 FROM admin_badge_overrides abo
+                   WHERE abo.marketplace_item_id = i.id
+                     AND abo.badge_id = 'under_review' AND abo.enabled
                 ) AS has_pending_reports
            FROM items i
           WHERE i.id = $1
@@ -89,7 +93,16 @@ router.post('/', requireActive, async (req, res) => {
     } else if (data.claim_id) {
       const { rows } = await db.query(
         `SELECT c.item_id, c.claimant_id, c.status,
-                lif.user_id AS owner_id, lif.college_id, lif.title, lif.lifecycle_status
+                lif.user_id AS owner_id, lif.college_id, lif.title, lif.lifecycle_status,
+                lif.flagged_for_review,
+                EXISTS (
+                  SELECT 1 FROM item_reports ir
+                   WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+                ) OR EXISTS (
+                  SELECT 1 FROM admin_badge_overrides abo
+                   WHERE abo.lost_found_item_id = lif.id
+                     AND abo.badge_id = 'under_review' AND abo.enabled
+                ) AS has_pending_reports
            FROM item_claims c
            JOIN lost_found_items lif ON lif.id = c.item_id
           WHERE c.id = $1
@@ -101,6 +114,9 @@ router.post('/', requireActive, async (req, res) => {
           || !['pending', 'approved'].includes(claim.status)
           || !['active', 'claim_pending'].includes(claim.lifecycle_status)) {
         throw new AppError(404, 'This claim is not available for messaging.');
+      }
+      if (claim.flagged_for_review || claim.has_pending_reports) {
+        throw new AppError(409, 'This report is temporarily unavailable while it is under moderation review.');
       }
       if (claim.owner_id !== req.user.id && claim.claimant_id !== req.user.id) {
         throw new AppError(404, 'This claim is not available for messaging.');
@@ -115,6 +131,10 @@ router.post('/', requireActive, async (req, res) => {
                 EXISTS (
                   SELECT 1 FROM item_reports ir
                    WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+                ) OR EXISTS (
+                  SELECT 1 FROM admin_badge_overrides abo
+                   WHERE abo.lost_found_item_id = lif.id
+                     AND abo.badge_id = 'under_review' AND abo.enabled
                 ) AS has_pending_reports
            FROM lost_found_items lif
           WHERE lif.id = $1
@@ -207,10 +227,42 @@ router.post('/:id/messages', requireActive, async (req, res) => {
   assertUserTextIsAllowed([body]);
   const { rows: [message] } = await tx(async (db) => {
     const { rows: [conversation] } = await db.query(
-      'SELECT id FROM conversations WHERE id = $1 AND (user_a = $2 OR user_b = $2) FOR UPDATE',
+      `SELECT c.id,
+              EXISTS (
+                SELECT 1 FROM items i
+                 WHERE i.id = c.item_id AND (
+                   EXISTS (
+                     SELECT 1 FROM item_reports ir
+                      WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+                   ) OR EXISTS (
+                     SELECT 1 FROM admin_badge_overrides abo
+                      WHERE abo.marketplace_item_id = i.id
+                        AND abo.badge_id = 'under_review' AND abo.enabled
+                   )
+                 )
+              ) AS marketplace_under_review,
+              EXISTS (
+                SELECT 1 FROM lost_found_items lif
+                 WHERE lif.id = c.lost_found_item_id AND (
+                   lif.flagged_for_review OR EXISTS (
+                     SELECT 1 FROM item_reports ir
+                      WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+                   ) OR EXISTS (
+                     SELECT 1 FROM admin_badge_overrides abo
+                      WHERE abo.lost_found_item_id = lif.id
+                        AND abo.badge_id = 'under_review' AND abo.enabled
+                   )
+                 )
+              ) AS lost_found_under_review
+         FROM conversations c
+        WHERE c.id = $1 AND (c.user_a = $2 OR c.user_b = $2)
+        FOR UPDATE OF c`,
       [conversationId, req.user.id],
     );
     if (!conversation) throw new AppError(404, 'Conversation not found.');
+    if (conversation.marketplace_under_review || conversation.lost_found_under_review) {
+      throw new AppError(409, 'This conversation is temporarily unavailable while its post is under moderation review.');
+    }
 
     const { rows: [created] } = await db.query(
       `INSERT INTO messages (conversation_id, sender_id, body)

@@ -243,6 +243,10 @@ export const adminApi = {
   reports: () => request('/api/admin/reports'),
   searchUsers: (q) => request(`/api/admin/users?q=${encodeURIComponent(q)}`),
   user: (id) => request(`/api/admin/users/${encodeURIComponent(id)}`),
+  setUserBadges: (id, payload) => request(`/api/admin/users/${encodeURIComponent(id)}/badges`, {
+    method: 'PUT',
+    json: payload,
+  }),
   removePost: (type, id, reason) => request(`/api/admin/posts/${encodeURIComponent(type)}/${encodeURIComponent(id)}/remove`, {
     method: 'POST',
     json: { reason },

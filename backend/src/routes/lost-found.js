@@ -8,7 +8,7 @@ const storage = require('../storage');
 const { AppError } = require('../utils/errors');
 const { processPhoto } = require('../utils/images');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
-const { buildUserBadges } = require('../utils/user-badges');
+const { buildUserBadges, ITEM_BADGES, applyBadgeOverrides } = require('../utils/user-badges');
 const { createImageUpload } = require('../utils/image-upload');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const { notifyUser: notifyUserPush } = require('../utils/web-push');
@@ -139,7 +139,7 @@ function posterBadges(row) {
     pending_reports_received: row.poster_has_pending_reports,
     is_trusted: row.poster_is_trusted,
     completed_returns: row.poster_completed_returns,
-  });
+  }, row.poster_badge_overrides);
 }
 
 function shapeLostFoundItem(row, viewer) {
@@ -157,13 +157,25 @@ function shapeLostFoundItem(row, viewer) {
     poster_has_pending_reports: _posterHasPendingReports,
     poster_completed_returns: _posterCompletedReturns,
     poster_is_trusted: _posterIsTrusted,
+    poster_badge_overrides: _posterBadgeOverrides,
+    item_badge_overrides: itemBadgeOverrides,
     ...item
   } = row;
   const canSeeModeration = viewer?.role === 'admin' || viewer?.id === item.user_id;
+  const itemBadges = applyBadgeOverrides([
+    ...(flaggedForReview || hasPendingReports ? [{ id: 'under_review', label: 'Under Moderation Review' }] : []),
+    ...(item.urgent ? [{ id: 'urgent', label: 'Urgent' }] : []),
+    ...(item.verified_match ? [{ id: 'verified_match', label: 'Verified Match' }] : []),
+    ...(item.lifecycle_status === 'resolved' ? [{ id: 'claimed_resolved', label: 'Claimed / Resolved' }] : []),
+  ], itemBadgeOverrides, ITEM_BADGES.lost_found_item)
+    .filter((badge) => badge.id !== 'under_review' || canSeeModeration);
   return {
     ...item,
     photo: photoKey ? storage.urlFor(photoKey) : null,
-    under_review: Boolean(canSeeModeration && (flaggedForReview || hasPendingReports)),
+    under_review: itemBadges.some(({ id }) => id === 'under_review'),
+    urgent: itemBadges.some(({ id }) => id === 'urgent'),
+    verified_match: itemBadges.some(({ id }) => id === 'verified_match'),
+    item_badges: itemBadges,
     poster_badges: posterBadges(row),
   };
 }
@@ -214,6 +226,14 @@ router.get('/mine', requireCollege, async (req, res, next) => {
                 SELECT 1 FROM item_claims ic
                  WHERE ic.item_id = lif.id AND ic.status = 'completed'
               ) AS verified_match,
+              COALESCE((
+                SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                  FROM admin_badge_overrides abo WHERE abo.user_id = u.id
+              ), '[]'::json) AS poster_badge_overrides,
+              COALESCE((
+                SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                  FROM admin_badge_overrides abo WHERE abo.lost_found_item_id = lif.id
+              ), '[]'::json) AS item_badge_overrides,
               u.display_name AS poster_name, u.email AS poster_email,
               u.email_verified_at AS poster_email_verified_at, u.role AS poster_role,
               u.status AS poster_account_status, c.email_domain AS poster_email_domain,
@@ -503,7 +523,15 @@ router.post('/claims/redeem', requireActive, requireCollege, async (req, res, ne
     await tx(async (db) => {
       const { rows: [claim] } = await db.query(
         `SELECT c.id, c.item_id, c.status, c.handover_code,
-                lif.user_id AS owner_id, lif.lifecycle_status
+                lif.user_id AS owner_id, lif.lifecycle_status, lif.flagged_for_review,
+                EXISTS (
+                  SELECT 1 FROM item_reports ir
+                   WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+                ) OR EXISTS (
+                  SELECT 1 FROM admin_badge_overrides abo
+                   WHERE abo.lost_found_item_id = lif.id
+                     AND abo.badge_id = 'under_review' AND abo.enabled
+                ) AS has_pending_reports
            FROM item_claims c
            JOIN lost_found_items lif ON lif.id = c.item_id
           WHERE c.id = $1 AND lif.college_id = $2
@@ -514,6 +542,9 @@ router.post('/claims/redeem', requireActive, requireCollege, async (req, res, ne
       assertItemOwner({ user_id: claim.owner_id }, req.user);
       if (claim.status !== 'approved' || claim.lifecycle_status !== 'claim_pending') {
         throw new AppError(409, 'This claim is no longer awaiting handover verification.');
+      }
+      if (claim.flagged_for_review || claim.has_pending_reports) {
+        throw new AppError(409, 'This report is temporarily unavailable while it is under moderation review.');
       }
       if (claim.handover_code !== handoverCode) {
         throw new AppError(400, 'Invalid handover code.');
@@ -573,6 +604,11 @@ router.get('/nearby', requireCollege, async (req, res, next) => {
             SELECT 1 FROM item_reports ir
              WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
           ))
+        AND NOT EXISTS (
+          SELECT 1 FROM admin_badge_overrides abo
+           WHERE abo.lost_found_item_id = lif.id
+             AND abo.badge_id = 'under_review' AND abo.enabled
+        )
         OR lif.user_id = $5 OR $6 = 'admin')`,
     ];
 
@@ -599,6 +635,14 @@ router.get('/nearby', requireCollege, async (req, res, next) => {
                   SELECT 1 FROM item_claims ic
                    WHERE ic.item_id = lif.id AND ic.status = 'completed'
                 ) AS verified_match,
+                COALESCE((
+                  SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                    FROM admin_badge_overrides abo WHERE abo.user_id = u.id
+                ), '[]'::json) AS poster_badge_overrides,
+                COALESCE((
+                  SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                    FROM admin_badge_overrides abo WHERE abo.lost_found_item_id = lif.id
+                ), '[]'::json) AS item_badge_overrides,
                 u.display_name AS poster_name,
                 u.email AS poster_email, u.email_verified_at AS poster_email_verified_at,
                 u.role AS poster_role, u.status AS poster_account_status,
@@ -634,7 +678,8 @@ router.get('/nearby', requireCollege, async (req, res, next) => {
        )
        SELECT id, user_id, title, description, category, status, lifecycle_status, latitude, longitude,
               brand, colour, occurred_at, radius_meters, where_is_it, location_note, urgent,
-              flagged_for_review, has_pending_reports, verified_match, poster_name,
+              flagged_for_review, has_pending_reports, verified_match,
+              poster_badge_overrides, item_badge_overrides, poster_name,
               poster_email, poster_email_verified_at, poster_role, poster_account_status,
               poster_email_domain, poster_college_status, poster_completed_handovers,
               poster_is_trusted, poster_has_pending_reports, poster_completed_returns,
@@ -680,6 +725,14 @@ router.get('/', requireCollege, async (req, res, next) => {
                SELECT 1 FROM item_claims ic
                 WHERE ic.item_id = lif.id AND ic.status = 'completed'
              ) AS verified_match,
+             COALESCE((
+               SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                 FROM admin_badge_overrides abo WHERE abo.user_id = u.id
+             ), '[]'::json) AS poster_badge_overrides,
+             COALESCE((
+               SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                 FROM admin_badge_overrides abo WHERE abo.lost_found_item_id = lif.id
+             ), '[]'::json) AS item_badge_overrides,
              lif.dropoff_location, lif.created_at, lif.updated_at, u.display_name as poster_name,
              u.email AS poster_email, u.email_verified_at AS poster_email_verified_at,
              u.role AS poster_role, u.status AS poster_account_status,
@@ -711,6 +764,11 @@ router.get('/', requireCollege, async (req, res, next) => {
                 SELECT 1 FROM item_reports ir
                  WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
               ))
+          AND NOT EXISTS (
+            SELECT 1 FROM admin_badge_overrides abo
+             WHERE abo.lost_found_item_id = lif.id
+               AND abo.badge_id = 'under_review' AND abo.enabled
+          )
           OR lif.user_id = $2 OR $3 = 'admin')
     `;
     const params = [req.user.college_id, req.user.id, req.user.role];
@@ -754,12 +812,24 @@ router.patch('/:id', requireActive, async (req, res, next) => {
 
     await tx(async (db) => {
       const { rows } = await db.query(
-        'SELECT id, user_id, status, urgent, lifecycle_status FROM lost_found_items WHERE id = $1 FOR UPDATE',
+        `SELECT id, user_id, status, urgent, lifecycle_status, flagged_for_review,
+                EXISTS (
+                  SELECT 1 FROM item_reports ir
+                   WHERE ir.lost_found_item_id = lost_found_items.id AND ir.status = 'pending'
+                ) OR EXISTS (
+                  SELECT 1 FROM admin_badge_overrides abo
+                   WHERE abo.lost_found_item_id = lost_found_items.id
+                     AND abo.badge_id = 'under_review' AND abo.enabled
+                ) AS has_pending_reports
+           FROM lost_found_items WHERE id = $1 FOR UPDATE`,
         [itemId],
       );
       const item = rows[0];
       if (!item) throw new AppError(404, 'Lost-and-found post not found.');
       assertItemOwner(item, req.user);
+      if (item.flagged_for_review || item.has_pending_reports) {
+        throw new AppError(409, 'This report is temporarily unavailable while it is under moderation review.');
+      }
       if (item.lifecycle_status === 'removed') {
         throw new AppError(409, 'This report was removed by moderation and can no longer be edited.');
       }
@@ -819,12 +889,24 @@ router.patch('/:id/lifecycle', requireActive, async (req, res, next) => {
     let lifecycleStatus;
     await tx(async (db) => {
       const { rows } = await db.query(
-        'SELECT id, user_id, lifecycle_status FROM lost_found_items WHERE id = $1 FOR UPDATE',
+        `SELECT id, user_id, lifecycle_status, flagged_for_review,
+                EXISTS (
+                  SELECT 1 FROM item_reports ir
+                   WHERE ir.lost_found_item_id = lost_found_items.id AND ir.status = 'pending'
+                ) OR EXISTS (
+                  SELECT 1 FROM admin_badge_overrides abo
+                   WHERE abo.lost_found_item_id = lost_found_items.id
+                     AND abo.badge_id = 'under_review' AND abo.enabled
+                ) AS has_pending_reports
+           FROM lost_found_items WHERE id = $1 FOR UPDATE`,
         [itemId],
       );
       const item = rows[0];
       if (!item) throw new AppError(404, 'Lost-and-found post not found.');
       assertItemOwnerOrAdmin(item, req.user);
+      if (item.flagged_for_review || item.has_pending_reports) {
+        throw new AppError(409, 'This report is temporarily unavailable while it is under moderation review.');
+      }
       if (item.lifecycle_status === 'removed') {
         throw new AppError(409, 'This report was removed by moderation and cannot be changed.');
       }
@@ -1183,6 +1265,10 @@ router.patch('/:id/claims/:claimId', requireActive, requireCollege, async (req, 
                 EXISTS (
                   SELECT 1 FROM item_reports ir
                    WHERE ir.lost_found_item_id = lost_found_items.id AND ir.status = 'pending'
+                ) OR EXISTS (
+                  SELECT 1 FROM admin_badge_overrides abo
+                   WHERE abo.lost_found_item_id = lost_found_items.id
+                     AND abo.badge_id = 'under_review' AND abo.enabled
                 ) AS has_pending_reports
            FROM lost_found_items
           WHERE id = $1 AND college_id = $2
@@ -1257,6 +1343,10 @@ router.post('/:id/claim', requireActive, requireCollege, async (req, res, next) 
                 EXISTS (
                   SELECT 1 FROM item_reports ir
                    WHERE ir.lost_found_item_id = lost_found_items.id AND ir.status = 'pending'
+                ) OR EXISTS (
+                  SELECT 1 FROM admin_badge_overrides abo
+                   WHERE abo.lost_found_item_id = lost_found_items.id
+                     AND abo.badge_id = 'under_review' AND abo.enabled
                 ) AS has_pending_reports
            FROM lost_found_items
           WHERE id = $1 AND college_id = $2

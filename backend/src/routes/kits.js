@@ -3,6 +3,7 @@ const { z } = require('zod')
 const { query } = require('../db')
 const storage = require('../storage')
 const { requireAuth, requireCollege } = require('../middleware/auth')
+const { buildUserBadges, ITEM_BADGES, applyBadgeOverrides } = require('../utils/user-badges')
 
 router.use(requireAuth)
 
@@ -49,17 +50,50 @@ router.get('/', requireCollege, async (req, res) => {
     const { rows } = await query(
       `SELECT * FROM (
          SELECT i.item_type_id, i.id, i.title, i.price, i.condition,
-                u.display_name, t.is_trusted,
+                u.id AS seller_id, u.display_name, u.email, u.email_verified_at,
+                u.role, u.status AS seller_status, c.email_domain, c.status AS college_status,
+                t.is_trusted, t.completed_handovers::int AS completed_handovers,
+                (SELECT count(*)::int
+                   FROM item_claims ic
+                   JOIN lost_found_items lif ON lif.id = ic.item_id
+                  WHERE lif.user_id = u.id
+                    AND lif.lifecycle_status = 'resolved'
+                    AND ic.status = 'completed') AS completed_returns,
+                (SELECT count(*)::int
+                   FROM item_reports ir
+                   LEFT JOIN items reported_items ON reported_items.id = ir.marketplace_item_id
+                   LEFT JOIN lost_found_items reported_lost_found ON reported_lost_found.id = ir.lost_found_item_id
+                  WHERE ir.status = 'pending'
+                    AND (reported_items.seller_id = u.id OR reported_lost_found.user_id = u.id)
+                ) AS pending_reports_received,
+                COALESCE((
+                  SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                    FROM admin_badge_overrides abo WHERE abo.user_id = u.id
+                ), '[]'::json) AS seller_badge_overrides,
+                COALESCE((
+                  SELECT json_agg(json_build_object('badge_id', abo.badge_id, 'enabled', abo.enabled))
+                    FROM admin_badge_overrides abo WHERE abo.marketplace_item_id = i.id
+                ), '[]'::json) AS item_badge_overrides,
                 (SELECT p.storage_key FROM item_photos p WHERE p.item_id = i.id ORDER BY p.position LIMIT 1) AS photo_key,
                 count(*) OVER (PARTITION BY i.item_type_id)::int AS available_count,
                 row_number() OVER (PARTITION BY i.item_type_id ORDER BY i.price ASC, i.created_at DESC, i.id) AS rn
            FROM items i
            JOIN users u ON u.id = i.seller_id
            JOIN user_trust t ON t.user_id = i.seller_id
+           LEFT JOIN colleges c ON c.id = u.college_id
           WHERE i.college_id = $1 AND i.status = 'available' AND i.seller_id <> $2
             AND i.item_type_id = ANY($3::int[])
             AND ($4::int IS NULL OR i.branch_id IS NULL OR i.branch_id = $4)
             AND (i.semester IS NULL OR i.semester = $5)
+            AND NOT EXISTS (
+              SELECT 1 FROM item_reports ir
+               WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM admin_badge_overrides abo
+               WHERE abo.marketplace_item_id = i.id
+                 AND abo.badge_id = 'under_review' AND abo.enabled
+            )
        ) x
        WHERE rn <= $6
        ORDER BY item_type_id, rn`,
@@ -90,7 +124,23 @@ router.get('/', requireCollege, async (req, res) => {
           price: Number(l.price),
           condition: l.condition,
           photo: l.photo_key ? storage.urlFor(l.photo_key) : null,
-          seller: { display_name: l.display_name, is_trusted: l.is_trusted },
+          seller: {
+            display_name: l.display_name,
+            is_trusted: l.is_trusted,
+            badges: buildUserBadges({
+              email: l.email,
+              email_verified_at: l.email_verified_at,
+              role: l.role,
+              status: l.seller_status,
+              email_domain: l.email_domain,
+              college_status: l.college_status,
+              completed_handovers: l.completed_handovers,
+              pending_reports_received: l.pending_reports_received,
+              completed_returns: l.completed_returns,
+              is_trusted: l.is_trusted,
+            }, l.seller_badge_overrides),
+          },
+          badges: applyBadgeOverrides([], l.item_badge_overrides, ITEM_BADGES.marketplace_item),
         })),
       }
     }),
