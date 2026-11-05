@@ -8,6 +8,7 @@ import PageHero from '../components/PageHero.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 import ReportItemButton from '../components/ReportItemButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import UserBadges from '../components/UserBadges.jsx'
 
 const PAGE_SIZE = 12
 
@@ -44,6 +45,12 @@ function ListingCard({ item, categoryName, currentUserId }) {
         <div className="flex flex-1 flex-col p-3">
           <h2 className="truncate font-semibold text-slate-900 group-hover:text-brand-700">{item.title}</h2>
           <p className="mt-1 truncate text-xs text-slate-500">{categoryName || 'Campus item'}</p>
+          <UserBadges badges={item.seller.badges} className="mt-2" />
+          {item.under_review && (
+            <span className="mt-2 inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+              Under Moderation Review
+            </span>
+          )}
           <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
             <span>{conditionLabel(item.condition)}</span>
             <span className="font-medium text-brand-700">View details <span aria-hidden="true">→</span></span>

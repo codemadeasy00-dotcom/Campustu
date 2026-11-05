@@ -7,6 +7,7 @@ import { getImageUrl } from '../lib/imageUrl.js'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 import ReportItemButton from '../components/ReportItemButton.jsx'
 import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
+import UserBadges from '../components/UserBadges.jsx'
 
 export default function ItemPage() {
   const { id } = useParams()
@@ -180,6 +181,11 @@ export default function ItemPage() {
 
       <div>
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${STATUS_STYLES[item.status] || ''}`}>{item.status}</span>
+        {item.under_review && (
+          <span className="ml-2 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900">
+            Under Moderation Review
+          </span>
+        )}
         <h1 className="mt-2 text-2xl font-bold">{item.title}</h1>
         <p className="mt-1 text-3xl font-bold text-brand-700">{formatPrice(item.price)}</p>
         <p className="text-xs text-slate-500">Asking price. Pay the seller directly when you meet.</p>
@@ -199,12 +205,11 @@ export default function ItemPage() {
           <div className="text-slate-500">Seller</div>
           <div className="font-semibold">
             {item.seller.display_name}
-            {item.seller.is_trusted ? (
-              <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Trusted</span>
-            ) : (
+            {!item.seller.is_trusted && (
               <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">New member</span>
             )}
           </div>
+          <UserBadges badges={item.seller.badges} className="mt-2" />
           <div className="mt-1 text-xs text-slate-500">
             {item.seller.trust_score === 0
               ? 'No completed handovers yet.'

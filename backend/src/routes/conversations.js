@@ -67,15 +67,22 @@ router.post('/', requireActive, async (req, res) => {
     let lostFoundItemId = data.lost_found_item_id;
     if (data.item_id) {
       const { rows } = await db.query(
-        `SELECT id, seller_id AS owner_id, college_id, title, status
-           FROM items
-          WHERE id = $1
+        `SELECT i.id, i.seller_id AS owner_id, i.college_id, i.title, i.status,
+                EXISTS (
+                  SELECT 1 FROM item_reports ir
+                   WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+                ) AS has_pending_reports
+           FROM items i
+          WHERE i.id = $1
           FOR SHARE`,
         [data.item_id],
       );
       const item = rows[0];
       if (!item || item.college_id !== req.user.college_id || !['available', 'reserved'].includes(item.status)) {
         throw new AppError(404, 'This listing is not available for messaging.');
+      }
+      if (item.has_pending_reports) {
+        throw new AppError(409, 'This listing is temporarily unavailable while it is under moderation review.');
       }
       subject = item.title;
       counterpartId = item.owner_id;
@@ -103,15 +110,23 @@ router.post('/', requireActive, async (req, res) => {
       counterpartId = claim.owner_id === req.user.id ? claim.claimant_id : claim.owner_id;
     } else {
       const { rows } = await db.query(
-        `SELECT id, user_id AS owner_id, college_id, title, lifecycle_status
-           FROM lost_found_items
-          WHERE id = $1
+        `SELECT lif.id, lif.user_id AS owner_id, lif.college_id, lif.title, lif.lifecycle_status,
+                lif.flagged_for_review,
+                EXISTS (
+                  SELECT 1 FROM item_reports ir
+                   WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+                ) AS has_pending_reports
+           FROM lost_found_items lif
+          WHERE lif.id = $1
           FOR SHARE`,
         [data.lost_found_item_id],
       );
       const item = rows[0];
       if (!item || item.college_id !== req.user.college_id || !['active', 'claim_pending'].includes(item.lifecycle_status)) {
         throw new AppError(404, 'This report is not available for messaging.');
+      }
+      if (item.flagged_for_review || item.has_pending_reports) {
+        throw new AppError(409, 'This report is temporarily unavailable while it is under moderation review.');
       }
       subject = item.title;
       counterpartId = item.owner_id;

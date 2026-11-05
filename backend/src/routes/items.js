@@ -8,6 +8,7 @@ const { processPhoto } = require('../utils/images')
 const { assertUserTextIsAllowed } = require('../utils/text-moderation')
 const { createImageUpload } = require('../utils/image-upload')
 const { AppError } = require('../utils/errors')
+const { buildUserBadges } = require('../utils/user-badges')
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth')
 const { requireImageUploadsEnabled, requireMarketplaceWritable } = require('../middleware/system-controls')
 
@@ -67,14 +68,36 @@ const reservationActionSchema = z.object({ action: z.enum(['accept', 'decline', 
 const ITEM_SELECT = `
   SELECT i.id, i.seller_id, i.college_id, i.category_id, i.item_type_id, i.title, i.description, i.condition,
          i.price, i.status, i.branch_id, i.semester, i.preferred_place, i.created_at,
-         u.display_name AS seller_name, t.trust_score::int AS trust_score, t.is_trusted,
+         u.display_name AS seller_name, u.email AS seller_email_address, u.email_verified_at,
+         u.role AS seller_role, u.status AS seller_status,
+         c.email_domain, c.status AS college_status,
+         t.trust_score::int AS trust_score, t.is_trusted, t.completed_handovers::int AS completed_handovers,
+         (SELECT count(*)::int
+            FROM item_claims ic
+            JOIN lost_found_items lif ON lif.id = ic.item_id
+           WHERE lif.user_id = u.id
+             AND lif.lifecycle_status = 'resolved'
+             AND ic.status = 'completed') AS completed_returns,
+         EXISTS (
+           SELECT 1 FROM item_reports ir
+            WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+         ) AS has_pending_reports,
+         EXISTS (
+           SELECT 1
+             FROM item_reports ir
+             LEFT JOIN items reported_marketplace ON reported_marketplace.id = ir.marketplace_item_id
+             LEFT JOIN lost_found_items reported_lost_found ON reported_lost_found.id = ir.lost_found_item_id
+            WHERE ir.status = 'pending'
+              AND (reported_marketplace.seller_id = u.id OR reported_lost_found.user_id = u.id)
+         ) AS seller_has_pending_reports,
          CASE WHEN i.share_email AND u.email_verified_at IS NOT NULL THEN u.email END AS seller_email,
          COALESCE((SELECT array_agg(p.storage_key ORDER BY p.position) FROM item_photos p WHERE p.item_id = i.id), '{}') AS photo_keys
     FROM items i
     JOIN users u ON u.id = i.seller_id
-    JOIN user_trust t ON t.user_id = i.seller_id`
+    JOIN user_trust t ON t.user_id = i.seller_id
+    LEFT JOIN colleges c ON c.id = u.college_id`
 
-function shape(row) {
+function shape(row, viewer) {
   return {
     id: row.id,
     title: row.title,
@@ -82,6 +105,10 @@ function shape(row) {
     condition: row.condition,
     price: Number(row.price),
     status: row.status,
+    under_review: Boolean(
+      row.has_pending_reports
+      && (viewer?.role === 'admin' || viewer?.id === row.seller_id),
+    ),
     category_id: row.category_id,
     item_type_id: row.item_type_id,
     branch_id: row.branch_id,
@@ -95,6 +122,18 @@ function shape(row) {
       trust_score: row.trust_score,
       is_trusted: row.is_trusted,
       contact_email: row.seller_email,
+      badges: buildUserBadges({
+        email: row.seller_email_address,
+        email_verified_at: row.email_verified_at,
+        email_domain: row.email_domain,
+        college_status: row.college_status,
+        role: row.seller_role,
+        status: row.seller_status,
+        completed_handovers: row.completed_handovers,
+        pending_reports_received: row.seller_has_pending_reports,
+        is_trusted: row.is_trusted,
+        completed_returns: row.completed_returns,
+      }),
     },
   }
 }
@@ -104,12 +143,13 @@ function visibleTo(viewer, row) {
   if (!row) return false
   if (viewer.role === 'admin') return true
   if (row.status === 'removed' && viewer.id !== row.seller_id) return false
+  if (row.has_pending_reports && viewer.id !== row.seller_id) return false
   return row.college_id === viewer.college_id
 }
 
 async function loadItem(id, viewer) {
   const { rows } = await query(`${ITEM_SELECT} WHERE i.id = $1`, [id])
-  return visibleTo(viewer, rows[0]) ? shape(rows[0]) : null
+  return visibleTo(viewer, rows[0]) ? shape(rows[0], viewer) : null
 }
 
 // POST /items  (multipart/form-data: fields + up to 5 files in "photos")
@@ -191,8 +231,15 @@ const SORTS = {
 
 router.get('/', requireCollege, async (req, res) => {
   const f = listQuery.parse(req.query)
-  const params = [req.user.college_id]
-  const where = ["i.college_id = $1", "i.status = 'available'"]
+  const params = [req.user.college_id, req.user.id, req.user.role]
+  const where = [
+    'i.college_id = $1',
+    "i.status = 'available'",
+    `(NOT EXISTS (
+       SELECT 1 FROM item_reports ir
+        WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+     ) OR i.seller_id = $2 OR $3 = 'admin')`,
+  ]
   const add = (sql, value) => { params.push(value); where.push(sql.replace('?', `$${params.length}`)) }
 
   if (f.q) {
@@ -215,13 +262,13 @@ router.get('/', requireCollege, async (req, res) => {
     `${ITEM_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${SORTS[f.sort]} LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   )
-  res.json({ items: rows.slice(0, f.limit).map(shape), has_more: rows.length > f.limit })
+  res.json({ items: rows.slice(0, f.limit).map((row) => shape(row, req.user)), has_more: rows.length > f.limit })
 })
 
 // GET /items/mine   (must be declared before /:id)
 router.get('/mine', async (req, res) => {
   const { rows } = await query(`${ITEM_SELECT} WHERE i.seller_id = $1 AND i.status <> 'removed' ORDER BY i.created_at DESC`, [req.user.id])
-  res.json({ items: rows.map(shape) })
+  res.json({ items: rows.map((row) => shape(row, req.user)) })
 })
 
 router.get('/reservations/mine', requireCollege, async (req, res) => {
@@ -245,11 +292,19 @@ router.post('/:id/reservations', requireActive, requireCollege, async (req, res)
   const { id } = idParam.parse(req.params)
   const { rows: [reservation] } = await tx(async (db) => {
     const { rows: [item] } = await db.query(
-      'SELECT id, seller_id, college_id, status FROM items WHERE id = $1 FOR UPDATE',
+      `SELECT i.id, i.seller_id, i.college_id, i.status,
+              EXISTS (
+                SELECT 1 FROM item_reports ir
+                 WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+              ) AS has_pending_reports
+         FROM items i
+        WHERE i.id = $1
+        FOR UPDATE`,
       [id],
     )
     if (!item || item.college_id !== req.user.college_id) throw new AppError(404, 'Listing not found')
     if (item.seller_id === req.user.id) throw new AppError(400, 'You cannot reserve your own listing')
+    if (item.has_pending_reports) throw new AppError(409, 'This listing is temporarily unavailable while it is under moderation review')
     if (item.status !== 'available') throw new AppError(409, 'This listing is no longer available')
 
     const { rows: [created] } = await db.query(
@@ -278,7 +333,11 @@ router.patch('/reservations/:id', requireActive, requireCollege, async (req, res
   const { action } = reservationActionSchema.parse(req.body)
   const { rows: [reservation] } = await tx(async (db) => {
     const { rows: [current] } = await db.query(
-      `SELECT r.id, r.item_id, r.buyer_id, r.seller_id, r.status, i.price, i.college_id
+      `SELECT r.id, r.item_id, r.buyer_id, r.seller_id, r.status, i.price, i.college_id,
+              EXISTS (
+                SELECT 1 FROM item_reports ir
+                 WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+              ) AS has_pending_reports
          FROM reservations r
          JOIN items i ON i.id = r.item_id
         WHERE r.id = $1
@@ -290,6 +349,9 @@ router.patch('/reservations/:id', requireActive, requireCollege, async (req, res
     if (action === 'accept') {
       if (current.seller_id !== req.user.id) throw new AppError(403, 'Only the seller can accept this reservation')
       if (current.status !== 'requested') throw new AppError(409, 'This reservation is no longer awaiting a response')
+      if (current.has_pending_reports) {
+        throw new AppError(409, 'This listing is temporarily unavailable while it is under moderation review')
+      }
       const { rows: [updated] } = await db.query(
         `UPDATE reservations
             SET status = 'accepted', agreed_price = $2, updated_at = now()
@@ -331,7 +393,11 @@ router.post('/reservations/:id/confirm', requireActive, requireCollege, async (r
   const reservationId = idParam.parse({ id: req.params.id }).id
   const { rows: [result] } = await tx(async (db) => {
     const { rows: [reservation] } = await db.query(
-      `SELECT r.id, r.buyer_id, r.seller_id, r.status, i.college_id
+      `SELECT r.id, r.buyer_id, r.seller_id, r.status, i.college_id,
+              EXISTS (
+                SELECT 1 FROM item_reports ir
+                 WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+              ) AS has_pending_reports
          FROM reservations r
          JOIN items i ON i.id = r.item_id
         WHERE r.id = $1
@@ -343,6 +409,9 @@ router.post('/reservations/:id/confirm', requireActive, requireCollege, async (r
       throw new AppError(403, 'You are not part of this reservation')
     }
     if (reservation.status !== 'accepted') throw new AppError(409, 'Only accepted reservations can be confirmed')
+    if (reservation.has_pending_reports) {
+      throw new AppError(409, 'This listing is temporarily unavailable while it is under moderation review')
+    }
 
     const { rows: [existing] } = await db.query(
       'SELECT 1 FROM handover_confirmations WHERE reservation_id = $1 AND confirmer_id = $2',

@@ -35,6 +35,14 @@ See `../DEPLOY.md` (free-tier plan: Supabase + Render + Brevo).
 8. Sign up, accept the Code of Conduct, read the OTP from the server console (no SMTP configured in development),
    verify, then `npm run make-admin -- you@example.com` for your own account.
 
+## Trust and item badges
+College Verified requires a verified address on the approved college email domain. Power Trader requires
+at least two completed handovers and no pending reports against that user's posts. Lost-item posters can
+mark a report urgent; a Found report cannot be marked urgent. Verified Match is reserved for claims whose
+handover code has been successfully redeemed. Pending reports and moderation flags are shown only to the
+post owner and admins; other students do not see those posts while they are under review. Migration
+`025_lost_found_urgent_badge.sql` adds the stored urgent flag.
+
 ## Endpoints
 | Method | Path | Auth | Notes |
 |---|---|---|---|

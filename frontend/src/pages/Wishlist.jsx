@@ -5,6 +5,7 @@ import { STATUS_STYLES, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 import { Alert, PageLoading } from '../components/ui.jsx'
+import UserBadges from '../components/UserBadges.jsx'
 
 export default function Wishlist() {
   const [items, setItems] = useState(null)
@@ -63,6 +64,7 @@ export default function Wishlist() {
                   <span>{conditionLabel(item.condition)}</span>
                   <span>{item.seller.display_name}</span>
                 </div>
+                <UserBadges badges={item.seller.badges} className="mt-2" />
               </div>
               <button type="button" disabled={busyId === item.id} onClick={() => remove(item.id)}
                 className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">

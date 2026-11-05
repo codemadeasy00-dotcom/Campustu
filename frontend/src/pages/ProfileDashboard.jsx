@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 import { checkImageSafety } from '../utils/moderation.js'
 import PushNotifications from '../components/PushNotifications.jsx'
+import UserBadges from '../components/UserBadges.jsx'
 
 const DELETE_WINDOW_MS = 8 * 60 * 60 * 1000
 
@@ -428,15 +429,7 @@ export default function ProfileDashboard() {
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-100">Student profile</p>
               <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{user?.display_name || 'Your dashboard'}</h1>
               <p className="mt-1 text-sm text-white/75">{user?.college?.name}</p>
-              {user?.badges?.length > 0 && (
-                <ul aria-label="Your badges" className="mt-2 flex flex-wrap gap-1.5">
-                  {user.badges.map((badge) => (
-                    <li key={badge.id} className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-bold text-white">
-                      {badge.label}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <UserBadges badges={user?.badges} className="mt-2" />
             </div>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">

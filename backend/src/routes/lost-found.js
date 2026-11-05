@@ -8,6 +8,7 @@ const storage = require('../storage');
 const { AppError } = require('../utils/errors');
 const { processPhoto } = require('../utils/images');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
+const { buildUserBadges } = require('../utils/user-badges');
 const { createImageUpload } = require('../utils/image-upload');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const { notifyUser: notifyUserPush } = require('../utils/web-push');
@@ -40,6 +41,7 @@ const createItemSchema = z.object({
   description: z.string().trim().min(5),
   category: z.string().trim().min(1).max(100),
   status: z.enum(['lost', 'found']),
+  urgent: z.preprocess((value) => value === true || value === 'true', z.boolean().default(false)),
   brand: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().max(100).optional()),
   colour: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().max(100).optional()),
   occurred_at: z.preprocess((value) => value === '' ? undefined : value, z.coerce.date().optional()),
@@ -93,6 +95,7 @@ const updateItemSchema = z.object({
   title: z.string().trim().min(3).max(255).optional(),
   description: z.string().trim().min(5).max(2000).optional(),
   category: z.string().trim().min(1).max(100).optional(),
+  urgent: z.preprocess((value) => value === true || value === 'true', z.boolean().optional()).optional(),
   brand: z.preprocess((value) => value === '' ? null : value, z.string().trim().max(100).nullable()).optional(),
   colour: z.preprocess((value) => value === '' ? null : value, z.string().trim().max(100).nullable()).optional(),
   occurred_at: z.preprocess((value) => value === '' ? null : value, z.coerce.date().nullable()).optional(),
@@ -113,6 +116,7 @@ const updateColumns = {
   title: 'title',
   description: 'description',
   category: 'category',
+  urgent: 'urgent',
   brand: 'brand',
   colour: 'colour',
   occurred_at: 'occurred_at',
@@ -122,6 +126,47 @@ const updateColumns = {
   location_name: 'location_name',
   location_note: 'location_note',
 };
+
+function posterBadges(row) {
+  return buildUserBadges({
+    email: row.poster_email,
+    email_domain: row.poster_email_domain,
+    email_verified_at: row.poster_email_verified_at,
+    college_status: row.poster_college_status,
+    role: row.poster_role,
+    status: row.poster_account_status,
+    completed_handovers: row.poster_completed_handovers,
+    pending_reports_received: row.poster_has_pending_reports,
+    is_trusted: row.poster_is_trusted,
+    completed_returns: row.poster_completed_returns,
+  });
+}
+
+function shapeLostFoundItem(row, viewer) {
+  const {
+    photo_key: photoKey,
+    flagged_for_review: flaggedForReview,
+    has_pending_reports: hasPendingReports,
+    poster_email: _posterEmail,
+    poster_email_domain: _posterEmailDomain,
+    poster_email_verified_at: _posterEmailVerifiedAt,
+    poster_college_status: _posterCollegeStatus,
+    poster_role: _posterRole,
+    poster_account_status: _posterAccountStatus,
+    poster_completed_handovers: _posterCompletedHandovers,
+    poster_has_pending_reports: _posterHasPendingReports,
+    poster_completed_returns: _posterCompletedReturns,
+    poster_is_trusted: _posterIsTrusted,
+    ...item
+  } = row;
+  const canSeeModeration = viewer?.role === 'admin' || viewer?.id === item.user_id;
+  return {
+    ...item,
+    photo: photoKey ? storage.urlFor(photoKey) : null,
+    under_review: Boolean(canSeeModeration && (flaggedForReview || hasPendingReports)),
+    poster_badges: posterBadges(row),
+  };
+}
 
 function assertItemOwnerOrAdmin(item, user) {
   if (item.user_id !== user.id && user.role !== 'admin') {
@@ -160,6 +205,33 @@ router.get('/mine', requireCollege, async (req, res, next) => {
               lif.lifecycle_status, lif.brand, lif.colour, lif.occurred_at, lif.radius_meters,
               lif.where_is_it, lif.location_note, lif.latitude, lif.longitude, lif.location_name,
               lif.security_question, lif.dropoff_location, lif.created_at, lif.updated_at,
+              lif.urgent, lif.flagged_for_review,
+              EXISTS (
+                SELECT 1 FROM item_reports ir
+                 WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+              ) AS has_pending_reports,
+              EXISTS (
+                SELECT 1 FROM item_claims ic
+                 WHERE ic.item_id = lif.id AND ic.status = 'completed'
+              ) AS verified_match,
+              u.display_name AS poster_name, u.email AS poster_email,
+              u.email_verified_at AS poster_email_verified_at, u.role AS poster_role,
+              u.status AS poster_account_status, c.email_domain AS poster_email_domain,
+              c.status AS poster_college_status, t.completed_handovers::int AS poster_completed_handovers,
+              t.is_trusted AS poster_is_trusted,
+              (SELECT count(*)::int
+                 FROM item_claims ic
+                 JOIN lost_found_items returned_lf ON returned_lf.id = ic.item_id
+                WHERE returned_lf.user_id = u.id
+                  AND returned_lf.lifecycle_status = 'resolved'
+                  AND ic.status = 'completed') AS poster_completed_returns,
+              EXISTS (
+                SELECT 1 FROM item_reports ir
+                LEFT JOIN items mi ON mi.id = ir.marketplace_item_id
+                LEFT JOIN lost_found_items reported_lf ON reported_lf.id = ir.lost_found_item_id
+                WHERE ir.status = 'pending'
+                  AND (mi.seller_id = u.id OR reported_lf.user_id = u.id)
+              ) AS poster_has_pending_reports,
               (SELECT storage_key FROM lost_found_photos
                 WHERE item_id = lif.id ORDER BY position LIMIT 1) AS photo_key,
               (SELECT count(*)::int FROM item_claims WHERE item_id = lif.id) AS claim_count,
@@ -174,20 +246,27 @@ router.get('/mine', requireCollege, async (req, res, next) => {
                   AND edits.edited_by = lif.user_id
                   AND edits.edited_at > now() - interval '6 hours') AS oldest_edit_in_window
          FROM lost_found_items lif
+         JOIN users u ON u.id = lif.user_id
+         JOIN user_trust t ON t.user_id = u.id
+         LEFT JOIN colleges c ON c.id = u.college_id
         WHERE lif.user_id = $1 AND lif.college_id = $2
         ORDER BY lif.created_at DESC`,
       [req.user.id, req.user.college_id],
     );
     res.json({
       success: true,
-      items: rows.map(({ photo_key, edits_in_window, oldest_edit_in_window, ...item }) => ({
-        ...item,
-        photo: photo_key ? storage.urlFor(photo_key) : null,
-        edits_remaining: Math.max(0, 3 - Number(edits_in_window || 0)),
-        next_edit_at: Number(edits_in_window || 0) >= 3 && oldest_edit_in_window
-          ? new Date(new Date(oldest_edit_in_window).getTime() + 6 * 60 * 60 * 1000).toISOString()
-          : null,
-      })),
+      items: rows.map((row) => {
+        const { edits_in_window: editsInWindow, oldest_edit_in_window: oldestEditInWindow, ...item } = row;
+        return {
+          ...shapeLostFoundItem(item, req.user),
+          claim_count: item.claim_count,
+          pending_claim_count: item.pending_claim_count,
+          edits_remaining: Math.max(0, 3 - Number(editsInWindow || 0)),
+          next_edit_at: Number(editsInWindow || 0) >= 3 && oldestEditInWindow
+            ? new Date(new Date(oldestEditInWindow).getTime() + 6 * 60 * 60 * 1000).toISOString()
+            : null,
+        };
+      }),
     });
   } catch (err) {
     next(err);
@@ -483,12 +562,18 @@ router.get('/my-claims', requireCollege, async (req, res, next) => {
 router.get('/nearby', requireCollege, async (req, res, next) => {
   try {
     const filters = nearbyQuerySchema.parse(req.query);
-    const params = [filters.lat, filters.lng, req.user.college_id, filters.radius];
+    const params = [filters.lat, filters.lng, req.user.college_id, filters.radius, req.user.id, req.user.role];
     const conditions = [
       'lif.college_id = $3',
       "lif.lifecycle_status = 'active'",
       'lif.latitude IS NOT NULL',
       'lif.longitude IS NOT NULL',
+      `((NOT lif.flagged_for_review
+          AND NOT EXISTS (
+            SELECT 1 FROM item_reports ir
+             WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+          ))
+        OR lif.user_id = $5 OR $6 = 'admin')`,
     ];
 
     if (filters.status) {
@@ -504,8 +589,35 @@ router.get('/nearby', requireCollege, async (req, res, next) => {
       `WITH located AS (
          SELECT lif.id, lif.user_id, lif.title, lif.description, lif.category, lif.status, lif.lifecycle_status,
                 lif.brand, lif.colour, lif.occurred_at, lif.radius_meters, lif.where_is_it, lif.location_note,
-                lif.latitude, lif.longitude, lif.location_name, lif.created_at,
+                lif.latitude, lif.longitude, lif.location_name, lif.created_at, lif.urgent,
+                lif.flagged_for_review,
+                EXISTS (
+                  SELECT 1 FROM item_reports ir
+                   WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+                ) AS has_pending_reports,
+                EXISTS (
+                  SELECT 1 FROM item_claims ic
+                   WHERE ic.item_id = lif.id AND ic.status = 'completed'
+                ) AS verified_match,
                 u.display_name AS poster_name,
+                u.email AS poster_email, u.email_verified_at AS poster_email_verified_at,
+                u.role AS poster_role, u.status AS poster_account_status,
+                c.email_domain AS poster_email_domain, c.status AS poster_college_status,
+                t.completed_handovers::int AS poster_completed_handovers,
+                t.is_trusted AS poster_is_trusted,
+                (SELECT count(*)::int
+                   FROM item_claims ic
+                   JOIN lost_found_items returned_lf ON returned_lf.id = ic.item_id
+                  WHERE returned_lf.user_id = u.id
+                    AND returned_lf.lifecycle_status = 'resolved'
+                    AND ic.status = 'completed') AS poster_completed_returns,
+                EXISTS (
+                  SELECT 1 FROM item_reports ir
+                  LEFT JOIN items mi ON mi.id = ir.marketplace_item_id
+                  LEFT JOIN lost_found_items reported_lf ON reported_lf.id = ir.lost_found_item_id
+                  WHERE ir.status = 'pending'
+                    AND (mi.seller_id = u.id OR reported_lf.user_id = u.id)
+                ) AS poster_has_pending_reports,
                 (SELECT storage_key FROM lost_found_photos
                   WHERE item_id = lif.id ORDER BY position LIMIT 1) AS photo_key,
                 2 * 6371000 * ASIN(SQRT(LEAST(1.0,
@@ -516,11 +628,17 @@ router.get('/nearby', requireCollege, async (req, res, next) => {
                 ))) AS distance_meters
            FROM lost_found_items lif
            JOIN users u ON u.id = lif.user_id
+           JOIN user_trust t ON t.user_id = u.id
+           LEFT JOIN colleges c ON c.id = u.college_id
           WHERE ${conditions.join(' AND ')}
        )
-       SELECT id, title, description, category, status, lifecycle_status, latitude, longitude,
-              brand, colour, occurred_at, radius_meters, where_is_it, location_note,
-              location_name, created_at, poster_name, photo_key, distance_meters
+       SELECT id, user_id, title, description, category, status, lifecycle_status, latitude, longitude,
+              brand, colour, occurred_at, radius_meters, where_is_it, location_note, urgent,
+              flagged_for_review, has_pending_reports, verified_match, poster_name,
+              poster_email, poster_email_verified_at, poster_role, poster_account_status,
+              poster_email_domain, poster_college_status, poster_completed_handovers,
+              poster_is_trusted, poster_has_pending_reports, poster_completed_returns,
+              photo_key, distance_meters
          FROM located
         WHERE distance_meters <= $4
         ORDER BY distance_meters ASC
@@ -528,10 +646,9 @@ router.get('/nearby', requireCollege, async (req, res, next) => {
       params,
     );
     const hasMore = rows.length > 200;
-    const items = rows.slice(0, 200).map(({ photo_key, distance_meters, ...row }) => ({
-      ...row,
-      photo: photo_key ? storage.urlFor(photo_key) : null,
-      distance_meters: Math.round(Number(distance_meters)),
+    const items = rows.slice(0, 200).map((row) => ({
+      ...shapeLostFoundItem(row, req.user),
+      distance_meters: Math.round(Number(row.distance_meters)),
     }));
 
     res.json({
@@ -554,14 +671,50 @@ router.get('/', requireCollege, async (req, res, next) => {
       SELECT lif.id, lif.college_id, lif.user_id, lif.title, lif.description, lif.category,
              lif.brand, lif.colour, lif.occurred_at, lif.radius_meters, lif.where_is_it, lif.location_note,
              lif.status, lif.lifecycle_status, lif.latitude, lif.longitude, lif.location_name, lif.security_question,
+             lif.urgent, lif.flagged_for_review,
+             EXISTS (
+               SELECT 1 FROM item_reports ir
+                WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+             ) AS has_pending_reports,
+             EXISTS (
+               SELECT 1 FROM item_claims ic
+                WHERE ic.item_id = lif.id AND ic.status = 'completed'
+             ) AS verified_match,
              lif.dropoff_location, lif.created_at, lif.updated_at, u.display_name as poster_name,
+             u.email AS poster_email, u.email_verified_at AS poster_email_verified_at,
+             u.role AS poster_role, u.status AS poster_account_status,
+             c.email_domain AS poster_email_domain, c.status AS poster_college_status,
+             t.completed_handovers::int AS poster_completed_handovers,
+             t.is_trusted AS poster_is_trusted,
+             (SELECT count(*)::int
+                FROM item_claims ic
+                JOIN lost_found_items returned_lf ON returned_lf.id = ic.item_id
+               WHERE returned_lf.user_id = u.id
+                 AND returned_lf.lifecycle_status = 'resolved'
+                 AND ic.status = 'completed') AS poster_completed_returns,
+             EXISTS (
+               SELECT 1 FROM item_reports ir
+               LEFT JOIN items mi ON mi.id = ir.marketplace_item_id
+               LEFT JOIN lost_found_items reported_lf ON reported_lf.id = ir.lost_found_item_id
+               WHERE ir.status = 'pending'
+                 AND (mi.seller_id = u.id OR reported_lf.user_id = u.id)
+             ) AS poster_has_pending_reports,
              (SELECT storage_key FROM lost_found_photos WHERE item_id = lif.id ORDER BY position LIMIT 1) as photo_key
       FROM lost_found_items lif
       JOIN users u ON u.id = lif.user_id
-      WHERE lif.college_id = $1 AND lif.lifecycle_status = 'active'
+      JOIN user_trust t ON t.user_id = u.id
+      LEFT JOIN colleges c ON c.id = u.college_id
+      WHERE lif.college_id = $1
+        AND lif.lifecycle_status = 'active'
+        AND ((NOT lif.flagged_for_review
+              AND NOT EXISTS (
+                SELECT 1 FROM item_reports ir
+                 WHERE ir.lost_found_item_id = lif.id AND ir.status = 'pending'
+              ))
+          OR lif.user_id = $2 OR $3 = 'admin')
     `;
-    const params = [req.user.college_id];
-    let pIdx = 2;
+    const params = [req.user.college_id, req.user.id, req.user.role];
+    let pIdx = 4;
 
     if (status && status !== 'all') {
       sql += ` AND lif.status = $${pIdx}`;
@@ -584,10 +737,7 @@ router.get('/', requireCollege, async (req, res, next) => {
 
     res.json({
       success: true,
-      items: rows.map(r => ({
-        ...r,
-        photo: r.photo_key ? storage.urlFor(r.photo_key) : null,
-      })),
+      items: rows.map((row) => shapeLostFoundItem(row, req.user)),
     });
   } catch (err) {
     next(err);
@@ -604,7 +754,7 @@ router.patch('/:id', requireActive, async (req, res, next) => {
 
     await tx(async (db) => {
       const { rows } = await db.query(
-        'SELECT id, user_id, lifecycle_status FROM lost_found_items WHERE id = $1 FOR UPDATE',
+        'SELECT id, user_id, status, urgent, lifecycle_status FROM lost_found_items WHERE id = $1 FOR UPDATE',
         [itemId],
       );
       const item = rows[0];
@@ -612,6 +762,9 @@ router.patch('/:id', requireActive, async (req, res, next) => {
       assertItemOwner(item, req.user);
       if (item.lifecycle_status === 'removed') {
         throw new AppError(409, 'This report was removed by moderation and can no longer be edited.');
+      }
+      if (updates.urgent && !item.urgent && item.status !== 'lost') {
+        throw new AppError(400, 'Only lost items can be marked urgent.');
       }
 
       await db.query(
@@ -865,8 +1018,8 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
         `INSERT INTO lost_found_items
          (id, college_id, user_id, title, description, category, status, latitude, longitude, location_name,
           security_question, security_answer_hash, dropoff_location, embedding, brand, colour, occurred_at,
-          radius_meters, where_is_it, location_note, skip_reason, flagged_for_review)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::vector, $15, $16, $17, $18, $19, $20, $21, $22)`,
+          radius_meters, where_is_it, location_note, skip_reason, flagged_for_review, urgent)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::vector, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
         [
           itemId,
           req.user.college_id,
@@ -890,6 +1043,7 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
           data.location_note || null,
           acceptedSkipReason,
           Boolean(acceptedSkipReason),
+          data.status === 'lost' && data.urgent,
         ]
       );
 
@@ -1025,7 +1179,14 @@ router.patch('/:id/claims/:claimId', requireActive, requireCollege, async (req, 
 
     await tx(async (db) => {
       const { rows: [item] } = await db.query(
-        'SELECT id, user_id, lifecycle_status FROM lost_found_items WHERE id = $1 AND college_id = $2 FOR UPDATE',
+        `SELECT id, user_id, lifecycle_status, flagged_for_review,
+                EXISTS (
+                  SELECT 1 FROM item_reports ir
+                   WHERE ir.lost_found_item_id = lost_found_items.id AND ir.status = 'pending'
+                ) AS has_pending_reports
+           FROM lost_found_items
+          WHERE id = $1 AND college_id = $2
+          FOR UPDATE`,
         [itemId, req.user.college_id],
       );
       if (!item) throw new AppError(404, 'Lost-and-found post not found.');
@@ -1039,6 +1200,9 @@ router.patch('/:id/claims/:claimId', requireActive, requireCollege, async (req, 
       if (claim.status !== 'pending') throw new AppError(409, 'This claim has already been reviewed.');
 
       if (action === 'approve') {
+        if (item.flagged_for_review || item.has_pending_reports) {
+          throw new AppError(409, 'This report is temporarily unavailable while it is under moderation review.');
+        }
         if (item.lifecycle_status !== 'active') {
           throw new AppError(409, 'This report is no longer active and cannot accept an approval.');
         }
@@ -1089,7 +1253,11 @@ router.post('/:id/claim', requireActive, requireCollege, async (req, res, next) 
     assertUserTextIsAllowed([claimText]);
     const { rows: [claim] } = await tx(async (db) => {
       const { rows: [item] } = await db.query(
-        `SELECT id, user_id, lifecycle_status
+        `SELECT id, user_id, lifecycle_status, flagged_for_review,
+                EXISTS (
+                  SELECT 1 FROM item_reports ir
+                   WHERE ir.lost_found_item_id = lost_found_items.id AND ir.status = 'pending'
+                ) AS has_pending_reports
            FROM lost_found_items
           WHERE id = $1 AND college_id = $2
           FOR UPDATE`,
@@ -1097,6 +1265,9 @@ router.post('/:id/claim', requireActive, requireCollege, async (req, res, next) 
       );
       if (!item) throw new AppError(404, 'Lost-and-found post not found.');
       if (item.user_id === req.user.id) throw new AppError(400, 'You cannot claim your own report.');
+      if (item.flagged_for_review || item.has_pending_reports) {
+        throw new AppError(409, 'This report is temporarily unavailable while it is under moderation review.');
+      }
       if (item.lifecycle_status !== 'active') throw new AppError(409, 'This report is no longer accepting claims.');
 
       const { rows: pendingClaims } = await db.query(

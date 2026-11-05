@@ -12,6 +12,7 @@ import PageHero from '../components/PageHero.jsx';
 import ItemPhoto from '../components/ItemPhoto.jsx';
 import ReportItemButton from '../components/ReportItemButton.jsx';
 import MapPlaceSearch from '../components/MapPlaceSearch.jsx';
+import UserBadges from '../components/UserBadges.jsx';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 
@@ -342,6 +343,7 @@ export default function LostFound() {
     description: '',
     category: 'Electronics & Gadgets',
     status: 'lost',
+    urgent: false,
     location_name: '',
     latitude: null,
     longitude: null,
@@ -607,6 +609,7 @@ export default function LostFound() {
         description: '',
         category: 'Electronics & Gadgets',
         status: 'lost',
+        urgent: false,
         location_name: '',
         latitude: modalPin?.[0] ?? null,
         longitude: modalPin?.[1] ?? null,
@@ -698,6 +701,9 @@ export default function LostFound() {
 
   const redeemHandoverCode = async (claim) => {
     const code = handoverCodes[claim.id] || '';
+    if (!window.confirm('A valid code immediately confirms the handover and resolves this report. Continue only after the item has been handed over.')) {
+      return;
+    }
     setRedeemingClaimId(claim.id);
     setClaimsError('');
     try {
@@ -739,6 +745,7 @@ export default function LostFound() {
       title: item.title,
       description: item.description,
       category: item.category,
+      urgent: Boolean(item.urgent),
       brand: item.brand || '',
       colour: item.colour || '',
       radius_meters: Number(item.radius_meters) || 0,
@@ -1093,7 +1100,19 @@ export default function LostFound() {
                     }`}>
                       {item.status.replace('_', ' ')}
                     </span>
-                    {item.lifecycle_status !== 'active' && (
+                    {item.urgent && (
+                      <span className="rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-bold uppercase text-red-800">Urgent</span>
+                    )}
+                    {item.verified_match && (
+                      <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[10px] font-bold uppercase text-sky-800">Verified Match</span>
+                    )}
+                    {item.lifecycle_status === 'resolved' && (
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-700">Claimed / Resolved</span>
+                    )}
+                    {item.under_review && (
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-900">Under Moderation Review</span>
+                    )}
+                    {item.lifecycle_status !== 'active' && item.lifecycle_status !== 'resolved' && (
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">
                         {item.lifecycle_status.replace('_', ' ')}
                       </span>
@@ -1102,6 +1121,9 @@ export default function LostFound() {
                   </div>
                   <h3 className="font-bold text-slate-900 mb-1 line-clamp-1">{item.title}</h3>
                   <p className="text-xs text-slate-600 line-clamp-2 mb-4">{item.description}</p>
+                  {item.poster_badges?.length > 0 && (
+                    <UserBadges badges={item.poster_badges} className="mb-3" />
+                  )}
                 </div>
 
                 {showMine && isOwner ? (
@@ -1458,6 +1480,20 @@ export default function LostFound() {
                 <input maxLength={100} value={editFields.colour} onChange={(event) => setEditFields({ ...editFields, colour: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
               </label>
             </div>
+            {editingItem.status === 'lost' && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-red-950">
+                <input
+                  type="checkbox"
+                  checked={Boolean(editFields.urgent)}
+                  onChange={(event) => setEditFields({ ...editFields, urgent: event.target.checked })}
+                  className="mt-0.5 h-4 w-4 accent-red-700"
+                />
+                <span>
+                  <span className="block text-sm font-bold">Mark this lost item as urgent</span>
+                  <span className="mt-1 block text-xs text-red-800">Use this for time-sensitive items such as ID cards, wallets, or medical equipment.</span>
+                </span>
+              </label>
+            )}
             <label className="block text-sm font-semibold text-slate-700">
               Spot name
               <input required minLength={2} maxLength={255} value={editFields.location_name} onChange={(event) => setEditFields({ ...editFields, location_name: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
@@ -1519,13 +1555,31 @@ export default function LostFound() {
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
                 <select
                   value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    status: e.target.value,
+                    ...(e.target.value === 'found' ? { urgent: false } : {}),
+                  })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
                 >
                   <option value="lost">Lost Item</option>
                   <option value="found">Found Item</option>
                 </select>
               </div>
+              {formData.status === 'lost' && (
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-red-950">
+                  <input
+                    type="checkbox"
+                    checked={formData.urgent}
+                    onChange={(event) => setFormData({ ...formData, urgent: event.target.checked })}
+                    className="mt-0.5 h-4 w-4 accent-red-700"
+                  />
+                  <span>
+                    <span className="block text-sm font-bold">Mark this lost item as urgent</span>
+                    <span className="mt-1 block text-xs text-red-800">Use this for time-sensitive items such as ID cards, wallets, or medical equipment.</span>
+                  </span>
+                </label>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Category</label>

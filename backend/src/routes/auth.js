@@ -28,6 +28,7 @@ const {
 } = require('../middleware/auth');
 
 const { currentSemester } = require('../utils/semester');
+const { buildUserBadges } = require('../utils/user-badges');
 
 const avatarUpload = createImageUpload();
 
@@ -422,6 +423,12 @@ async function publicProfile(userId) {
               WHERE lif.user_id = u.id
                 AND lif.lifecycle_status = 'resolved'
                 AND ic.status = 'completed') AS completed_returns,
+            (SELECT count(*)::int
+               FROM item_reports ir
+               LEFT JOIN items mi ON mi.id = ir.marketplace_item_id
+               LEFT JOIN lost_found_items lif ON lif.id = ir.lost_found_item_id
+              WHERE ir.status = 'pending'
+                AND (mi.seller_id = u.id OR lif.user_id = u.id)) AS pending_reports_received,
             t.trust_score::int AS trust_score, t.is_trusted, t.completed_handovers::int AS completed_handovers
 
        FROM users u
@@ -447,21 +454,17 @@ async function publicProfile(userId) {
     college_status,
     email_verified_at,
     completed_returns,
+    pending_reports_received,
     ...u
   } = rows[0]
-  const emailHost = u.email.split('@').at(-1)?.toLowerCase() || ''
-  const domain = email_domain?.toLowerCase()
-  const badges = []
-  if (
-    email_verified_at
-    && college_status === 'approved'
-    && domain
-    && (emailHost === domain || emailHost.endsWith(`.${domain}`))
-  ) {
-    badges.push({ id: 'verified_student', label: 'Verified Student' })
-  }
-  if (u.is_trusted) badges.push({ id: 'trusted_member', label: 'Trusted Member' })
-  if (Number(completed_returns) > 0) badges.push({ id: 'lost_found_hero', label: 'Lost & Found Hero' })
+  const badges = buildUserBadges({
+    ...u,
+    email_domain,
+    college_status,
+    email_verified_at,
+    completed_returns,
+    pending_reports_received,
+  })
 
   return {
     ...u,

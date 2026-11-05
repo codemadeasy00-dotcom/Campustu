@@ -34,6 +34,7 @@ function localDateTimeValue(date = new Date()) {
 function emptyForm(defaultRadius = 100) {
   return {
     status: 'lost',
+    urgent: false,
     title: '',
     description: '',
     brand: '',
@@ -69,6 +70,8 @@ function readDraft() {
     }
     if (parsed.status === 'lost' || parsed.status === 'found') draft.status = parsed.status
     else draft.status = 'lost'
+    if (typeof parsed.urgent === 'boolean') draft.urgent = parsed.urgent
+    if (draft.status !== 'lost') draft.urgent = false
     if (CATEGORIES.includes(parsed.category)) draft.category = parsed.category
     if (Number.isFinite(Number(parsed.latitude)) && Number.isFinite(Number(parsed.longitude))) {
       draft.latitude = Number(parsed.latitude)
@@ -87,11 +90,11 @@ function readDraft() {
 
 function draftFields(form) {
   const {
-    status, title, description, brand, colour, category, occurred_at, latitude, longitude,
+    status, urgent, title, description, brand, colour, category, occurred_at, latitude, longitude,
     radius_meters, location_name, location_note, where_is_it, security_question,
   } = form
   return {
-    status, title, description, brand, colour, category, occurred_at, latitude, longitude,
+    status, urgent, title, description, brand, colour, category, occurred_at, latitude, longitude,
     radius_meters, location_name, location_note, where_is_it, security_question,
   }
 }
@@ -149,7 +152,11 @@ export default function LostFoundNew() {
 
   const updateForm = (key, value) => {
     editedFieldsRef.current.add(key)
-    setForm((current) => ({ ...current, [key]: value }))
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === 'status' && value === 'found' ? { urgent: false } : {}),
+    }))
     setDraftReady(true)
     setDuplicateWarning([])
     setAllowDuplicate(false)
@@ -383,6 +390,21 @@ export default function LostFoundNew() {
           ))}
         </div>
       </header>
+
+      {form.status === 'lost' && (
+        <label className="mb-5 flex cursor-pointer items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-950">
+          <input
+            type="checkbox"
+            checked={form.urgent}
+            onChange={(event) => updateForm('urgent', event.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-red-700"
+          />
+          <span>
+            <span className="block text-sm font-bold">Mark this lost item as urgent</span>
+            <span className="mt-1 block text-xs text-red-800">Use this for time-sensitive items such as ID cards, wallets, or medical equipment.</span>
+          </span>
+        </label>
+      )}
 
       {showDraftPrompt && draftState.draft && (
         <div className="mb-5 flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 sm:flex-row sm:items-center sm:justify-between">
