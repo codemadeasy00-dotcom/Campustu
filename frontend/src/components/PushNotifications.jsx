@@ -99,7 +99,14 @@ export default function PushNotifications() {
         <p className="mt-1 text-sm text-slate-600">Get a browser notification when a visually similar lost/found post appears. Post details are not included in the notification.</p>
       </div>
       {!supported && <p className="text-sm text-amber-800">Web push is unavailable in this browser or context. Use an up-to-date browser on HTTPS.</p>}
-      {supported && !enabled && <p className="text-sm text-amber-800">Push notifications are not configured on the server yet.</p>}
+      {supported && !enabled && (
+        <p className="text-sm text-amber-800">
+          Push notifications are unavailable because the backend has not been configured. A server
+          administrator must set <code>WEB_PUSH_VAPID_PUBLIC_KEY</code>,{' '}
+          <code>WEB_PUSH_VAPID_PRIVATE_KEY</code>, and <code>WEB_PUSH_VAPID_SUBJECT</code> in
+          Render, then redeploy the backend. Never put the private key in frontend code.
+        </p>
+      )}
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {supported && enabled && (
         <button
