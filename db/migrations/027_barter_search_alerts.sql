@@ -8,6 +8,29 @@ CREATE TABLE IF NOT EXISTS item_wants (
   PRIMARY KEY (item_id, category_id)
 );
 
+ALTER TABLE item_wants
+  ADD COLUMN IF NOT EXISTS category_id smallint REFERENCES categories(id);
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'item_wants'
+       AND column_name = 'target_category'
+  ) THEN
+    UPDATE item_wants iw
+       SET category_id = c.id
+      FROM categories c
+     WHERE iw.category_id IS NULL
+       AND lower(btrim(iw.target_category)) IN (lower(c.name), lower(c.slug))
+       AND c.scope <> 'lost_found';
+
+    ALTER TABLE item_wants ALTER COLUMN target_category DROP NOT NULL;
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS item_wants_category_idx ON item_wants (category_id, item_id);
 
 CREATE TABLE IF NOT EXISTS saved_searches (
