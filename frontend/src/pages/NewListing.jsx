@@ -18,6 +18,7 @@ export default function NewListing() {
   const [form, setForm] = useState({
     title: '', item_type_id: '', category_id: '', condition: 'good', price: '',
     description: '', branch_id: '', semester: '', preferred_place: '', share_email: false,
+    wanted_category_ids: [],
   })
   const [photos, setPhotos] = useState([]) // [{ file, url }]
   const [processingPhotos, setProcessingPhotos] = useState(false)
@@ -96,8 +97,10 @@ export default function NewListing() {
 
     const data = new FormData()
     for (const [key, value] of Object.entries(form)) {
+      if (key === 'wanted_category_ids') continue
       if (value !== '') data.append(key, value)
     }
+    data.append('wanted_category_ids', JSON.stringify(form.wanted_category_ids))
     if (form.item_type_id) data.delete('category_id') // the item type decides the category
     photos.forEach((p) => data.append('photos', p.file))
 
@@ -181,6 +184,35 @@ export default function NewListing() {
         <Field label="Description">
           <textarea rows={3} maxLength={2000} className={inputClass} value={form.description} onChange={set('description')} placeholder="Brand, what is included, any damage…" />
         </Field>
+
+        <fieldset className="space-y-2 rounded-xl border border-brand-100 bg-brand-50/50 p-3">
+          <legend className="px-1 text-sm font-semibold text-slate-800">Open to barter? (optional)</legend>
+          <p className="text-xs text-slate-600">Choose categories you would accept in exchange. Campustu can suggest non-binding multi-person trade loops.</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {categories.map((category) => {
+              const selected = form.wanted_category_ids.includes(category.id)
+              return (
+                <label key={category.id} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    disabled={!selected && form.wanted_category_ids.length >= 8}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      wanted_category_ids: event.target.checked
+                        ? [...current.wanted_category_ids, category.id]
+                        : current.wanted_category_ids.filter((id) => id !== category.id),
+                    }))}
+                  />
+                  {category.name}
+                </label>
+              )
+            })}
+          </div>
+          {form.wanted_category_ids.length >= 8 && (
+            <p className="text-xs text-slate-500">Maximum of 8 wanted categories.</p>
+          )}
+        </fieldset>
 
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Branch">

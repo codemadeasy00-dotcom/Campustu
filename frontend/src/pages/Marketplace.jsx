@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { itemsApi, metaApi, errorMessage } from '../services/api.js'
+import { itemsApi, metaApi, searchAlertsApi, errorMessage } from '../services/api.js'
 import { CONDITIONS, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
 import { Alert, inputClass } from '../components/ui.jsx'
@@ -47,6 +47,9 @@ function ListingCard({ item, categoryName, currentUserId }) {
           <p className="mt-1 truncate text-xs text-slate-500">{categoryName || 'Campus item'}</p>
           <UserBadges badges={item.seller.badges} className="mt-2" />
           <UserBadges badges={item.badges} className="mt-2" />
+          {item.wanted_categories?.length > 0 && (
+            <p className="mt-2 line-clamp-1 text-[11px] text-teal-800">Barter for: {item.wanted_categories.join(', ')}</p>
+          )}
           <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
             <span>{conditionLabel(item.condition)}</span>
             <span className="font-medium text-brand-700">View details <span aria-hidden="true">→</span></span>
@@ -80,6 +83,25 @@ export default function Marketplace() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [savedSearches, setSavedSearches] = useState([])
+  const [savedSearchBusy, setSavedSearchBusy] = useState(false)
+  const [savedSearchError, setSavedSearchError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    if (!user?.id || !user?.college) {
+      setSavedSearches([])
+      return undefined
+    }
+    searchAlertsApi.saved()
+      .then((result) => {
+        if (!cancelled) setSavedSearches(result.searches || [])
+      })
+      .catch((err) => {
+        if (!cancelled) setSavedSearchError(errorMessage(err))
+      })
+    return () => { cancelled = true }
+  }, [user?.college?.id, user?.id])
 
   useEffect(() => {
     let cancelled = false
@@ -146,6 +168,37 @@ export default function Marketplace() {
     setPage(0)
   }
 
+  async function saveSearch() {
+    const keyword = search.trim()
+    if (keyword.length < 2) return
+    setSavedSearchBusy(true)
+    setSavedSearchError('')
+    try {
+      const { search: saved } = await searchAlertsApi.save(keyword)
+      setSavedSearches((current) => [
+        saved,
+        ...current.filter((entry) => entry.keyword.toLowerCase() !== saved.keyword.toLowerCase()),
+      ])
+    } catch (err) {
+      setSavedSearchError(errorMessage(err))
+    } finally {
+      setSavedSearchBusy(false)
+    }
+  }
+
+  async function removeSavedSearch(id) {
+    setSavedSearchBusy(true)
+    setSavedSearchError('')
+    try {
+      await searchAlertsApi.remove(id)
+      setSavedSearches((current) => current.filter((entry) => entry.id !== id))
+    } catch (err) {
+      setSavedSearchError(errorMessage(err))
+    } finally {
+      setSavedSearchBusy(false)
+    }
+  }
+
   return (
     <div className="page-enter mx-auto max-w-7xl space-y-6">
       <PageHero
@@ -155,6 +208,7 @@ export default function Marketplace() {
       />
 
       {metadataError && <Alert>{metadataError}</Alert>}
+      {savedSearchError && <Alert>{savedSearchError}</Alert>}
       {error && (
         <div>
           <Alert>{error}</Alert>
@@ -182,6 +236,37 @@ export default function Marketplace() {
             className={inputClass}
           />
         </label>
+        {user?.college && search.trim().length >= 2 && (
+          <button
+            type="button"
+            disabled={savedSearchBusy}
+            onClick={saveSearch}
+            className="mt-2 text-sm font-semibold text-brand-700 underline disabled:opacity-50"
+          >
+            {savedSearchBusy ? 'Saving search…' : '＋ Save this search for alerts'}
+          </button>
+        )}
+        {savedSearches.length > 0 && (
+          <div className="mt-3 rounded-xl border border-brand-100 bg-white p-3">
+            <h2 className="text-xs font-bold uppercase tracking-wide text-slate-600">Your search alerts</h2>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {savedSearches.map((saved) => (
+                <li key={saved.id} className="flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-xs text-brand-800">
+                  <span>{saved.keyword}</span>
+                  <button
+                    type="button"
+                    disabled={savedSearchBusy}
+                    aria-label={`Remove alert for ${saved.keyword}`}
+                    onClick={() => removeSavedSearch(saved.id)}
+                    className="font-bold disabled:opacity-50"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Filter by category">
           <button

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
-import { lostFoundApi } from '../services/api.js'
+import { lostFoundApi, searchAlertsApi } from '../services/api.js'
 import { useToast } from './ui.jsx'
 import Wordmark from './Wordmark.jsx'
 
@@ -20,6 +20,8 @@ const quickLinks = [
   { to: '/my-listings', label: 'My listings', icon: '▤' },
   { to: '/wishlist', label: 'Wishlist', icon: '♡' },
   { to: '/lost-found/report', label: 'Report lost / found', icon: '⌖' },
+  { to: '/barter', label: 'Barter loops', icon: '↻' },
+  { to: '/achievements', label: 'Achievements', icon: '🏆' },
 ]
 
 const navClass = ({ isActive }) =>
@@ -51,6 +53,7 @@ export default function Layout() {
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [claimNotifications, setClaimNotifications] = useState([])
   const [matchNotifications, setMatchNotifications] = useState([])
+  const [searchNotifications, setSearchNotifications] = useState([])
   const [unreadClaimCount, setUnreadClaimCount] = useState(0)
   const [unreadMatchCount, setUnreadMatchCount] = useState(0)
   const [scrollProgress, setScrollProgress] = useState(0)
@@ -66,6 +69,7 @@ export default function Layout() {
     if (!user?.id || !user?.college) {
       setClaimNotifications([])
       setMatchNotifications([])
+      setSearchNotifications([])
       setUnreadClaimCount(0)
       setUnreadMatchCount(0)
       return undefined
@@ -86,11 +90,15 @@ export default function Layout() {
       if (cancelled || requestPending) return
       requestPending = true
       try {
-        const result = await lostFoundApi.notifications()
+        const [result, searchResult] = await Promise.all([
+          lostFoundApi.notifications(),
+          searchAlertsApi.notifications(),
+        ])
         if (cancelled) return
 
         const notifications = result.notifications || []
         const matchNotices = result.match_notifications || []
+        setSearchNotifications(searchResult.notifications || [])
         let savedIds = []
         let savedMatchIds = []
         try {
@@ -183,10 +191,14 @@ export default function Layout() {
     }
   }, [notificationsOpen])
 
-  const pendingClaimTotal = unreadClaimCount + unreadMatchCount
+  const unreadSearchCount = searchNotifications.filter((item) => !item.is_read).length
+  const pendingClaimTotal = unreadClaimCount + unreadMatchCount + unreadSearchCount
   const markNotificationsSeen = () => {
     setNotificationsOpen((open) => !open)
     if (notificationsOpen || !user?.id || !user?.college?.id) return
+    searchAlertsApi.markRead()
+      .then(() => setSearchNotifications((current) => current.map((item) => ({ ...item, is_read: true }))))
+      .catch((error) => console.error('Could not mark saved-search notifications as read:', error))
     const storageKey = `campustu:seen-claims:${user.id}:${user.college.id}`
     const seenIds = new Set(claimNotifications.map((item) => item.id))
     const seenMatchIds = new Set(matchNotifications.map((item) => item.id))
@@ -366,13 +378,27 @@ export default function Layout() {
                       <div>
                         <h2 className="text-sm font-bold text-slate-900">Notifications</h2>
                         <p className="text-xs text-slate-500">
-                          {claimNotifications.length} claim{claimNotifications.length === 1 ? '' : 's'} · {matchNotifications.length} visual-match notice{matchNotifications.length === 1 ? '' : 's'}
+                          {claimNotifications.length} claim{claimNotifications.length === 1 ? '' : 's'} · {matchNotifications.length} visual-match notice{matchNotifications.length === 1 ? '' : 's'} · {searchNotifications.length} search alert{searchNotifications.length === 1 ? '' : 's'}
                         </p>
                       </div>
                       <span aria-hidden="true" className="text-lg">🔔</span>
                     </div>
-                    {claimNotifications.length || matchNotifications.length ? (
+                    {claimNotifications.length || matchNotifications.length || searchNotifications.length ? (
                       <ul className="max-h-72 overflow-y-auto p-2">
+                        {searchNotifications.map((item) => (
+                          <li key={item.id}>
+                            <Link
+                              to={item.item_id ? `/items/${encodeURIComponent(item.item_id)}` : '/marketplace'}
+                              onClick={() => setNotificationsOpen(false)}
+                              className={`block rounded-xl px-3 py-3 transition hover:bg-brand-50 ${item.is_read ? '' : 'bg-brand-50/60'}`}
+                            >
+                              <span className="block text-sm font-semibold text-slate-800">{item.title}</span>
+                              <span className="mt-1 block text-xs text-slate-500">
+                                {item.message} · {new Date(item.created_at).toLocaleString()}
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
                         {claimNotifications.map((item) => (
                           <li key={item.id}>
                             <Link
@@ -403,7 +429,7 @@ export default function Layout() {
                         ))}
                       </ul>
                     ) : (
-                      <p className="px-4 py-6 text-center text-sm text-slate-500">You’re all caught up. New claims and matching notices will appear here.</p>
+                      <p className="px-4 py-6 text-center text-sm text-slate-500">You’re all caught up. New claims, match notices, and saved-search alerts will appear here.</p>
                     )}
                     <Link
                       to="/profile?tab=incoming"

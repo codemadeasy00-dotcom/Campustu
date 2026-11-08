@@ -44,7 +44,11 @@ post owner and admins; other students do not see those posts while they are unde
 `025_lost_found_urgent_badge.sql` adds the stored urgent flag. Migration
 `026_admin_badge_overrides.sql` enables audited admin overrides for account and post badges. Overrides
 do not change permissions, verification, or lifecycle state; assigning Under Moderation Review also
-hides the post from other students and blocks related actions until cleared.
+hides the post from other students and blocks related actions until cleared. Migration
+`027_barter_search_alerts.sql` adds per-listing wanted categories, saved marketplace searches, and
+in-app alerts. Barter loops are non-binding same-college suggestions. Search alerts can also use
+browser push when push is configured. The achievements API reports only recorded listings, completed
+marketplace handovers, and resolved Lost & Found reports; it does not fabricate XP.
 
 ## Endpoints
 | Method | Path | Auth | Notes |

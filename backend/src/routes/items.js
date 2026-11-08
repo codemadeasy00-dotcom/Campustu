@@ -11,6 +11,8 @@ const { AppError } = require('../utils/errors')
 const { buildUserBadges, ITEM_BADGES, applyBadgeOverrides } = require('../utils/user-badges')
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth')
 const { requireImageUploadsEnabled, requireMarketplaceWritable } = require('../middleware/system-controls')
+const { notifyUser } = require('../utils/web-push')
+const { findBarterCycles } = require('../utils/barter-cycles')
 
 router.use(requireAuth)
 router.use(requireMarketplaceWritable)
@@ -37,6 +39,15 @@ const createSchema = z
       (value) => value === 'true' ? true : value === 'false' ? false : value,
       z.boolean().default(false)
     ),
+    wanted_category_ids: z.preprocess((value) => {
+      if (value === undefined || value === '') return []
+      if (typeof value !== 'string') return value
+      try {
+        return JSON.parse(value)
+      } catch {
+        return value
+      }
+    }, z.array(z.coerce.number().int().min(1).max(32767)).max(8).default([])),
   })
   .refine((d) => d.category_id || d.item_type_id, { message: 'Send category_id or item_type_id', path: ['category_id'] })
 
@@ -106,6 +117,12 @@ const ITEM_SELECT = `
               AND abo.badge_id = 'under_review' AND abo.enabled
          ) AS has_admin_review_badge,
          CASE WHEN i.share_email AND u.email_verified_at IS NOT NULL THEN u.email END AS seller_email,
+         COALESCE((
+           SELECT array_agg(wanted_category.name ORDER BY wanted_category.name)
+             FROM item_wants iw
+             JOIN categories wanted_category ON wanted_category.id = iw.category_id
+            WHERE iw.item_id = i.id
+         ), '{}') AS wanted_categories,
          COALESCE((SELECT array_agg(p.storage_key ORDER BY p.position) FROM item_photos p WHERE p.item_id = i.id), '{}') AS photo_keys
     FROM items i
     JOIN users u ON u.id = i.seller_id
@@ -133,6 +150,7 @@ function shape(row, viewer) {
     branch_id: row.branch_id,
     semester: row.semester,
     preferred_place: row.preferred_place,
+    wanted_categories: row.wanted_categories,
     created_at: row.created_at,
     photos: row.photo_keys.map((k) => storage.urlFor(k)),
     seller: {
@@ -207,6 +225,17 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
 
   // --- clean photos, save them, then write the DB rows in one transaction
   const itemId = crypto.randomUUID()
+  const wantedCategoryIds = [...new Set(data.wanted_category_ids)]
+  if (wantedCategoryIds.length) {
+    const { rows: eligibleCategories } = await query(
+      `SELECT id FROM categories
+        WHERE id = ANY($1::smallint[]) AND scope <> 'lost_found'`,
+      [wantedCategoryIds],
+    )
+    if (eligibleCategories.length !== wantedCategoryIds.length) {
+      throw new AppError(400, 'Wanted categories must be marketplace categories.')
+    }
+  }
   const cleaned = await Promise.all(files.map((f) => processPhoto(f.buffer)))
   const keys = cleaned.map(() => `items/${itemId}/${crypto.randomUUID()}.webp`)
   const storedKeys = []
@@ -216,7 +245,7 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
       storedKeys.push(await storage.save(keys[i], cleaned[i]))
     }
 
-    await tx(async (db) => {
+    const matchingAlerts = await tx(async (db) => {
       // college_id is filled in by a database trigger from the seller's college
       await db.query(
         `INSERT INTO items (id, seller_id, category_id, item_type_id, title, description, condition,
@@ -229,7 +258,46 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
       for (let i = 0; i < storedKeys.length; i++) {
         await db.query('INSERT INTO item_photos (item_id, storage_key, position) VALUES ($1, $2, $3)', [itemId, storedKeys[i], i])
       }
+      for (const wantedCategoryId of wantedCategoryIds) {
+        await db.query(
+          'INSERT INTO item_wants (item_id, user_id, category_id) VALUES ($1, $2, $3)',
+          [itemId, req.user.id, wantedCategoryId],
+        )
+      }
+      const { rows: alerts } = await db.query(
+        `INSERT INTO in_app_notifications (user_id, search_id, item_id, title, message)
+         SELECT ss.user_id, ss.id, $2, 'A saved search has a new match',
+                format('A new item, "%s", matches your saved search "%s".', $3, ss.keyword)
+           FROM saved_searches ss
+           JOIN users recipient ON recipient.id = ss.user_id
+          WHERE ss.college_id = $1
+            AND ss.user_id <> $4
+            AND recipient.status = 'active'
+            AND recipient.deleted_at IS NULL
+            AND recipient.college_id = ss.college_id
+            AND to_tsvector('simple', concat_ws(' ', $3::text, $5::text))
+                @@ plainto_tsquery('simple', ss.keyword)
+         ON CONFLICT (search_id, item_id)
+           WHERE search_id IS NOT NULL AND item_id IS NOT NULL
+         DO NOTHING
+         RETURNING user_id, title, message`,
+        [req.user.college_id, itemId, data.title, req.user.id, data.description ?? ''],
+      )
+      return alerts
     })
+    const alertsByUser = new Map()
+    for (const alert of matchingAlerts) {
+      if (!alertsByUser.has(alert.user_id)) alertsByUser.set(alert.user_id, alert)
+    }
+    await Promise.all([...alertsByUser].map(([userId, alert]) => (
+      notifyUser(userId, {
+        title: alert.title,
+        body: alert.message,
+        url: `/items/${encodeURIComponent(itemId)}`,
+      }).catch((pushError) => {
+        console.error(`Could not send saved-search push notification to account ${userId}:`, pushError)
+      })
+    )))
   } catch (err) {
     await Promise.all(storedKeys.map((key) => storage.remove(key).catch(() => {}))) // no orphan files
     throw err
@@ -294,6 +362,50 @@ router.get('/', requireCollege, async (req, res) => {
 router.get('/mine', async (req, res) => {
   const { rows } = await query(`${ITEM_SELECT} WHERE i.seller_id = $1 AND i.status <> 'removed' ORDER BY i.created_at DESC`, [req.user.id])
   res.json({ items: rows.map((row) => shape(row, req.user)) })
+})
+
+router.get('/barter-loops', requireCollege, async (req, res) => {
+  const { rows } = await query(
+    `SELECT i.id, i.seller_id, u.display_name AS seller_name,
+            i.title, i.category_id, c.name AS category_name,
+            COALESCE(array_agg(DISTINCT w.category_id)
+              FILTER (WHERE w.category_id IS NOT NULL), '{}') AS wanted_category_ids,
+            COALESCE(array_agg(DISTINCT wanted_category.name)
+              FILTER (WHERE wanted_category.name IS NOT NULL), '{}') AS wanted_categories
+       FROM items i
+       JOIN users u ON u.id = i.seller_id
+       JOIN categories c ON c.id = i.category_id
+       LEFT JOIN item_wants w ON w.item_id = i.id
+       LEFT JOIN categories wanted_category ON wanted_category.id = w.category_id
+      WHERE i.college_id = $1
+        AND i.status = 'available'
+        AND NOT EXISTS (
+          SELECT 1 FROM item_reports ir
+           WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM admin_badge_overrides abo
+           WHERE abo.marketplace_item_id = i.id
+             AND abo.badge_id = 'under_review' AND abo.enabled
+        )
+      GROUP BY i.id, u.display_name, c.name`,
+    [req.user.college_id],
+  )
+  const { cycles, limited } = findBarterCycles(rows.map((item) => ({
+    ...item,
+    wanted_category_ids: item.wanted_category_ids.map(Number),
+    category_id: Number(item.category_id),
+  })), req.user.id)
+  res.json({ limited,
+    cycles: cycles.map((cycle) => cycle.map((item) => ({
+      id: item.id,
+      seller_id: item.seller_id,
+      seller_name: item.seller_name,
+      title: item.title,
+      category_name: item.category_name,
+      wanted_categories: item.wanted_categories,
+    }))),
+  })
 })
 
 router.get('/reservations/mine', requireCollege, async (req, res) => {

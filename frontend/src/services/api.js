@@ -105,6 +105,18 @@ export const pushApi = {
   }),
 }
 
+export const searchAlertsApi = {
+  saved: () => request('/api/search-alerts/saved'),
+  save: (keyword) => request('/api/search-alerts/saved', { method: 'POST', json: { keyword } }),
+  remove: (id) => request(`/api/search-alerts/saved/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  notifications: () => request('/api/search-alerts/notifications'),
+  markRead: () => request('/api/search-alerts/notifications/read', { method: 'PATCH', json: {} }),
+}
+
+export const achievementsApi = {
+  get: () => request('/api/achievements'),
+}
+
 export const metaApi = {
   get: () => request('/meta'),
 }
@@ -151,6 +163,7 @@ export const itemsApi = {
   create: (formData) => request('/items', { method: 'POST', formData }),
   get: (id) => request(`/items/${encodeURIComponent(id)}`),
   mine: () => request('/items/mine'),
+  barterLoops: () => request('/items/barter-loops'),
   updateStatus: (id, status) => request(`/items/${encodeURIComponent(id)}/status`, { method: 'PATCH', json: { status } }),
   remove: deleteItem,
   reservations: () => request('/items/reservations/mine'),

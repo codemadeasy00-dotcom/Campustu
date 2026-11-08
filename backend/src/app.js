@@ -10,6 +10,8 @@ const kitsRouter = require('./routes/kits');
 const wishlistRouter = require('./routes/wishlist');
 const lostFoundRouter = require('./routes/lost-found');
 const conversationsRouter = require('./routes/conversations');
+const searchAlertsRouter = require('./routes/search-alerts');
+const achievementsRouter = require('./routes/achievements');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -59,6 +61,8 @@ app.use('/moderation', require('./routes/moderation'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/push', require('./routes/push'));
+app.use('/api/search-alerts', searchAlertsRouter);
+app.use('/api/achievements', achievementsRouter);
 app.use('/conversations', conversationsRouter);
 
 app.use('/kits', kitsRouter);

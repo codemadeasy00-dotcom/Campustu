@@ -16,6 +16,8 @@ import Messages from './pages/Messages.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
 import SupportPage from './pages/SupportPage.jsx'
 import ShareQRWidget from './components/ShareQRWidget.jsx'
+import BarterLoops from './pages/BarterLoops.jsx'
+import Achievements from './pages/Achievements.jsx'
 
 function NotFound() {
   return (
@@ -50,6 +52,8 @@ export default function App() {
           <Route path="/messages" element={guard(<Messages />)} />
           <Route path="/messages/:conversationId" element={guard(<Messages />)} />
           <Route path="/wishlist" element={guard(<Wishlist />)} />
+          <Route path="/barter" element={guard(<BarterLoops />)} />
+          <Route path="/achievements" element={guard(<Achievements />)} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

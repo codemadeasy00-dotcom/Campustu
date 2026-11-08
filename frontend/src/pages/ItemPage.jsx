@@ -185,6 +185,11 @@ export default function ItemPage() {
         <h1 className="mt-2 text-2xl font-bold">{item.title}</h1>
         <p className="mt-1 text-3xl font-bold text-brand-700">{formatPrice(item.price)}</p>
         <p className="text-xs text-slate-500">Asking price. Pay the seller directly when you meet.</p>
+        {item.wanted_categories?.length > 0 && (
+          <p className="mt-3 rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
+            <strong>Open to barter for:</strong> {item.wanted_categories.join(', ')}
+          </p>
+        )}
 
         <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
           <dt className="text-slate-500">Condition</dt><dd>{conditionLabel(item.condition)}</dd>
