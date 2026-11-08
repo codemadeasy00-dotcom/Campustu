@@ -4,6 +4,7 @@
     "@tensorflow/tfjs": "^4.22.0",
     "leaflet": "^1.9.4",
     "nsfwjs": "^4.3.0",
+    "qrcode.react": "^4.2.0",
     "react-leaflet": "^5.0.0",
     "react-leaflet-cluster": "^4.1.3"
   }
