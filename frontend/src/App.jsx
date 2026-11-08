@@ -15,6 +15,7 @@ import ProfileDashboard from './pages/ProfileDashboard.jsx'
 import Messages from './pages/Messages.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
 import SupportPage from './pages/SupportPage.jsx'
+import ShareQRWidget from './components/ShareQRWidget.jsx'
 
 function NotFound() {
   return (
@@ -29,27 +30,30 @@ const guard = (el) => <ProtectedRoute>{el}</ProtectedRoute>
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/admin" element={guard(<AdminDashboard />)} />
-      <Route path="/admin/moderation" element={guard(<AdminDashboard />)} />
-      <Route element={<Layout />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/signup" element={<AuthPage mode="signup" />} />
-        <Route path="/login" element={<AuthPage mode="login" />} />
-        <Route path="/support" element={<SupportPage />} />
-        <Route path="/sell" element={guard(<NewListing />)} />
-        <Route path="/my-listings" element={guard(<MyListings />)} />
-        <Route path="/items/:id" element={guard(<ItemPage />)} />
-        <Route path="/kits" element={guard(<Kits />)} />
-        <Route path="/marketplace" element={guard(<Marketplace />)} />
-        <Route path="/lost-found" element={guard(<LostFound />)} />
-        <Route path="/lost-found/report" element={guard(<LostFoundNew />)} />
-        <Route path="/profile" element={guard(<ProfileDashboard />)} />
-        <Route path="/messages" element={guard(<Messages />)} />
-        <Route path="/messages/:conversationId" element={guard(<Messages />)} />
-        <Route path="/wishlist" element={guard(<Wishlist />)} />
-        <Route path="*" element={<NotFound />} />
-      </Route>
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/admin" element={guard(<AdminDashboard />)} />
+        <Route path="/admin/moderation" element={guard(<AdminDashboard />)} />
+        <Route element={<Layout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/signup" element={<AuthPage mode="signup" />} />
+          <Route path="/login" element={<AuthPage mode="login" />} />
+          <Route path="/support" element={<SupportPage />} />
+          <Route path="/sell" element={guard(<NewListing />)} />
+          <Route path="/my-listings" element={guard(<MyListings />)} />
+          <Route path="/items/:id" element={guard(<ItemPage />)} />
+          <Route path="/kits" element={guard(<Kits />)} />
+          <Route path="/marketplace" element={guard(<Marketplace />)} />
+          <Route path="/lost-found" element={guard(<LostFound />)} />
+          <Route path="/lost-found/report" element={guard(<LostFoundNew />)} />
+          <Route path="/profile" element={guard(<ProfileDashboard />)} />
+          <Route path="/messages" element={guard(<Messages />)} />
+          <Route path="/messages/:conversationId" element={guard(<Messages />)} />
+          <Route path="/wishlist" element={guard(<Wishlist />)} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+      </Routes>
+      <ShareQRWidget />
+    </>
   )
 }
