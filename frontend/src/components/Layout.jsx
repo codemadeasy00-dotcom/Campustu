@@ -48,6 +48,7 @@ export default function Layout() {
   const mobileToggleRef = useRef(null)
   const notifiedClaimIdsRef = useRef(new Set())
   const notifiedMatchIdsRef = useRef(new Set())
+  const notifiedSearchIdsRef = useRef(new Set())
   const [mobileOpen, setMobileOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -81,6 +82,7 @@ export default function Layout() {
     const matchStorageKey = `campustu:seen-match-scans:${user.id}:${user.college.id}`
     notifiedClaimIdsRef.current = new Set()
     notifiedMatchIdsRef.current = new Set()
+    notifiedSearchIdsRef.current = new Set()
     setClaimNotifications([])
     setMatchNotifications([])
     setUnreadClaimCount(0)
@@ -98,7 +100,17 @@ export default function Layout() {
 
         const notifications = result.notifications || []
         const matchNotices = result.match_notifications || []
-        setSearchNotifications(searchResult.notifications || [])
+        const searchNotices = searchResult.notifications || []
+        const newSearchNotices = searchNotices.filter(
+          (notice) => !notice.is_read && !notifiedSearchIdsRef.current.has(notice.id),
+        )
+        if (newSearchNotices.length) {
+          showToast(
+            `${newSearchNotices.length} new saved-search match${newSearchNotices.length === 1 ? '' : 'es'} found. Tap the bell to review.`,
+          )
+          newSearchNotices.forEach((notice) => notifiedSearchIdsRef.current.add(notice.id))
+        }
+        setSearchNotifications(searchNotices)
         let savedIds = []
         let savedMatchIds = []
         try {
