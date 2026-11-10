@@ -9,7 +9,7 @@ import { SHARE_QR_OPEN_EVENT } from './ShareQRWidget.jsx'
 export const APP_NAME = 'Campustu'
 
 const primaryLinks = [
-  { to: '/', label: 'Exchange & Search', end: true },
+  { to: '/search', label: 'Search campus' },
   { to: '/needs', label: 'Need Board' },
   { to: '/barter', label: 'Barter Loops' },
 ]
@@ -28,7 +28,6 @@ const createLinks = [
 ]
 
 const quickLinks = [
-  { to: '/search', label: 'Search campus', icon: '⌕' },
   { to: '/my-listings', label: 'My listings', icon: '▤' },
   { to: '/wishlist', label: 'Wishlist', icon: '♡' },
   { to: '/lost-found', label: 'Lost & Found', icon: '⌖' },
@@ -38,6 +37,15 @@ const quickLinks = [
 
 const navClass = ({ isActive }) =>
   `site-nav-link ${isActive ? 'site-nav-link-active' : ''}`
+
+function SearchIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="mr-1.5 h-4 w-4" stroke="currentColor" strokeWidth="2">
+      <circle cx="10.8" cy="10.8" r="6.8" />
+      <path strokeLinecap="round" d="m16 16 4 4" />
+    </svg>
+  )
+}
 
 function ProfileMark({ user, compact = false }) {
   const size = compact ? 'h-10 w-10' : 'h-9 w-9'
@@ -306,6 +314,7 @@ export default function Layout() {
             <nav aria-label="Main navigation" className="site-desktop-nav mx-auto hidden min-w-0 flex-1 items-center justify-center gap-1 lg:flex">
               {primaryLinks.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
+                  {item.to === '/search' && <SearchIcon />}
                   {item.label}
                 </NavLink>
               ))}
@@ -507,6 +516,7 @@ export default function Layout() {
                 <div className="site-mobile-links">
                   {primaryLinks.map((item) => (
                     <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
+                      {item.to === '/search' && <SearchIcon />}
                       {item.label}
                     </NavLink>
                   ))}
