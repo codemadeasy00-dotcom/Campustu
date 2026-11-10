@@ -109,7 +109,7 @@ A paused project means your site is down until you un-pause it in the dashboard.
    Marketplace barter suggestions match active listings within the same college and are non-binding.
    Students can have up to 20 saved searches for in-app alerts and browser push when enabled. Submitted
    campus, marketplace, and Need Board searches are tracked automatically by default; students can turn
-   off new tracking or delete automatically tracked searches in Marketplace alert settings.
+   off new tracking or clear automatically tracked searches in Profile settings.
    The Achievements page uses recorded listings, completed handovers, verified Lost & Found returns,
    and Need Board activity; it does not invent XP or count a suggested barter loop as a completed trade.
    Apply migrations before deploying the backend update. Migration `008_lost_found_report_details.sql`

@@ -9,10 +9,16 @@ import { SHARE_QR_OPEN_EVENT } from './ShareQRWidget.jsx'
 export const APP_NAME = 'Campustu'
 
 const primaryLinks = [
-  { to: '/', label: 'Explore', end: true },
+  { to: '/', label: 'Exchange & Search', end: true },
   { to: '/needs', label: 'Need Board' },
-  { to: '/barter', label: 'Barter loops' },
-  { to: '/achievements', label: 'Quests' },
+  { to: '/barter', label: 'Barter Loops' },
+]
+
+const mobileLinks = [
+  { to: '/', label: 'Market', icon: '📦', end: true },
+  { to: '/needs', label: 'Needs', icon: '📋' },
+  { to: '/barter', label: 'Barter', icon: '🔄' },
+  { to: '/achievements', label: 'Quests', icon: '🏆' },
 ]
 
 const quickLinks = [
@@ -60,7 +66,6 @@ export default function Layout() {
   const [unreadMatchCount, setUnreadMatchCount] = useState(0)
   const [scrollProgress, setScrollProgress] = useState(0)
   const [logoutError, setLogoutError] = useState('')
-
   useEffect(() => {
     setMobileOpen(false)
     setNotificationsOpen(false)
@@ -289,18 +294,18 @@ export default function Layout() {
       />
       <header className="site-header sticky top-0 z-40 border-b border-brand-200/80 bg-white/90 shadow-[0_4px_18px_rgba(23,90,109,0.05)] backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-[90rem] items-center gap-3 px-3 py-2.5 sm:px-5 lg:px-8">
-          <Link to="/" aria-label="Campustu home" className="shrink-0">
+          <Link to="/" aria-label="Campustu OS v2 home" className="flex shrink-0 items-center gap-2">
             <span className="wordmark-hover inline-block"><Wordmark className="text-xl sm:text-2xl" /></span>
+            <span className="rounded-full border border-brand-200 bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-brand-700">OS v2</span>
           </Link>
 
           {user ? (
-            <nav aria-label="Main navigation" className="site-desktop-nav mx-auto hidden min-w-0 flex-1 items-center justify-center gap-1 xl:flex">
+            <nav aria-label="Main navigation" className="site-desktop-nav mx-auto hidden min-w-0 flex-1 items-center justify-center gap-1 lg:flex">
               {primaryLinks.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
                   {item.label}
                 </NavLink>
               ))}
-              {user.role === 'admin' && <NavLink to="/admin" className={navClass}>Admin</NavLink>}
             </nav>
           ) : (
             <nav aria-label="Main navigation" className="ml-auto hidden items-center gap-2 xl:flex">
@@ -311,7 +316,9 @@ export default function Layout() {
 
           {user && (
             <div className="ml-auto flex shrink-0 items-center gap-2 xl:ml-0">
-              <Link to="/sell" className="site-primary-action site-header-sell-button">＋ <span>Sell an item</span></Link>
+              <Link to="/achievements" className="site-nav-link site-quests-action hidden xl:inline-flex">🏆 Quests</Link>
+              {user.role === 'admin' && <Link to="/admin" className="site-nav-link site-quests-action hidden xl:inline-flex">Admin</Link>}
+              <Link to="/sell" className="site-primary-action site-header-sell-button">＋ POST ITEM</Link>
               <div className="relative" ref={notificationsRef}>
                 <button
                   type="button"
@@ -414,7 +421,7 @@ export default function Layout() {
               </div>
               <Link to="/profile" aria-label="Open your profile" className="site-profile-button">
                 <ProfileMark user={user} />
-                <span className="hidden min-w-0 text-left leading-tight lg:block">
+                <span className="hidden min-w-0 text-left leading-tight xl:block">
                   <span className="block max-w-32 truncate text-sm font-semibold text-slate-800">{user.display_name}</span>
                   <span className="block max-w-32 truncate text-[11px] text-slate-500">{user.college?.name || 'Your profile'}</span>
                 </span>
@@ -423,10 +430,14 @@ export default function Layout() {
             </div>
           )}
 
+          <button type="button" className="site-qr-toggle" onClick={openShareQr} aria-label="Share Campustu with QR code">
+            <span aria-hidden="true">📱</span><span>QR</span>
+          </button>
+
           <button
             type="button"
             ref={mobileToggleRef}
-            className="site-menu-toggle xl:hidden"
+            className="site-menu-toggle lg:hidden"
             aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
             aria-expanded={mobileOpen}
             aria-controls="mobile-site-navigation"
@@ -439,16 +450,6 @@ export default function Layout() {
             </span>
           </button>
         </div>
-
-        {user && (
-          <nav aria-label="Main navigation" className="site-tablet-nav mx-auto hidden w-full max-w-[90rem] items-center justify-center gap-1 overflow-x-auto px-5 pb-2 xl:hidden">
-            {primaryLinks.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
-        )}
 
         {mobileOpen && (
           <div id="mobile-site-navigation" className="site-mobile-panel xl:hidden">
@@ -475,9 +476,6 @@ export default function Layout() {
                       <span aria-hidden="true">{item.icon}</span>{item.label}
                     </Link>
                   ))}
-                  <button type="button" className="site-mobile-quicklink" onClick={openShareQr}>
-                    <span aria-hidden="true">▦</span>Share with QR
-                  </button>
                   {user.role === 'admin' && (
                     <Link to="/admin" className="site-mobile-quicklink">
                       <span aria-hidden="true">⚑</span>Admin console
@@ -492,16 +490,13 @@ export default function Layout() {
                   <NavLink to="/login" className={`${navClass} flex-1 justify-center`}>Log in</NavLink>
                   <Link to="/signup" className="site-primary-action flex-1">Join your campus</Link>
                 </div>
-                <button type="button" className="site-mobile-quicklink mt-2 w-full" onClick={openShareQr}>
-                  <span aria-hidden="true">▦</span>Share with QR
-                </button>
               </>
             )}
           </div>
         )}
         {logoutError && <p role="alert" className="mx-auto max-w-[90rem] px-3 pb-2 text-sm text-red-700 sm:px-5 lg:px-8">{logoutError}</p>}
       </header>
-      <main className="mx-auto w-full max-w-[90rem] min-w-0 px-3 py-5 sm:px-5 sm:py-8 lg:px-8">
+      <main className="mx-auto w-full max-w-[90rem] min-w-0 px-3 py-5 pb-24 sm:px-5 sm:py-8 sm:pb-24 md:pb-8 lg:px-8">
         {user?.status === 'frozen' && (
           <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
             <p>
@@ -513,6 +508,16 @@ export default function Layout() {
         )}
         <Outlet />
       </main>
+      {user && (
+        <nav aria-label="Primary mobile navigation" className="site-mobile-bottom-nav md:hidden">
+          {mobileLinks.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `site-mobile-bottom-link ${isActive ? 'site-mobile-bottom-link-active' : ''}`}>
+              <span aria-hidden="true" className="text-lg leading-none">{item.icon}</span>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+      )}
     </div>
   )
 }

@@ -89,7 +89,6 @@ export default function Marketplace() {
   const [savedSearchBusy, setSavedSearchBusy] = useState(false)
   const [savedSearchError, setSavedSearchError] = useState('')
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false)
-  const [autoTrackSearches, setAutoTrackSearches] = useState(true)
   const [quietStart, setQuietStart] = useState('22:00')
   const [quietEnd, setQuietEnd] = useState('08:00')
   const [quietTimezone, setQuietTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
@@ -112,7 +111,6 @@ export default function Marketplace() {
     searchAlertsApi.preferences()
       .then(({ preferences }) => {
         if (cancelled) return
-        setAutoTrackSearches(preferences.auto_track_searches !== false)
         setQuietHoursEnabled(Boolean(preferences.quiet_start && preferences.quiet_end))
         setQuietTimezone(preferences.timezone || 'UTC')
         if (preferences.quiet_start) setQuietStart(String(preferences.quiet_start).slice(0, 5))
@@ -204,7 +202,6 @@ export default function Marketplace() {
         quiet_start: quietHoursEnabled ? quietStart : null,
         quiet_end: quietHoursEnabled ? quietEnd : null,
         timezone: quietTimezone,
-        auto_track_searches: autoTrackSearches,
       })
       setQuietHoursNotice('Alert preferences saved.')
     } catch (err) {
@@ -220,19 +217,6 @@ export default function Marketplace() {
     try {
       await searchAlertsApi.remove(id)
       setSavedSearches((current) => current.filter((entry) => entry.id !== id))
-    } catch (err) {
-      setSavedSearchError(errorMessage(err))
-    } finally {
-      setSavedSearchBusy(false)
-    }
-  }
-
-  async function removeAutomaticSearches() {
-    setSavedSearchBusy(true)
-    setSavedSearchError('')
-    try {
-      await searchAlertsApi.removeAutomatic()
-      setSavedSearches((current) => current.filter((entry) => !entry.auto_tracked))
     } catch (err) {
       setSavedSearchError(errorMessage(err))
     } finally {
@@ -280,7 +264,8 @@ export default function Marketplace() {
           />
         </label>
         <p className="mt-2 text-xs text-slate-500">
-          When automatic alerts are enabled, searches of 2 or more characters are stored for future marketplace and Need Board alerts. Turn this off or delete tracked terms below.
+          When enabled, searches of 2 or more characters can alert you to matching listings and campus requests.{' '}
+          <Link to="/profile" className="font-semibold text-brand-700 underline">Manage automated search alerts in your profile</Link>.
         </p>
         {savedSearches.length > 0 && (
           <div className="mt-3 rounded-xl border border-brand-100 bg-white p-3">
@@ -311,36 +296,7 @@ export default function Marketplace() {
             </ul>
           </div>
         )}
-        {savedSearches.some((saved) => saved.auto_tracked) && (
-          <button
-            type="button"
-            disabled={savedSearchBusy}
-            onClick={removeAutomaticSearches}
-            className="mt-2 text-xs font-semibold text-red-700 underline disabled:opacity-50"
-          >
-            Delete automatically tracked searches
-          </button>
-        )}
-        {autoTrackSearches && savedSearches.length >= 20 && !savedSearches.some((saved) => saved.auto_tracked) && (
-          <p role="status" className="mt-2 text-xs text-amber-800">
-            Your 20 search alerts are all manually saved. Remove one to make room for automatic alerts.
-          </p>
-        )}
-
         <div className="mt-3 rounded-xl border border-brand-100 bg-white p-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-              <input
-                type="checkbox"
-                checked={autoTrackSearches}
-                onChange={(event) => setAutoTrackSearches(event.target.checked)}
-              />
-              Automatically save searches for alerts
-            </label>
-          </div>
-          <p className="mt-1 text-xs text-slate-500">
-            New searches may alert you when a matching marketplace item or campus request is posted. Turning this off stops tracking new searches; existing alerts stay until removed.
-          </p>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
               <input type="checkbox" checked={quietHoursEnabled} onChange={(event) => setQuietHoursEnabled(event.target.checked)} />

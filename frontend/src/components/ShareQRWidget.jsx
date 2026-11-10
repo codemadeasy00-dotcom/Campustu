@@ -39,21 +39,21 @@ export default function ShareQRWidget() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="share-qr-title"
-            className="w-full max-w-xs border-2 border-teal-900 bg-white p-6 text-center font-mono shadow-[6px_6px_0px_0px_#0f766e]"
+            className="w-full max-w-xs rounded-2xl border border-brand-100 bg-white p-6 text-center shadow-xl"
           >
-            <h2 id="share-qr-title" className="mb-3 text-xs font-bold tracking-wider text-teal-900">
-              SHARE CAMPUSTU INSTANTLY
+            <h2 id="share-qr-title" className="mb-3 text-sm font-bold tracking-wide text-brand-700">
+              Share Campustu instantly
             </h2>
-            <div className="mb-4 flex justify-center border border-teal-800 bg-teal-50 p-3">
+            <div className="mb-4 flex justify-center rounded-xl border border-brand-100 bg-brand-50 p-3">
               <QRCodeSVG value={shareUrl} size={180} marginSize={2} />
             </div>
-            <p className="mb-4 text-[10px] text-teal-700">Point another device's camera here to open this page.</p>
+            <p className="mb-4 text-xs text-slate-600">Point another device's camera here to open this page.</p>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="w-full border border-teal-800 bg-teal-900 py-2 text-xs font-bold text-white"
+              className="w-full rounded-full bg-brand-700 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600"
             >
-              CLOSE
+              Close
             </button>
           </section>
         </div>
@@ -61,15 +61,15 @@ export default function ShareQRWidget() {
 
       <aside
         aria-label="Share Campustu"
-        className="fixed bottom-4 right-4 z-50 hidden border border-teal-800 bg-white p-3 font-mono shadow-[4px_4px_0px_0px_#0f766e] xl:block"
+        className="fixed bottom-4 right-4 z-50 hidden rounded-2xl border border-brand-100 bg-white p-2 shadow-lg xl:block"
       >
         <div className="flex items-center gap-2">
-          <div className="border border-teal-800 bg-teal-50 p-1">
+          <div className="rounded-lg border border-brand-100 bg-brand-50 p-1">
             <QRCodeSVG value={shareUrl} size={64} marginSize={2} />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-teal-900">SHARE</p>
-            <p className="text-[9px] text-teal-700">Scan on mobile</p>
+            <p className="text-[10px] font-bold text-brand-700">SHARE</p>
+            <p className="text-[9px] text-slate-600">Scan on mobile</p>
           </div>
         </div>
       </aside>

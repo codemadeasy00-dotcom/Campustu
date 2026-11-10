@@ -119,7 +119,10 @@ export default function CampusSearch() {
       {!loading && searchParams.get('q') && results.length === 0 && !error && (
         <div className="surface-card mt-6 p-8 text-center">
           <h2 className="font-semibold text-slate-900">No matching campus results yet</h2>
-          <p className="mt-1 text-sm text-slate-500">Save this search to get an in-app alert when a matching listing or request appears.</p>
+          <p className="mt-1 text-sm text-slate-500">
+            If automated alerts are enabled, this search can alert you when a matching listing or request appears.{' '}
+            <Link to="/profile" className="font-semibold text-brand-700 underline">Manage this in your profile</Link>.
+          </p>
         </div>
       )}
       {!searchParams.get('q') && (

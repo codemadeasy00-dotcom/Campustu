@@ -186,7 +186,7 @@ export default function Achievements() {
                   aria-valuemin={0}
                   aria-valuemax={achievement.target}
                   aria-valuenow={achievement.progress}
-                  className="mt-2 h-2.5 overflow-hidden rounded-full border border-slate-300 bg-white"
+                  className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-200"
                 >
                   <div className={`h-full rounded-full transition-[width] ${achievement.unlocked ? 'bg-gradient-to-r from-amber-400 to-yellow-500' : 'bg-gradient-to-r from-teal-500 to-cyan-500'}`} style={{ width: `${progress}%` }} />
                 </div>

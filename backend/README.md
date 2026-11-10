@@ -52,7 +52,7 @@ Need Board, category/branch criteria for saved searches, and quiet-hour preferen
 their keyword/category/branch matches; quiet hours pause push only, while in-app alerts remain immediate.
 Migration `029_automatic_search_alerts.sql` adds the default-on automatic search tracking preference
 and distinguishes automatic search history from alerts a student explicitly saves. Students can disable
-new tracking or delete automatically tracked searches from Marketplace alert settings. Apply migrations
+new tracking or delete automatically tracked searches from Profile settings. Apply migrations
 through `npm run db:migrate` before deploying backend code that depends on the new schema.
 The Need Board supports expiring requests, private replies, available-listing offers, and clearly labeled
 non-binding loan offers. `/api/search` combines available marketplace listings, active Lost & Found

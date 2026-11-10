@@ -178,6 +178,71 @@ textarea {
   animation: pageEnter 420ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 
+.site-quests-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.site-qr-toggle {
+  display: inline-flex;
+  min-height: 2.35rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  border: 1px solid #a9ded9;
+  border-radius: 9999px;
+  padding: 0.3rem 0.55rem;
+  color: #175a6d;
+  background: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.site-mobile-bottom-nav {
+  position: fixed;
+  z-index: 50;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: space-around;
+  gap: 0.25rem;
+  border-top: 1px solid #d5f0ef;
+  padding: 0.4rem 0.4rem calc(0.4rem + env(safe-area-inset-bottom));
+  background: white;
+  box-shadow: 0 -8px 24px rgb(23 90 109 / 10%);
+}
+
+.site-mobile-bottom-link {
+  display: flex;
+  min-width: 4rem;
+  min-height: 3.3rem;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  border: 1px solid transparent;
+  border-radius: 0.85rem;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.site-mobile-bottom-link-active {
+  border-color: #d5f0ef;
+  color: #175a6d;
+  background: #eef9f9;
+}
+
+@media (min-width: 1280px) {
+  .site-qr-toggle {
+    display: none;
+  }
+}
+
 @keyframes pageEnter {
   from {
     opacity: 0;

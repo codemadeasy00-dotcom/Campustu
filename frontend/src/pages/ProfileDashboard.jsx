@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import CollegePicker from '../components/CollegePicker.jsx'
 import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
-import { authApi, errorMessage, lostFoundApi } from '../services/api.js'
+import { authApi, errorMessage, lostFoundApi, searchAlertsApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 import { checkImageSafety } from '../utils/moderation.js'
@@ -69,6 +69,11 @@ export default function ProfileDashboard() {
   const [collegeError, setCollegeError] = useState('')
   const [collegeBusy, setCollegeBusy] = useState(false)
   const [pendingCollege, setPendingCollege] = useState(null)
+  const [autoSearchAlerts, setAutoSearchAlerts] = useState(true)
+  const [searchAlertsBusy, setSearchAlertsBusy] = useState(false)
+  const [searchAlertsError, setSearchAlertsError] = useState('')
+  const [autoSearchCount, setAutoSearchCount] = useState(0)
+  const [clearSearchHistoryOpen, setClearSearchHistoryOpen] = useState(false)
 
   async function loadDashboard() {
     if (!user?.college) {
@@ -97,6 +102,25 @@ export default function ProfileDashboard() {
   useEffect(() => {
     loadDashboard()
   }, [user?.college?.id])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!user?.id || !user?.college) {
+      setAutoSearchCount(0)
+      return () => { cancelled = true }
+    }
+    setSearchAlertsError('')
+    Promise.all([searchAlertsApi.preferences(), searchAlertsApi.saved()])
+      .then(([{ preferences }, { searches }]) => {
+        if (cancelled) return
+        setAutoSearchAlerts(preferences.auto_track_searches !== false)
+        setAutoSearchCount((searches || []).filter((search) => search.auto_tracked).length)
+      })
+      .catch((error) => {
+        if (!cancelled) setSearchAlertsError(errorMessage(error))
+      })
+    return () => { cancelled = true }
+  }, [user?.id])
 
   useEffect(() => {
     if (['listings', 'incoming', 'submitted'].includes(requestedTab)) {
@@ -234,6 +258,41 @@ export default function ProfileDashboard() {
       setAvatarError(errorMessage(error))
     } finally {
       setAvatarBusy(false)
+    }
+  }
+
+  async function updateAutoSearchAlerts(enabled) {
+    setSearchAlertsBusy(true)
+    setSearchAlertsError('')
+    try {
+      const { preferences } = await searchAlertsApi.preferences()
+      await searchAlertsApi.updatePreferences({
+        quiet_start: preferences.quiet_start || null,
+        quiet_end: preferences.quiet_end || null,
+        timezone: preferences.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        auto_track_searches: enabled,
+      })
+      setAutoSearchAlerts(enabled)
+      showToast(enabled ? 'Automatic search alerts enabled.' : 'Automatic search alerts disabled.')
+    } catch (error) {
+      setSearchAlertsError(errorMessage(error))
+    } finally {
+      setSearchAlertsBusy(false)
+    }
+  }
+
+  async function clearAutomaticSearchHistory() {
+    setSearchAlertsBusy(true)
+    setSearchAlertsError('')
+    try {
+      await searchAlertsApi.removeAutomatic()
+      setAutoSearchCount(0)
+      setClearSearchHistoryOpen(false)
+      showToast('Automatic search alert history cleared.')
+    } catch (error) {
+      setSearchAlertsError(errorMessage(error))
+    } finally {
+      setSearchAlertsBusy(false)
     }
   }
 
@@ -417,8 +476,8 @@ export default function ProfileDashboard() {
   ]
 
   return (
-    <div className="mx-auto max-w-5xl overflow-hidden rounded-3xl border border-brand-200 bg-cream shadow-xl shadow-brand-700/10">
-      <section className="relative overflow-hidden bg-gradient-to-r from-brand-700 via-brand-600 to-brand-400 px-5 pb-6 pt-7 text-white sm:px-8 sm:pb-8">
+    <div className="mx-auto max-w-5xl overflow-hidden border-2 border-teal-900 bg-teal-50 shadow-[4px_4px_0px_0px_#042f2e]">
+      <section className="relative overflow-hidden border-b-2 border-teal-950 bg-teal-900 px-5 pb-6 pt-7 text-white sm:px-8 sm:pb-8">
         <div aria-hidden="true" className="absolute -right-10 -top-24 h-72 w-72 rounded-full border-[36px] border-white/5" />
         <div className="relative flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
           <div className="flex items-end gap-4 sm:gap-5">
@@ -474,6 +533,42 @@ export default function ProfileDashboard() {
       </div>
 
       {user?.college && <PushNotifications />}
+
+      <section aria-labelledby="search-alert-settings-title" className="surface-panel space-y-3 p-4 sm:p-5">
+        <div>
+          <h2 id="search-alert-settings-title" className="font-mono text-lg font-bold text-teal-950">Search alert settings</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Searches of at least two characters can be used to alert you when a matching marketplace item or Need Board request is posted.
+          </p>
+        </div>
+        {searchAlertsError && <Alert>{searchAlertsError}</Alert>}
+        <label className="flex items-start gap-3 text-sm font-semibold text-slate-800">
+          <input
+            type="checkbox"
+            checked={autoSearchAlerts}
+            disabled={searchAlertsBusy}
+            onChange={(event) => updateAutoSearchAlerts(event.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-teal-800"
+          />
+          <span>
+            Enable automated search match alerts
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              Search terms are kept privately for your account. Disable this at any time to stop tracking new searches.
+            </span>
+          </span>
+        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-teal-900/20 pt-3">
+          <p className="text-xs text-slate-600">{autoSearchCount} automatically tracked search{autoSearchCount === 1 ? '' : 'es'}</p>
+          <button
+            type="button"
+            disabled={searchAlertsBusy || autoSearchCount === 0}
+            onClick={() => setClearSearchHistoryOpen(true)}
+            className="border-2 border-red-800 bg-white px-3 py-2 font-mono text-xs font-bold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Clear search alert history
+          </button>
+        </div>
+      </section>
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-slate-500">Your account and campus activity</p>
@@ -669,6 +764,16 @@ export default function ProfileDashboard() {
         {pendingAction?.action === 'delete'
           ? 'This permanently deletes the report and its claim history. This action cannot be undone.'
           : 'This removes the report from active search, removes its photos, and rejects any pending claims. The report history will remain available to you.'}
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={clearSearchHistoryOpen}
+        title="Clear automatic search alert history?"
+        confirmLabel={searchAlertsBusy ? 'Clearing…' : 'Clear history'}
+        danger
+        onCancel={() => setClearSearchHistoryOpen(false)}
+        onConfirm={clearAutomaticSearchHistory}
+      >
+        This deletes your automatically tracked search terms and the search alerts tied to them. Manually saved searches are not affected.
       </ConfirmDialog>
       </div>
       <ConfirmDialog
