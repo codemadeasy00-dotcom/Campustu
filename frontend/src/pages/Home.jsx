@@ -152,7 +152,7 @@ function Dashboard() {
   const submitSearch = (event) => {
     event.preventDefault()
     const query = search.trim()
-    navigate(query ? `/marketplace?q=${encodeURIComponent(query)}` : '/marketplace')
+    navigate(query ? `/search?q=${encodeURIComponent(query)}` : '/search')
   }
 
   return (
@@ -168,7 +168,7 @@ function Dashboard() {
             {user.college ? `Discover useful things from students at ${user.college.name}.` : 'Choose your college to explore student listings.'}
           </p>
           <form onSubmit={submitSearch} className="mt-6 flex max-w-xl flex-col gap-2 rounded-2xl border border-white/25 bg-white/15 p-2 backdrop-blur sm:flex-row">
-            <label className="sr-only" htmlFor="campus-home-search">Search campus listings</label>
+            <label className="sr-only" htmlFor="campus-home-search">Search campus</label>
             <input
               id="campus-home-search"
               type="search"
@@ -178,7 +178,7 @@ function Dashboard() {
               placeholder="Search books, calculators, lab gear…"
               className="min-w-0 flex-1 rounded-xl bg-white px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-brand-200"
             />
-            <button type="submit" className="rounded-xl bg-cream px-5 py-3 text-sm font-bold text-brand-700 transition hover:bg-white">Search marketplace</button>
+            <button type="submit" className="rounded-xl bg-cream px-5 py-3 text-sm font-bold text-brand-700 transition hover:bg-white">Search campus</button>
           </form>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link to="/marketplace" className="text-sm font-semibold text-white underline decoration-white/50 underline-offset-4 hover:decoration-white">Browse marketplace</Link>

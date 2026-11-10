@@ -63,6 +63,8 @@ app.use('/api/support', require('./routes/support'));
 app.use('/api/push', require('./routes/push'));
 app.use('/api/search-alerts', searchAlertsRouter);
 app.use('/api/achievements', achievementsRouter);
+app.use('/api/needs', require('./routes/needs'));
+app.use('/api/search', require('./routes/campus-search'));
 app.use('/conversations', conversationsRouter);
 
 app.use('/kits', kitsRouter);

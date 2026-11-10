@@ -94,6 +94,8 @@ A paused project means your site is down until you un-pause it in the dashboard.
    individual posts; apply it before deploying the updated backend.
    Migration `027_barter_search_alerts.sql` stores per-listing wanted categories, saved marketplace
    searches, and in-app search-match notifications.
+   Migration `028_phase_one_student_core.sql` adds the Need Board, category/branch saved-search
+   criteria, and quiet-hour preferences. Apply it before deploying the updated backend.
    Apply these before deploying the updated application.
    User badges show college-email verification, staff role, and Power Trader eligibility (2 or more
    completed handovers with no pending reports). Lost-item urgent status is chosen by its poster;
@@ -104,8 +106,8 @@ A paused project means your site is down until you un-pause it in the dashboard.
    until an admin clears the badge.
    Marketplace barter suggestions match active listings within the same college and are non-binding.
    Students can save up to 20 keyword searches for in-app alerts and browser push when enabled.
-   The Achievements page uses recorded listings, completed handovers, and resolved Lost & Found reports;
-   it does not invent XP or count a suggested barter loop as a completed trade.
+   The Achievements page uses recorded listings, completed handovers, verified Lost & Found returns,
+   and Need Board activity; it does not invent XP or count a suggested barter loop as a completed trade.
    Apply migrations before deploying the backend update. Migration `008_lost_found_report_details.sql`
    adds the optional report metadata used by the dedicated lost-and-found report page.
    Migration `009_lost_found_lifecycle_claims.sql` adds the eight-hour deletion rule, closed/resolved

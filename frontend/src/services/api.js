@@ -107,10 +107,39 @@ export const pushApi = {
 
 export const searchAlertsApi = {
   saved: () => request('/api/search-alerts/saved'),
-  save: (keyword) => request('/api/search-alerts/saved', { method: 'POST', json: { keyword } }),
+  save: (payload) => request('/api/search-alerts/saved', {
+    method: 'POST',
+    json: typeof payload === 'string' ? { keyword: payload } : payload,
+  }),
   remove: (id) => request(`/api/search-alerts/saved/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  preferences: () => request('/api/search-alerts/preferences'),
+  updatePreferences: (preferences) =>
+    request('/api/search-alerts/preferences', { method: 'PATCH', json: preferences }),
   notifications: () => request('/api/search-alerts/notifications'),
   markRead: () => request('/api/search-alerts/notifications/read', { method: 'PATCH', json: {} }),
+}
+
+export const campusSearchApi = {
+  search: (q, limit = 30) => {
+    const params = new URLSearchParams({ q, limit: String(limit) })
+    return request(`/api/search?${params.toString()}`)
+  },
+}
+
+export const needsApi = {
+  list: (filters = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
+    })
+    return request(`/api/needs?${params.toString()}`)
+  },
+  get: (id) => request(`/api/needs/${encodeURIComponent(id)}`),
+  create: (payload) => request('/api/needs', { method: 'POST', json: payload }),
+  respond: (id, payload) =>
+    request(`/api/needs/${encodeURIComponent(id)}/responses`, { method: 'POST', json: payload }),
+  updateStatus: (id, status) =>
+    request(`/api/needs/${encodeURIComponent(id)}/status`, { method: 'PATCH', json: { status } }),
 }
 
 export const achievementsApi = {

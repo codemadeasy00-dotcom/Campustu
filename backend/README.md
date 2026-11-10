@@ -47,12 +47,27 @@ do not change permissions, verification, or lifecycle state; assigning Under Mod
 hides the post from other students and blocks related actions until cleared. Migration
 `027_barter_search_alerts.sql` adds per-listing wanted categories, saved marketplace searches, and
 in-app alerts. Barter loops are non-binding same-college suggestions. Search alerts can also use
-browser push when push is configured. The achievements API reports only recorded listings, completed
-marketplace handovers, and resolved Lost & Found reports; it does not fabricate XP.
+browser push when push is configured. Migration `028_phase_one_student_core.sql` adds the same-college
+Need Board, category/branch criteria for saved searches, and quiet-hour preferences. Search alerts explain
+their keyword/category/branch matches; quiet hours pause push only, while in-app alerts remain immediate.
+The Need Board supports expiring requests, private replies, available-listing offers, and clearly labeled
+non-binding loan offers. `/api/search` combines available marketplace listings, active Lost & Found
+reports, and open Need Board requests without exposing posts hidden for moderation. Achievements use
+recorded listings, completed marketplace handovers, verified Lost & Found returns, and Need Board activity;
+the system does not fabricate XP or count a suggested barter loop as a completed trade.
 
 ## Endpoints
 | Method | Path | Auth | Notes |
 |---|---|---|---|
+| GET | /api/search?q= | session cookie | Campus-wide search across marketplace, active Lost & Found, and open Need Board records |
+| GET, POST | /api/search-alerts/saved | session cookie, active | List or save keyword alerts; optional category_id and branch_id |
+| DELETE | /api/search-alerts/saved/:id | session cookie, active | Remove one of your saved alerts |
+| GET, PATCH | /api/search-alerts/preferences | session cookie, active | Read or set timezone-aware quiet hours for push delivery |
+| GET, POST | /api/needs | session cookie, active | Browse same-college requests or post a request with an expiry |
+| GET | /api/needs/:id | session cookie, active | View an open request; private responses are returned only to its owner |
+| POST | /api/needs/:id/responses | session cookie, active | Send one private listing or non-binding loan offer |
+| PATCH | /api/needs/:id/status | session cookie, active | Request owner marks an open request fulfilled or closed |
+| GET | /api/achievements | session cookie | Recorded activity totals and achievement progress |
 | GET | /health | no | |
 | GET | /meta | no | branches, categories, item types |
 | GET | /colleges?q= | no | approved colleges for the sign-up picker |
@@ -85,3 +100,4 @@ no orphan files after failures.
 - Photos are on local disk and publicly readable by URL (unguessable names, but not private). Move to a bucket when you deploy.
 - Nothing runs `expire_stale_reservations()` yet (needs a scheduled job, comes with the reserve flow).
 - The moderation classifier and upload gate have unit tests (`npm test`); full authenticated endpoint flows still need an integration test against a scratch PostgreSQL database.
+- Migration `028_phase_one_student_core.sql` and the new query paths still need validation against a scratch PostgreSQL database before production rollout.

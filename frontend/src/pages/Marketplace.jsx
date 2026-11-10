@@ -73,6 +73,7 @@ export default function Marketplace() {
   const [search, setSearch] = useState(() => searchParams.get('q') || '')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [categoryId, setCategoryId] = useState(() => searchParams.get('category_id') || '')
+  const [branchId, setBranchId] = useState(() => searchParams.get('branch_id') || '')
   const [condition, setCondition] = useState('')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
@@ -86,6 +87,12 @@ export default function Marketplace() {
   const [savedSearches, setSavedSearches] = useState([])
   const [savedSearchBusy, setSavedSearchBusy] = useState(false)
   const [savedSearchError, setSavedSearchError] = useState('')
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(false)
+  const [quietStart, setQuietStart] = useState('22:00')
+  const [quietEnd, setQuietEnd] = useState('08:00')
+  const [quietTimezone, setQuietTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+  const [quietHoursBusy, setQuietHoursBusy] = useState(false)
+  const [quietHoursNotice, setQuietHoursNotice] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -96,6 +103,17 @@ export default function Marketplace() {
     searchAlertsApi.saved()
       .then((result) => {
         if (!cancelled) setSavedSearches(result.searches || [])
+      })
+      .catch((err) => {
+        if (!cancelled) setSavedSearchError(errorMessage(err))
+      })
+    searchAlertsApi.preferences()
+      .then(({ preferences }) => {
+        if (cancelled) return
+        setQuietHoursEnabled(Boolean(preferences.quiet_start && preferences.quiet_end))
+        setQuietTimezone(preferences.timezone || 'UTC')
+        if (preferences.quiet_start) setQuietStart(String(preferences.quiet_start).slice(0, 5))
+        if (preferences.quiet_end) setQuietEnd(String(preferences.quiet_end).slice(0, 5))
       })
       .catch((err) => {
         if (!cancelled) setSavedSearchError(errorMessage(err))
@@ -132,6 +150,7 @@ export default function Marketplace() {
       offset: page * PAGE_SIZE,
       q: debouncedSearch,
       category_id: categoryId,
+      branch_id: branchId,
       condition,
       min_price: minPrice,
       max_price: maxPrice,
@@ -158,9 +177,10 @@ export default function Marketplace() {
     return () => {
       cancelled = true
     }
-  }, [debouncedSearch, categoryId, condition, minPrice, maxPrice, sort, page, refreshKey])
+  }, [debouncedSearch, categoryId, branchId, condition, minPrice, maxPrice, sort, page, refreshKey])
 
   const categories = metadata?.categories.filter((category) => category.scope !== 'lost_found') ?? []
+  const branches = metadata?.branches ?? []
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]))
 
   const updateFilter = (setter, value) => {
@@ -174,15 +194,41 @@ export default function Marketplace() {
     setSavedSearchBusy(true)
     setSavedSearchError('')
     try {
-      const { search: saved } = await searchAlertsApi.save(keyword)
+      const { search: saved } = await searchAlertsApi.save({
+        keyword,
+        category_id: categoryId || undefined,
+        branch_id: branchId || undefined,
+      })
       setSavedSearches((current) => [
         saved,
-        ...current.filter((entry) => entry.keyword.toLowerCase() !== saved.keyword.toLowerCase()),
+        ...current.filter((entry) => entry.id !== saved.id),
       ])
     } catch (err) {
       setSavedSearchError(errorMessage(err))
     } finally {
       setSavedSearchBusy(false)
+    }
+  }
+
+  async function saveQuietHours() {
+    setQuietHoursBusy(true)
+    setQuietHoursNotice('')
+    setSavedSearchError('')
+    try {
+      await searchAlertsApi.updatePreferences({
+        quiet_start: quietHoursEnabled ? quietStart : null,
+        quiet_end: quietHoursEnabled ? quietEnd : null,
+        timezone: quietTimezone,
+      })
+      setQuietHoursNotice(
+        quietHoursEnabled
+          ? 'Quiet hours saved. In-app alerts remain immediate; push alerts pause during this window.'
+          : 'Quiet hours are off. Push alerts can arrive at any time.',
+      )
+    } catch (err) {
+      setSavedSearchError(errorMessage(err))
+    } finally {
+      setQuietHoursBusy(false)
     }
   }
 
@@ -205,7 +251,9 @@ export default function Marketplace() {
         eyebrow="Buy, sell & reuse"
         title="Campus Marketplace"
         description="Find campus essentials from students at your college."
-      />
+      >
+        <Link to="/search" className="inline-flex items-center justify-center rounded-full border border-brand-200 bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50">Search all campus</Link>
+      </PageHero>
 
       {metadataError && <Alert>{metadataError}</Alert>}
       {savedSearchError && <Alert>{savedSearchError}</Alert>}
@@ -252,7 +300,14 @@ export default function Marketplace() {
             <ul className="mt-2 flex flex-wrap gap-2">
               {savedSearches.map((saved) => (
                 <li key={saved.id} className="flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-xs text-brand-800">
-                  <span>{saved.keyword}</span>
+                  <span>
+                    {saved.keyword}
+                    {(saved.category_name || saved.branch_name) && (
+                      <span className="ml-1 text-brand-600">
+                        · {[saved.category_name, saved.branch_name].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </span>
                   <button
                     type="button"
                     disabled={savedSearchBusy}
@@ -267,6 +322,37 @@ export default function Marketplace() {
             </ul>
           </div>
         )}
+
+        <div className="mt-3 rounded-xl border border-brand-100 bg-white p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <input type="checkbox" checked={quietHoursEnabled} onChange={(event) => setQuietHoursEnabled(event.target.checked)} />
+              Quiet hours for push alerts
+            </label>
+            <button type="button" className="text-sm font-semibold text-brand-700 underline" onClick={saveQuietHours} disabled={quietHoursBusy}>
+              {quietHoursBusy ? 'Saving…' : 'Save alert preferences'}
+            </button>
+          </div>
+          {quietHoursEnabled && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-medium text-slate-600">
+                Start
+                <input type="time" value={quietStart} onChange={(event) => setQuietStart(event.target.value)} className={`${inputClass} mt-1`} />
+              </label>
+              <label className="text-xs font-medium text-slate-600">
+                End
+                <input type="time" value={quietEnd} onChange={(event) => setQuietEnd(event.target.value)} className={`${inputClass} mt-1`} />
+              </label>
+            </div>
+          )}
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+            <p>Time zone: {quietTimezone}. In-app notifications stay immediate; only push delivery is paused.</p>
+            <button type="button" className="font-semibold text-brand-700 underline" onClick={() => setQuietTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')}>
+              Use device time zone
+            </button>
+          </div>
+          {quietHoursNotice && <p role="status" className="mt-2 text-xs font-medium text-brand-700">{quietHoursNotice}</p>}
+        </div>
 
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Filter by category">
           <button
@@ -294,7 +380,14 @@ export default function Marketplace() {
           ))}
         </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <label className="text-xs font-medium text-slate-600">
+            Branch
+            <select value={branchId} onChange={(event) => updateFilter(setBranchId, event.target.value)} className={`${inputClass} mt-1`}>
+              <option value="">All branches</option>
+              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+            </select>
+          </label>
           <label className="text-xs font-medium text-slate-600">
             Condition
             <select value={condition} onChange={(event) => updateFilter(setCondition, event.target.value)} className={`${inputClass} mt-1`}>

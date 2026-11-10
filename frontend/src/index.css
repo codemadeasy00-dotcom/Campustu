@@ -296,6 +296,16 @@ textarea {
   transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
 }
 
+.site-header .site-header-sell-button {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .site-header .site-header-sell-button {
+    display: inline-flex;
+  }
+}
+
 .site-primary-action:hover {
   transform: translateY(-1px);
   filter: brightness(1.08);

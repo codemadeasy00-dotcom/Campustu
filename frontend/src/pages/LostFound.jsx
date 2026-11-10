@@ -281,8 +281,13 @@ export default function LostFound() {
   const [loading, setLoading] = useState(true);
   const [itemsError, setItemsError] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [showMine, setShowMine] = useState(() => searchParams.get('mine') === '1');
+
+  useEffect(() => {
+    const query = searchParams.get('search');
+    if (query !== null) setSearch(query);
+  }, [searchParams]);
   const [clockNow, setClockNow] = useState(Date.now());
   const [nearbyCenter, setNearbyCenter] = useState(null);
   const [radiusMeters, setRadiusMeters] = useState(1000);

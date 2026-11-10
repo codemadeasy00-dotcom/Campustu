@@ -17,6 +17,8 @@ const primaryLinks = [
 ]
 
 const quickLinks = [
+  { to: '/search', label: 'Search campus', icon: '⌕' },
+  { to: '/needs', label: 'Need Board', icon: '＋' },
   { to: '/sell', label: 'Sell an item', icon: '＋' },
   { to: '/my-listings', label: 'My listings', icon: '▤' },
   { to: '/wishlist', label: 'Wishlist', icon: '♡' },
@@ -44,7 +46,6 @@ export default function Layout() {
   const showToast = useToast()
   const navigate = useNavigate()
   const location = useLocation()
-  const showMobileQr = location.pathname === '/signup' || location.pathname === '/login'
   const menuRef = useRef(null)
   const notificationsRef = useRef(null)
   const mobileToggleRef = useRef(null)
@@ -108,7 +109,7 @@ export default function Layout() {
         )
         if (newSearchNotices.length) {
           showToast(
-            `${newSearchNotices.length} new saved-search match${newSearchNotices.length === 1 ? '' : 'es'} found. Tap the bell to review.`,
+            `${newSearchNotices.length} new saved-search alert${newSearchNotices.length === 1 ? '' : 's'}. Tap the bell to review.`,
           )
           newSearchNotices.forEach((notice) => notifiedSearchIdsRef.current.add(notice.id))
         }
@@ -368,7 +369,7 @@ export default function Layout() {
 
           {user && (
             <div className="ml-auto flex shrink-0 items-center gap-2 xl:ml-0">
-              <Link to="/sell" className="site-primary-action hidden lg:inline-flex">＋ <span>Sell an item</span></Link>
+              <Link to="/sell" className="site-primary-action site-header-sell-button">＋ <span>Sell an item</span></Link>
               <div className="relative" ref={notificationsRef}>
                 <button
                   type="button"
@@ -407,7 +408,11 @@ export default function Layout() {
                         {searchNotifications.map((item) => (
                           <li key={item.id}>
                             <Link
-                              to={item.item_id ? `/items/${encodeURIComponent(item.item_id)}` : '/marketplace'}
+                              to={item.need_request_id
+                                ? `/needs/${encodeURIComponent(item.need_request_id)}`
+                                : item.item_id
+                                  ? `/items/${encodeURIComponent(item.item_id)}`
+                                  : '/search'}
                               onClick={() => setNotificationsOpen(false)}
                               className={`block rounded-xl px-3 py-3 transition hover:bg-brand-50 ${item.is_read ? '' : 'bg-brand-50/60'}`}
                             >
@@ -415,6 +420,11 @@ export default function Layout() {
                               <span className="mt-1 block text-xs text-slate-500">
                                 {item.message} · {new Date(item.created_at).toLocaleString()}
                               </span>
+                              {Array.isArray(item.match_reasons) && item.match_reasons.length > 0 && (
+                                <span className="mt-1 block text-[11px] font-medium text-brand-700">
+                                  Match reasons: {item.match_reasons.join(' · ')}
+                                </span>
+                              )}
                             </Link>
                           </li>
                         ))}
@@ -495,6 +505,8 @@ export default function Layout() {
                 {item.label}
               </NavLink>
             ))}
+            <NavLink to="/search" className={navClass}>Search</NavLink>
+            <NavLink to="/needs" className={navClass}>Need Board</NavLink>
             <NavLink to="/my-listings" className={navClass}>My listings</NavLink>
             <NavLink to="/wishlist" className={navClass}>Wishlist</NavLink>
             <NavLink to="/lost-found/report" className={navClass}>Report item</NavLink>
@@ -527,15 +539,9 @@ export default function Layout() {
                       <span aria-hidden="true">{item.icon}</span>{item.label}
                     </Link>
                   ))}
-                  {showMobileQr && (
-                    <button
-                      type="button"
-                      className="site-mobile-quicklink"
-                      onClick={openShareQr}
-                    >
-                      <span aria-hidden="true">▦</span>Share with QR
-                    </button>
-                  )}
+                  <button type="button" className="site-mobile-quicklink" onClick={openShareQr}>
+                    <span aria-hidden="true">▦</span>Share with QR
+                  </button>
                   {user.role === 'admin' && (
                     <Link to="/admin" className="site-mobile-quicklink">
                       <span aria-hidden="true">⚑</span>Admin console
@@ -550,11 +556,9 @@ export default function Layout() {
                   <NavLink to="/login" className={`${navClass} flex-1 justify-center`}>Log in</NavLink>
                   <Link to="/signup" className="site-primary-action flex-1">Join your campus</Link>
                 </div>
-                {showMobileQr && (
-                  <button type="button" className="site-mobile-quicklink mt-2 w-full" onClick={openShareQr}>
-                    <span aria-hidden="true">▦</span>Share with QR
-                  </button>
-                )}
+                <button type="button" className="site-mobile-quicklink mt-2 w-full" onClick={openShareQr}>
+                  <span aria-hidden="true">▦</span>Share with QR
+                </button>
               </>
             )}
           </div>

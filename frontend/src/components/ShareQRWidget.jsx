@@ -1,22 +1,19 @@
 import { useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { useLocation } from 'react-router-dom'
 
 export const SHARE_QR_OPEN_EVENT = 'campustu:open-share-qr'
 
 export default function ShareQRWidget() {
   const [isOpen, setIsOpen] = useState(false)
-  const location = useLocation()
-  const mobileQrAllowed = location.pathname === '/login' || location.pathname === '/signup'
   const shareUrl = typeof window !== 'undefined' ? window.location.origin : 'https://campustu.vercel.app'
 
   useEffect(() => {
     const openShareDialog = () => {
-      if (mobileQrAllowed) setIsOpen(true)
+      setIsOpen(true)
     }
     window.addEventListener(SHARE_QR_OPEN_EVENT, openShareDialog)
     return () => window.removeEventListener(SHARE_QR_OPEN_EVENT, openShareDialog)
-  }, [mobileQrAllowed])
+  }, [])
 
   useEffect(() => {
     if (!isOpen) return undefined
@@ -31,7 +28,7 @@ export default function ShareQRWidget() {
 
   return (
     <>
-      {isOpen && mobileQrAllowed && (
+      {isOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 xl:hidden"
           onMouseDown={(event) => {

@@ -6,6 +6,9 @@ const STAT_LABELS = [
   { key: 'items_posted', label: 'Items posted', icon: '📦' },
   { key: 'completed_trades', label: 'Trades completed', icon: '🤝' },
   { key: 'resolved_reports', label: 'Reports resolved', icon: '🛡️' },
+  { key: 'successful_returns', label: 'Verified returns', icon: '✅' },
+  { key: 'needs_posted', label: 'Needs posted', icon: '📌' },
+  { key: 'need_responses', label: 'Need responses', icon: '💬' },
 ]
 
 function AchievementEmblem({ achievement }) {
@@ -15,6 +18,9 @@ function AchievementEmblem({ achievement }) {
     first_trade: '🤝',
     trusted_trader: '💎',
     lost_and_found_helper: '🛡️',
+    verified_return: '✅',
+    campus_requester: '📌',
+    community_responder: '💬',
   }
 
   return (
@@ -69,7 +75,7 @@ export default function Achievements() {
             <p className="font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-teal-300">Campustu · Player achievements</p>
             <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Your campus quest</h1>
             <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
-              Every badge is earned through real activity: listings, completed handovers, and resolved reports.
+              Every badge is earned through recorded activity: listings, verified handovers, returns, and campus requests.
             </p>
             <div className="mt-6 max-w-lg rounded-2xl border border-white/15 bg-white/5 p-4 backdrop-blur-sm">
               <div className="flex items-center justify-between gap-3">
@@ -104,7 +110,7 @@ export default function Achievements() {
         </div>
       </section>
 
-      <section aria-label="Your activity totals" className="grid gap-3 sm:grid-cols-3">
+      <section aria-label="Your activity totals" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {STAT_LABELS.map(({ key, label, icon }) => (
           <article key={key} className="relative overflow-hidden rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-[0_4px_0_#cbd5e1]">
             <div className="flex items-center gap-3">

@@ -18,6 +18,8 @@ import SupportPage from './pages/SupportPage.jsx'
 import ShareQRWidget from './components/ShareQRWidget.jsx'
 import BarterLoops from './pages/BarterLoops.jsx'
 import Achievements from './pages/Achievements.jsx'
+import NeedBoard from './pages/NeedBoard.jsx'
+import CampusSearch from './pages/CampusSearch.jsx'
 
 function NotFound() {
   return (
@@ -46,6 +48,9 @@ export default function App() {
           <Route path="/items/:id" element={guard(<ItemPage />)} />
           <Route path="/kits" element={guard(<Kits />)} />
           <Route path="/marketplace" element={guard(<Marketplace />)} />
+          <Route path="/search" element={guard(<CampusSearch />)} />
+          <Route path="/needs" element={guard(<NeedBoard />)} />
+          <Route path="/needs/:id" element={guard(<NeedBoard />)} />
           <Route path="/lost-found" element={guard(<LostFound />)} />
           <Route path="/lost-found/report" element={guard(<LostFoundNew />)} />
           <Route path="/profile" element={guard(<ProfileDashboard />)} />
