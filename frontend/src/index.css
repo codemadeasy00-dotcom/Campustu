@@ -237,6 +237,83 @@ textarea {
   background: #eef9f9;
 }
 
+@media (min-width: 768px) {
+  .site-mobile-bottom-nav {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .site-qr-toggle {
+    display: none;
+  }
+}
+
+.site-header-actions {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .site-header-actions {
+    display: flex;
+  }
+}
+
+.site-create-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.site-create-menu-link {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border-radius: 0.85rem;
+  padding: 0.65rem;
+  transition: background-color 160ms ease;
+}
+
+.site-create-menu-link:hover {
+  background: #eef9f9;
+}
+
+.site-mobile-section-title {
+  padding: 0.85rem 0 0.5rem;
+  color: #175a6d;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.site-mobile-create-links {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.site-mobile-create-link {
+  display: flex;
+  min-height: 3.2rem;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid #e0efed;
+  border-radius: 0.85rem;
+  padding: 0.55rem 0.65rem;
+  background: white;
+  font-size: 0.78rem;
+}
+
+.site-mobile-create-link > span:first-child {
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.6rem;
+  color: #175a6d;
+  background: #e7f6f4;
+  font-size: 1rem;
+}
+
 @media (min-width: 1280px) {
   .site-qr-toggle {
     display: none;
@@ -466,6 +543,12 @@ textarea {
 .site-menu-toggle:hover {
   border-color: #a9ded9;
   background: #eef9f9;
+}
+
+@media (min-width: 1024px) {
+  .site-header .site-menu-toggle {
+    display: none;
+  }
 }
 
 .site-menu-icon {

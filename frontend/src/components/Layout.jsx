@@ -21,13 +21,16 @@ const mobileLinks = [
   { to: '/achievements', label: 'Quests', icon: '🏆' },
 ]
 
+const createLinks = [
+  { to: '/lost-found/report', label: 'Lost & Found', description: 'Report a lost or found item', icon: '⌖' },
+  { to: '/marketplace', label: 'Marketplace', description: 'Browse campus listings', icon: '▤' },
+  { to: '/sell', label: 'Sell an item', description: 'Create a marketplace listing', icon: '＋' },
+]
+
 const quickLinks = [
   { to: '/search', label: 'Search campus', icon: '⌕' },
-  { to: '/sell', label: 'Sell an item', icon: '＋' },
   { to: '/my-listings', label: 'My listings', icon: '▤' },
   { to: '/wishlist', label: 'Wishlist', icon: '♡' },
-  { to: '/lost-found/report', label: 'Report lost / found', icon: '⌖' },
-  { to: '/marketplace', label: 'Marketplace', icon: '▤' },
   { to: '/lost-found', label: 'Lost & Found', icon: '⌖' },
   { to: '/messages', label: 'Messages', icon: '✉' },
   { to: '/kits', label: 'Semester kits', icon: '▦' },
@@ -315,10 +318,34 @@ export default function Layout() {
           )}
 
           {user && (
-            <div className="ml-auto flex shrink-0 items-center gap-2 xl:ml-0">
+            <div className="site-header-actions ml-auto shrink-0 items-center gap-2 xl:ml-0">
               <Link to="/achievements" className="site-nav-link site-quests-action hidden xl:inline-flex">🏆 Quests</Link>
               {user.role === 'admin' && <Link to="/admin" className="site-nav-link site-quests-action hidden xl:inline-flex">Admin</Link>}
-              <Link to="/sell" className="site-primary-action site-header-sell-button">＋ POST ITEM</Link>
+              <details className="site-create-menu relative">
+                <summary className="site-primary-action site-header-sell-button list-none cursor-pointer">
+                  <span aria-hidden="true">＋</span> Create
+                </summary>
+                <div className="site-create-menu-panel absolute right-0 top-full z-[70] mt-2 w-64 overflow-hidden rounded-2xl border border-brand-100 bg-white p-2 shadow-xl">
+                  <p className="px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-500">What would you like to do?</p>
+                  {createLinks.map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      onClick={(event) => {
+                        const menu = event.currentTarget.closest('details')
+                        if (menu) menu.open = false
+                      }}
+                      className="site-create-menu-link"
+                    >
+                      <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-lg font-bold text-brand-700">{item.icon}</span>
+                      <span>
+                        <span className="block text-sm font-semibold text-slate-800">{item.label}</span>
+                        <span className="mt-0.5 block text-xs text-slate-500">{item.description}</span>
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </details>
               <div className="relative" ref={notificationsRef}>
                 <button
                   type="button"
@@ -463,6 +490,20 @@ export default function Layout() {
                   </span>
                   <span aria-hidden="true" className="text-lg text-brand-600">→</span>
                 </Link>
+                <section aria-label="Create or browse listings" className="site-mobile-create">
+                  <p className="site-mobile-section-title">Create or browse</p>
+                  <div className="site-mobile-create-links">
+                    {createLinks.map((item) => (
+                      <Link key={item.to} to={item.to} className="site-mobile-create-link">
+                        <span aria-hidden="true">{item.icon}</span>
+                        <span>
+                          <span className="block font-semibold text-slate-800">{item.label}</span>
+                          <span className="mt-0.5 block text-[11px] text-slate-500">{item.description}</span>
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
                 <div className="site-mobile-links">
                   {primaryLinks.map((item) => (
                     <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
