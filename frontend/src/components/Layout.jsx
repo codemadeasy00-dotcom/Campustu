@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { lostFoundApi, searchAlertsApi } from '../services/api.js'
 import { useToast } from './ui.jsx'
 import Wordmark from './Wordmark.jsx'
+import { SHARE_QR_OPEN_EVENT } from './ShareQRWidget.jsx'
 
 export const APP_NAME = 'Campustu'
 
@@ -43,6 +44,7 @@ export default function Layout() {
   const showToast = useToast()
   const navigate = useNavigate()
   const location = useLocation()
+  const showMobileQr = location.pathname === '/signup' || location.pathname === '/login'
   const menuRef = useRef(null)
   const notificationsRef = useRef(null)
   const mobileToggleRef = useRef(null)
@@ -277,6 +279,11 @@ export default function Layout() {
     }
   }
 
+  function openShareQr() {
+    setMobileOpen(false)
+    window.dispatchEvent(new Event(SHARE_QR_OPEN_EVENT))
+  }
+
   useEffect(() => {
     const updateScrollProgress = () => {
       const totalScroll = document.documentElement.scrollHeight - document.documentElement.clientHeight
@@ -361,7 +368,7 @@ export default function Layout() {
 
           {user && (
             <div className="ml-auto flex shrink-0 items-center gap-2 xl:ml-0">
-              <Link to="/sell" className="site-primary-action hidden sm:inline-flex">＋ <span>Sell an item</span></Link>
+              <Link to="/sell" className="site-primary-action hidden lg:inline-flex">＋ <span>Sell an item</span></Link>
               <div className="relative" ref={notificationsRef}>
                 <button
                   type="button"
@@ -520,6 +527,15 @@ export default function Layout() {
                       <span aria-hidden="true">{item.icon}</span>{item.label}
                     </Link>
                   ))}
+                  {showMobileQr && (
+                    <button
+                      type="button"
+                      className="site-mobile-quicklink"
+                      onClick={openShareQr}
+                    >
+                      <span aria-hidden="true">▦</span>Share with QR
+                    </button>
+                  )}
                   {user.role === 'admin' && (
                     <Link to="/admin" className="site-mobile-quicklink">
                       <span aria-hidden="true">⚑</span>Admin console
@@ -529,10 +545,17 @@ export default function Layout() {
                 <button type="button" className="site-mobile-logout" onClick={handleLogout}>Log out</button>
               </>
             ) : (
-              <div className="flex gap-2">
-                <NavLink to="/login" className={`${navClass} flex-1 justify-center`}>Log in</NavLink>
-                <Link to="/signup" className="site-primary-action flex-1">Join your campus</Link>
-              </div>
+              <>
+                <div className="flex gap-2">
+                  <NavLink to="/login" className={`${navClass} flex-1 justify-center`}>Log in</NavLink>
+                  <Link to="/signup" className="site-primary-action flex-1">Join your campus</Link>
+                </div>
+                {showMobileQr && (
+                  <button type="button" className="site-mobile-quicklink mt-2 w-full" onClick={openShareQr}>
+                    <span aria-hidden="true">▦</span>Share with QR
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}

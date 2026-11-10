@@ -476,6 +476,8 @@ textarea {
   background: white;
   font-size: 0.78rem;
   font-weight: 650;
+  text-align: left;
+  cursor: pointer;
   transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
 }
 

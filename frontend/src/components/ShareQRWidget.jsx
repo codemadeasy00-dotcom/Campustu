@@ -1,9 +1,22 @@
 import { useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
+import { useLocation } from 'react-router-dom'
+
+export const SHARE_QR_OPEN_EVENT = 'campustu:open-share-qr'
 
 export default function ShareQRWidget() {
   const [isOpen, setIsOpen] = useState(false)
-  const shareUrl = typeof window !== 'undefined' ? window.location.href : 'https://campustu.vercel.app'
+  const location = useLocation()
+  const mobileQrAllowed = location.pathname === '/login' || location.pathname === '/signup'
+  const shareUrl = typeof window !== 'undefined' ? window.location.origin : 'https://campustu.vercel.app'
+
+  useEffect(() => {
+    const openShareDialog = () => {
+      if (mobileQrAllowed) setIsOpen(true)
+    }
+    window.addEventListener(SHARE_QR_OPEN_EVENT, openShareDialog)
+    return () => window.removeEventListener(SHARE_QR_OPEN_EVENT, openShareDialog)
+  }, [mobileQrAllowed])
 
   useEffect(() => {
     if (!isOpen) return undefined
@@ -18,21 +31,9 @@ export default function ShareQRWidget() {
 
   return (
     <>
-      <div className="fixed right-3 top-3 z-50 md:hidden">
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          aria-label="Show Campustu share QR code"
-          aria-haspopup="dialog"
-          className="border border-teal-800 bg-teal-900 px-2.5 py-1 text-xs font-mono text-white shadow-[2px_2px_0px_0px_#0f766e]"
-        >
-          QR
-        </button>
-      </div>
-
-      {isOpen && (
+      {isOpen && mobileQrAllowed && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 md:hidden"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 xl:hidden"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setIsOpen(false)
           }}
@@ -63,15 +64,15 @@ export default function ShareQRWidget() {
 
       <aside
         aria-label="Share Campustu"
-        className="fixed bottom-4 right-4 z-50 hidden border border-teal-800 bg-white p-3 font-mono shadow-[4px_4px_0px_0px_#0f766e] md:block"
+        className="fixed bottom-4 right-4 z-50 hidden border border-teal-800 bg-white p-3 font-mono shadow-[4px_4px_0px_0px_#0f766e] xl:block"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className="border border-teal-800 bg-teal-50 p-1">
-            <QRCodeSVG value={shareUrl} size={96} marginSize={2} />
+            <QRCodeSVG value={shareUrl} size={64} marginSize={2} />
           </div>
           <div>
-            <p className="text-xs font-bold text-teal-900">SHARE CAMPUSTU</p>
-            <p className="text-[10px] text-teal-700">Scan to open on mobile</p>
+            <p className="text-[10px] font-bold text-teal-900">SHARE</p>
+            <p className="text-[9px] text-teal-700">Scan on mobile</p>
           </div>
         </div>
       </aside>
