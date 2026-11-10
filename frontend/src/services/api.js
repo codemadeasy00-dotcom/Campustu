@@ -107,11 +107,13 @@ export const pushApi = {
 
 export const searchAlertsApi = {
   saved: () => request('/api/search-alerts/saved'),
+  track: (payload) => request('/api/search-alerts/track', { method: 'POST', json: payload }),
   save: (payload) => request('/api/search-alerts/saved', {
     method: 'POST',
     json: typeof payload === 'string' ? { keyword: payload } : payload,
   }),
   remove: (id) => request(`/api/search-alerts/saved/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  removeAutomatic: () => request('/api/search-alerts/automatic', { method: 'DELETE' }),
   preferences: () => request('/api/search-alerts/preferences'),
   updatePreferences: (preferences) =>
     request('/api/search-alerts/preferences', { method: 'PATCH', json: preferences }),

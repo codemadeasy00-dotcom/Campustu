@@ -37,6 +37,13 @@ function errorHandler(err, _req, res, _next) {
   if (err.code === '23503') return res.status(400).json({ error: 'A referenced record does not exist' });
   if (err.code === '23505') return res.status(409).json({ error: 'That already exists' });
   if (err.code === '23514') return res.status(400).json({ error: 'A value is out of the allowed range' });
+  if (err.code === '42P01' || err.code === '42703') {
+    console.error('Database schema migration required:', err);
+    return res.status(503).json({
+      error: 'A required database update has not been applied. Please try again later.',
+      code: 'DATABASE_MIGRATION_REQUIRED',
+    });
+  }
 
   console.error(err); // details stay in the server log, never sent to the client
   res.status(500).json({ error: 'Something went wrong' });

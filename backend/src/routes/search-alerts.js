@@ -22,6 +22,7 @@ const preferencesSchema = z.object({
   quiet_start: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
   quiet_end: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
   timezone: z.string().trim().min(1).max(64),
+  auto_track_searches: z.boolean().optional(),
 }).refine(
   (value) => Boolean(value.quiet_start) === Boolean(value.quiet_end),
   { message: 'Choose both quiet-hour times, or turn quiet hours off.' },
@@ -32,7 +33,7 @@ const preferencesSchema = z.object({
 
 router.get('/saved', async (req, res) => {
   const { rows } = await query(
-    `SELECT ss.id, ss.keyword, ss.category_id, ss.branch_id, ss.created_at,
+    `SELECT ss.id, ss.keyword, ss.category_id, ss.branch_id, ss.auto_tracked, ss.created_at,
             c.name AS category_name, b.name AS branch_name
        FROM saved_searches ss
        LEFT JOIN categories c ON c.id = ss.category_id
@@ -42,6 +43,78 @@ router.get('/saved', async (req, res) => {
     [req.user.id, req.user.college_id],
   )
   res.json({ searches: rows })
+})
+
+router.post('/track', async (req, res) => {
+  const data = searchSchema.parse(req.body)
+  assertUserTextIsAllowed([data.keyword])
+  const tracked = await tx(async (db) => {
+    await db.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [req.user.id])
+    const { rows: [preferences] } = await db.query(
+      'SELECT auto_track_searches FROM search_alert_preferences WHERE user_id = $1',
+      [req.user.id],
+    )
+    if (preferences?.auto_track_searches === false) return false
+
+    if (data.category_id) {
+      const { rows } = await db.query(
+        'SELECT id FROM categories WHERE id = $1 AND scope <> $2',
+        [data.category_id, 'lost_found'],
+      )
+      if (!rows.length) throw new AppError(400, 'Choose a marketplace category.')
+    }
+    if (data.branch_id) {
+      const { rows } = await db.query('SELECT id FROM branches WHERE id = $1', [data.branch_id])
+      if (!rows.length) throw new AppError(400, 'Choose a valid campus branch.')
+    }
+
+    const criteria = [
+      req.user.id,
+      req.user.college_id,
+      data.keyword,
+      data.category_id ?? null,
+      data.branch_id ?? null,
+    ]
+    const { rows: [existing] } = await db.query(
+      `SELECT id FROM saved_searches
+        WHERE user_id = $1 AND college_id = $2 AND lower(keyword) = lower($3)
+          AND category_id IS NOT DISTINCT FROM $4::smallint
+          AND branch_id IS NOT DISTINCT FROM $5::smallint`,
+      criteria,
+    )
+    if (existing) return true
+
+    const { rows: [count] } = await db.query(
+      'SELECT count(*)::int AS total FROM saved_searches WHERE user_id = $1 AND college_id = $2',
+      [req.user.id, req.user.college_id],
+    )
+    if (count.total >= 20) {
+      await db.query(
+        `DELETE FROM saved_searches
+          WHERE id = (
+            SELECT id FROM saved_searches
+             WHERE user_id = $1 AND college_id = $2 AND auto_tracked
+             ORDER BY created_at ASC
+             LIMIT 1
+          )`,
+        [req.user.id, req.user.college_id],
+      )
+      const { rows: [updatedCount] } = await db.query(
+        'SELECT count(*)::int AS total FROM saved_searches WHERE user_id = $1 AND college_id = $2',
+        [req.user.id, req.user.college_id],
+      )
+      if (updatedCount.total >= 20) return false
+    }
+
+    await db.query(
+      `INSERT INTO saved_searches
+         (user_id, college_id, keyword, category_id, branch_id, auto_tracked)
+       VALUES ($1, $2, $3, $4, $5, true)`,
+      criteria,
+    )
+    return true
+  })
+  res.json({ tracked })
 })
 
 router.post('/saved', async (req, res) => {
@@ -61,13 +134,24 @@ router.post('/saved', async (req, res) => {
       if (!branchRows.length) throw new AppError(400, 'Choose a valid campus branch.')
     }
     const { rows: [existing] } = await db.query(
-      `SELECT id, keyword, category_id, branch_id, created_at FROM saved_searches
+      `SELECT id, keyword, category_id, branch_id, auto_tracked, created_at FROM saved_searches
         WHERE user_id = $1 AND college_id = $2 AND lower(keyword) = lower($3)
           AND category_id IS NOT DISTINCT FROM $4::smallint
           AND branch_id IS NOT DISTINCT FROM $5::smallint`,
       [req.user.id, req.user.college_id, data.keyword, data.category_id ?? null, data.branch_id ?? null],
     )
-    if (existing) return existing
+    if (existing) {
+      if (existing.auto_tracked) {
+        const { rows: [promoted] } = await db.query(
+          `UPDATE saved_searches SET auto_tracked = false
+            WHERE id = $1
+            RETURNING id, keyword, category_id, branch_id, auto_tracked, created_at`,
+          [existing.id],
+        )
+        return promoted
+      }
+      return existing
+    }
     const { rows: [count] } = await db.query(
       'SELECT count(*)::int AS total FROM saved_searches WHERE user_id = $1 AND college_id = $2',
       [req.user.id, req.user.college_id],
@@ -76,12 +160,24 @@ router.post('/saved', async (req, res) => {
     const { rows: [created] } = await db.query(
       `INSERT INTO saved_searches (user_id, college_id, keyword, category_id, branch_id)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, keyword, category_id, branch_id, created_at`,
+       RETURNING id, keyword, category_id, branch_id, auto_tracked, created_at`,
       [req.user.id, req.user.college_id, data.keyword, data.category_id ?? null, data.branch_id ?? null],
     )
     return created
   })
   res.status(201).json({ search: savedSearch })
+})
+
+router.delete('/automatic', async (req, res) => {
+  const deleted = await tx(async (db) => {
+    await db.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [req.user.id])
+    const { rowCount } = await db.query(
+      'DELETE FROM saved_searches WHERE user_id = $1 AND college_id = $2 AND auto_tracked',
+      [req.user.id, req.user.college_id],
+    )
+    return rowCount
+  })
+  res.json({ deleted })
 })
 
 router.delete('/saved/:id', async (req, res) => {
@@ -96,13 +192,18 @@ router.delete('/saved/:id', async (req, res) => {
 
 router.get('/preferences', async (req, res) => {
   const { rows: [preferences] } = await query(
-    `SELECT quiet_start, quiet_end, timezone
+    `SELECT quiet_start, quiet_end, timezone, auto_track_searches
        FROM search_alert_preferences
       WHERE user_id = $1`,
     [req.user.id],
   )
   res.json({
-    preferences: preferences || { quiet_start: null, quiet_end: null, timezone: 'UTC' },
+    preferences: preferences || {
+      quiet_start: null,
+      quiet_end: null,
+      timezone: 'UTC',
+      auto_track_searches: true,
+    },
   })
 })
 
@@ -113,17 +214,29 @@ router.patch('/preferences', async (req, res) => {
   } catch {
     throw new AppError(400, 'Choose a supported time zone.')
   }
-  const { rows: [saved] } = await query(
-    `INSERT INTO search_alert_preferences (user_id, quiet_start, quiet_end, timezone, updated_at)
-     VALUES ($1, $2, $3, $4, now())
-     ON CONFLICT (user_id) DO UPDATE
-       SET quiet_start = EXCLUDED.quiet_start,
-           quiet_end = EXCLUDED.quiet_end,
-           timezone = EXCLUDED.timezone,
-           updated_at = now()
-     RETURNING quiet_start, quiet_end, timezone`,
-    [req.user.id, preferences.quiet_start, preferences.quiet_end, preferences.timezone],
-  )
+  const saved = await tx(async (db) => {
+    await db.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [req.user.id])
+    const { rows: [updated] } = await db.query(
+      `INSERT INTO search_alert_preferences
+         (user_id, quiet_start, quiet_end, timezone, auto_track_searches, updated_at)
+       VALUES ($1, $2, $3, $4, COALESCE($5::boolean, true), now())
+       ON CONFLICT (user_id) DO UPDATE
+         SET quiet_start = EXCLUDED.quiet_start,
+             quiet_end = EXCLUDED.quiet_end,
+             timezone = EXCLUDED.timezone,
+             auto_track_searches = COALESCE($5::boolean, search_alert_preferences.auto_track_searches),
+             updated_at = now()
+       RETURNING quiet_start, quiet_end, timezone, auto_track_searches`,
+      [
+        req.user.id,
+        preferences.quiet_start,
+        preferences.quiet_end,
+        preferences.timezone,
+        preferences.auto_track_searches ?? null,
+      ],
+    )
+    return updated
+  })
   res.json({ preferences: saved })
 })
 

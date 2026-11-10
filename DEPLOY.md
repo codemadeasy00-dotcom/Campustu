@@ -95,8 +95,10 @@ A paused project means your site is down until you un-pause it in the dashboard.
    Migration `027_barter_search_alerts.sql` stores per-listing wanted categories, saved marketplace
    searches, and in-app search-match notifications.
    Migration `028_phase_one_student_core.sql` adds the Need Board, category/branch saved-search
-   criteria, and quiet-hour preferences. Apply it before deploying the updated backend.
-   Apply these before deploying the updated application.
+   criteria, and quiet-hour preferences.
+   Migration `029_automatic_search_alerts.sql` enables transparent automatic search alerts and controls
+   for disabling tracking and deleting automatically tracked search history. Apply pending migrations
+   in order with `npm run db:migrate` from the backend directory before deploying the updated application.
    User badges show college-email verification, staff role, and Power Trader eligibility (2 or more
    completed handovers with no pending reports). Lost-item urgent status is chosen by its poster;
    Verified Match is only shown after a handover code successfully resolves a claim. Pending reports
@@ -105,7 +107,9 @@ A paused project means your site is down until you un-pause it in the dashboard.
    Assigning Under Moderation Review also hides a post from other students and blocks related actions
    until an admin clears the badge.
    Marketplace barter suggestions match active listings within the same college and are non-binding.
-   Students can save up to 20 keyword searches for in-app alerts and browser push when enabled.
+   Students can have up to 20 saved searches for in-app alerts and browser push when enabled. Submitted
+   campus, marketplace, and Need Board searches are tracked automatically by default; students can turn
+   off new tracking or delete automatically tracked searches in Marketplace alert settings.
    The Achievements page uses recorded listings, completed handovers, verified Lost & Found returns,
    and Need Board activity; it does not invent XP or count a suggested barter loop as a completed trade.
    Apply migrations before deploying the backend update. Migration `008_lost_found_report_details.sql`

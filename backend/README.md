@@ -50,6 +50,10 @@ in-app alerts. Barter loops are non-binding same-college suggestions. Search ale
 browser push when push is configured. Migration `028_phase_one_student_core.sql` adds the same-college
 Need Board, category/branch criteria for saved searches, and quiet-hour preferences. Search alerts explain
 their keyword/category/branch matches; quiet hours pause push only, while in-app alerts remain immediate.
+Migration `029_automatic_search_alerts.sql` adds the default-on automatic search tracking preference
+and distinguishes automatic search history from alerts a student explicitly saves. Students can disable
+new tracking or delete automatically tracked searches from Marketplace alert settings. Apply migrations
+through `npm run db:migrate` before deploying backend code that depends on the new schema.
 The Need Board supports expiring requests, private replies, available-listing offers, and clearly labeled
 non-binding loan offers. `/api/search` combines available marketplace listings, active Lost & Found
 reports, and open Need Board requests without exposing posts hidden for moderation. Achievements use
@@ -61,8 +65,10 @@ the system does not fabricate XP or count a suggested barter loop as a completed
 |---|---|---|---|
 | GET | /api/search?q= | session cookie | Campus-wide search across marketplace, active Lost & Found, and open Need Board records |
 | GET, POST | /api/search-alerts/saved | session cookie, active | List or save keyword alerts; optional category_id and branch_id |
+| POST | /api/search-alerts/track | session cookie, active | Automatically track a successful search when the user has enabled automatic alerts |
+| DELETE | /api/search-alerts/automatic | session cookie, active | Delete all automatically tracked search terms and their related alerts |
 | DELETE | /api/search-alerts/saved/:id | session cookie, active | Remove one of your saved alerts |
-| GET, PATCH | /api/search-alerts/preferences | session cookie, active | Read or set timezone-aware quiet hours for push delivery |
+| GET, PATCH | /api/search-alerts/preferences | session cookie, active | Read or update quiet hours and automatic search tracking preference |
 | GET, POST | /api/needs | session cookie, active | Browse same-college requests or post a request with an expiry |
 | GET | /api/needs/:id | session cookie, active | View an open request; private responses are returned only to its owner |
 | POST | /api/needs/:id/responses | session cookie, active | Send one private listing or non-binding loan offer |
@@ -100,4 +106,4 @@ no orphan files after failures.
 - Photos are on local disk and publicly readable by URL (unguessable names, but not private). Move to a bucket when you deploy.
 - Nothing runs `expire_stale_reservations()` yet (needs a scheduled job, comes with the reserve flow).
 - The moderation classifier and upload gate have unit tests (`npm test`); full authenticated endpoint flows still need an integration test against a scratch PostgreSQL database.
-- Migration `028_phase_one_student_core.sql` and the new query paths still need validation against a scratch PostgreSQL database before production rollout.
+- Migrations `028_phase_one_student_core.sql` and `029_automatic_search_alerts.sql`, along with their query paths, still need validation against a scratch PostgreSQL database before production rollout.

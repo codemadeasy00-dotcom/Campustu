@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { campusSearchApi, errorMessage, searchAlertsApi } from '../services/api.js'
+import { campusSearchApi, errorMessage } from '../services/api.js'
+import { trackUserSearch } from '../services/searchTracker.js'
 import { Alert, inputClass } from '../components/ui.jsx'
 import PageHero from '../components/PageHero.jsx'
 
-const secondaryActionClass = 'inline-flex items-center justify-center rounded-full border border-brand-200 bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50'
 const primaryActionClass = 'inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50'
 
 const typeLabels = {
@@ -18,9 +18,7 @@ export default function CampusSearch() {
   const [term, setTerm] = useState(() => searchParams.get('q') || '')
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     const nextTerm = searchParams.get('q') || ''
@@ -35,8 +33,14 @@ export default function CampusSearch() {
     setLoading(true)
     setError('')
     campusSearchApi.search(nextTerm.trim())
-      .then((result) => {
-        if (!cancelled) setResults(result.results || [])
+      .then(async (result) => {
+        if (cancelled) return
+        setResults(result.results || [])
+        try {
+          await trackUserSearch(nextTerm)
+        } catch (trackingError) {
+          console.error('Could not automatically track campus search:', trackingError)
+        }
       })
       .catch((err) => {
         if (!cancelled) {
@@ -52,7 +56,6 @@ export default function CampusSearch() {
 
   const submitSearch = (event) => {
     event.preventDefault()
-    setNotice('')
     const q = term.trim()
     if (q.length < 2) {
       setError('Enter at least 2 characters to search.')
@@ -61,37 +64,23 @@ export default function CampusSearch() {
     setSearchParams({ q })
   }
 
-  const saveSearch = async () => {
-    const keyword = searchParams.get('q')?.trim()
-    if (!keyword) return
-    setSaving(true)
-    setError('')
-    setNotice('')
-    try {
-      await searchAlertsApi.save({ keyword })
-      setNotice(`Saved "${keyword}". You will receive a notice when a matching marketplace item or campus request is posted.`)
-    } catch (err) {
-      setError(errorMessage(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
       <PageHero
         eyebrow="One search, campus-wide"
         title="Search campus"
         description="Find available marketplace items, active lost-and-found reports, and open student requests from your college."
-        children={searchParams.get('q') ? <button className={secondaryActionClass} type="button" disabled={saving} onClick={saveSearch}>{saving ? 'Saving…' : 'Save search alert'}</button> : null}
       />
       {error && <div className="mt-4"><Alert>{error}</Alert></div>}
-      {notice && <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
       <form className="surface-card mt-5 flex flex-col gap-3 p-4 sm:flex-row" onSubmit={submitSearch}>
         <label className="sr-only" htmlFor="campus-search-term">Search items, reports, and requests</label>
         <input id="campus-search-term" className={inputClass} value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Try “calculator”, “ID card”, or “lab coat”" />
         <button className={`${primaryActionClass} shrink-0`} type="submit">Search campus</button>
       </form>
+      <p className="mt-2 text-xs text-slate-500">
+        When automatic alerts are enabled, campus searches are used for future marketplace and Need Board alerts.{' '}
+        <Link to="/marketplace" className="font-semibold text-brand-700 underline">Manage alert settings</Link>.
+      </p>
 
       {loading && <p className="py-10 text-center text-sm text-slate-500">Searching your campus…</p>}
       {!loading && searchParams.get('q') && results.length > 0 && (

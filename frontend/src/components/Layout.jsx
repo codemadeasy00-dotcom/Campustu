@@ -9,22 +9,22 @@ import { SHARE_QR_OPEN_EVENT } from './ShareQRWidget.jsx'
 export const APP_NAME = 'Campustu'
 
 const primaryLinks = [
-  { to: '/', label: 'Home', end: true },
-  { to: '/kits', label: 'Semester kits' },
-  { to: '/marketplace', label: 'Marketplace' },
-  { to: '/lost-found', label: 'Lost & Found' },
-  { to: '/messages', label: 'Messages' },
+  { to: '/', label: 'Explore', end: true },
+  { to: '/needs', label: 'Need Board' },
+  { to: '/barter', label: 'Barter loops' },
+  { to: '/achievements', label: 'Quests' },
 ]
 
 const quickLinks = [
   { to: '/search', label: 'Search campus', icon: '⌕' },
-  { to: '/needs', label: 'Need Board', icon: '＋' },
   { to: '/sell', label: 'Sell an item', icon: '＋' },
   { to: '/my-listings', label: 'My listings', icon: '▤' },
   { to: '/wishlist', label: 'Wishlist', icon: '♡' },
   { to: '/lost-found/report', label: 'Report lost / found', icon: '⌖' },
-  { to: '/barter', label: 'Barter loops', icon: '↻' },
-  { to: '/achievements', label: 'Achievements', icon: '🏆' },
+  { to: '/marketplace', label: 'Marketplace', icon: '▤' },
+  { to: '/lost-found', label: 'Lost & Found', icon: '⌖' },
+  { to: '/messages', label: 'Messages', icon: '✉' },
+  { to: '/kits', label: 'Semester kits', icon: '▦' },
 ]
 
 const navClass = ({ isActive }) =>
@@ -46,14 +46,12 @@ export default function Layout() {
   const showToast = useToast()
   const navigate = useNavigate()
   const location = useLocation()
-  const menuRef = useRef(null)
   const notificationsRef = useRef(null)
   const mobileToggleRef = useRef(null)
   const notifiedClaimIdsRef = useRef(new Set())
   const notifiedMatchIdsRef = useRef(new Set())
   const notifiedSearchIdsRef = useRef(new Set())
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [moreOpen, setMoreOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [claimNotifications, setClaimNotifications] = useState([])
   const [matchNotifications, setMatchNotifications] = useState([])
@@ -65,7 +63,6 @@ export default function Layout() {
 
   useEffect(() => {
     setMobileOpen(false)
-    setMoreOpen(false)
     setNotificationsOpen(false)
   }, [location.pathname])
 
@@ -241,24 +238,6 @@ export default function Layout() {
   }
 
   useEffect(() => {
-    if (!moreOpen) return undefined
-
-    const closeOnOutsideClick = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) setMoreOpen(false)
-    }
-    const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setMoreOpen(false)
-    }
-
-    document.addEventListener('pointerdown', closeOnOutsideClick)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsideClick)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [moreOpen])
-
-  useEffect(() => {
     if (!mobileOpen) return undefined
     const closeOnEscape = (event) => {
       if (event.key === 'Escape') {
@@ -321,44 +300,7 @@ export default function Layout() {
                   {item.label}
                 </NavLink>
               ))}
-              <div className="relative" ref={menuRef}>
-                <button
-                  type="button"
-                  aria-expanded={moreOpen}
-                  aria-haspopup="menu"
-                  onClick={() => setMoreOpen((open) => !open)}
-                  className={`site-nav-link ${moreOpen ? 'site-nav-link-active' : ''}`}
-                >
-                  More <span aria-hidden="true" className={`ml-1 inline-block transition-transform ${moreOpen ? 'rotate-180' : ''}`}>⌄</span>
-                </button>
-                {moreOpen && (
-                  <div role="menu" className="site-more-menu absolute left-1/2 top-full z-50 mt-3 w-64 -translate-x-1/2 rounded-2xl border border-brand-100 bg-white p-2 shadow-xl">
-                    {quickLinks.filter((item) => item.to !== '/sell').map((item) => (
-                      <Link
-                        key={item.to}
-                        role="menuitem"
-                        to={item.to}
-                        onClick={() => setMoreOpen(false)}
-                        className="site-more-link"
-                      >
-                        <span aria-hidden="true" className="site-more-icon">{item.icon}</span>
-                        <span>{item.label}</span>
-                      </Link>
-                    ))}
-                    <div className="my-1 border-t border-brand-100" />
-                    <Link role="menuitem" to="/profile" onClick={() => setMoreOpen(false)} className="site-more-link">
-                      <span aria-hidden="true" className="site-more-icon">◎</span>
-                      <span>Profile &amp; settings</span>
-                    </Link>
-                    {user.role === 'admin' && (
-                      <Link role="menuitem" to="/admin" onClick={() => setMoreOpen(false)} className="site-more-link">
-                        <span aria-hidden="true" className="site-more-icon">⚑</span>
-                        <span>Admin console</span>
-                      </Link>
-                    )}
-                  </div>
-                )}
-              </div>
+              {user.role === 'admin' && <NavLink to="/admin" className={navClass}>Admin</NavLink>}
             </nav>
           ) : (
             <nav aria-label="Main navigation" className="ml-auto hidden items-center gap-2 xl:flex">
@@ -505,12 +447,6 @@ export default function Layout() {
                 {item.label}
               </NavLink>
             ))}
-            <NavLink to="/search" className={navClass}>Search</NavLink>
-            <NavLink to="/needs" className={navClass}>Need Board</NavLink>
-            <NavLink to="/my-listings" className={navClass}>My listings</NavLink>
-            <NavLink to="/wishlist" className={navClass}>Wishlist</NavLink>
-            <NavLink to="/lost-found/report" className={navClass}>Report item</NavLink>
-            {user.role === 'admin' && <NavLink to="/admin" className={navClass}>Admin</NavLink>}
           </nav>
         )}
 

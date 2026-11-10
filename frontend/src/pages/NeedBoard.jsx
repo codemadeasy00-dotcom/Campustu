@@ -4,6 +4,7 @@ import { errorMessage, itemsApi, metaApi, needsApi } from '../services/api.js'
 import { Alert, inputClass } from '../components/ui.jsx'
 import PageHero from '../components/PageHero.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import { trackUserSearch } from '../services/searchTracker.js'
 
 const requestDurations = [6, 12, 24, 72, 168]
 const primaryActionClass = 'inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50'
@@ -41,6 +42,7 @@ export default function NeedBoard() {
   const [responses, setResponses] = useState([])
   const [myListings, setMyListings] = useState([])
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [branchId, setBranchId] = useState('')
   const [showMine, setShowMine] = useState(false)
@@ -75,12 +77,16 @@ export default function NeedBoard() {
         return
       }
       const result = await needsApi.list({
-        q: search.trim(),
+        q: debouncedSearch.trim(),
         category_id: categoryId,
         branch_id: branchId,
         mine: showMine ? 'true' : 'false',
       })
       setRequests(result.requests || [])
+      if (debouncedSearch.trim().length >= 2 && !showMine) {
+        trackUserSearch(debouncedSearch, { category_id: categoryId, branch_id: branchId })
+          .catch((trackingError) => console.error('Could not automatically track Need Board search:', trackingError))
+      }
     } catch (err) {
       setError(errorMessage(err))
       setDetail(null)
@@ -88,7 +94,7 @@ export default function NeedBoard() {
     } finally {
       setLoading(false)
     }
-  }, [requestId, search, categoryId, branchId, showMine])
+  }, [requestId, debouncedSearch, categoryId, branchId, showMine])
 
   useEffect(() => {
     let cancelled = false
@@ -118,6 +124,11 @@ export default function NeedBoard() {
   useEffect(() => {
     loadRequests()
   }, [loadRequests])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(search), 350)
+    return () => window.clearTimeout(timeout)
+  }, [search])
 
   const isOwner = detail?.user_id === user?.id
   const canRespond = detail?.status === 'open' && !isOwner && !detail?.has_responded
@@ -354,6 +365,10 @@ export default function NeedBoard() {
             <label className="text-sm font-medium text-slate-700 sm:col-span-2">
               Search needs
               <input className={`${inputClass} mt-1`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campus requests" />
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                When automatic alerts are enabled, searches are used for future marketplace and Need Board alerts.{' '}
+                <Link to="/marketplace" className="font-semibold text-brand-700 underline">Manage alert settings</Link>.
+              </span>
             </label>
             <label className="text-sm font-medium text-slate-700">
               Category

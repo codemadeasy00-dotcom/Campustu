@@ -9,6 +9,7 @@ import ItemPhoto from '../components/ItemPhoto.jsx'
 import ReportItemButton from '../components/ReportItemButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import UserBadges from '../components/UserBadges.jsx'
+import { trackUserSearch } from '../services/searchTracker.js'
 
 const PAGE_SIZE = 12
 
@@ -88,6 +89,7 @@ export default function Marketplace() {
   const [savedSearchBusy, setSavedSearchBusy] = useState(false)
   const [savedSearchError, setSavedSearchError] = useState('')
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false)
+  const [autoTrackSearches, setAutoTrackSearches] = useState(true)
   const [quietStart, setQuietStart] = useState('22:00')
   const [quietEnd, setQuietEnd] = useState('08:00')
   const [quietTimezone, setQuietTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
@@ -110,6 +112,7 @@ export default function Marketplace() {
     searchAlertsApi.preferences()
       .then(({ preferences }) => {
         if (cancelled) return
+        setAutoTrackSearches(preferences.auto_track_searches !== false)
         setQuietHoursEnabled(Boolean(preferences.quiet_start && preferences.quiet_end))
         setQuietTimezone(preferences.timezone || 'UTC')
         if (preferences.quiet_start) setQuietStart(String(preferences.quiet_start).slice(0, 5))
@@ -160,6 +163,10 @@ export default function Marketplace() {
         if (cancelled) return
         setItems((current) => page === 0 ? result.items : [...current, ...result.items])
         setHasMore(result.has_more)
+        if (page === 0 && debouncedSearch.length >= 2) {
+          trackUserSearch(debouncedSearch, { category_id: categoryId, branch_id: branchId })
+            .catch((trackingError) => console.error('Could not automatically track marketplace search:', trackingError))
+        }
       })
       .catch((err) => {
         if (!cancelled) {
@@ -188,28 +195,6 @@ export default function Marketplace() {
     setPage(0)
   }
 
-  async function saveSearch() {
-    const keyword = search.trim()
-    if (keyword.length < 2) return
-    setSavedSearchBusy(true)
-    setSavedSearchError('')
-    try {
-      const { search: saved } = await searchAlertsApi.save({
-        keyword,
-        category_id: categoryId || undefined,
-        branch_id: branchId || undefined,
-      })
-      setSavedSearches((current) => [
-        saved,
-        ...current.filter((entry) => entry.id !== saved.id),
-      ])
-    } catch (err) {
-      setSavedSearchError(errorMessage(err))
-    } finally {
-      setSavedSearchBusy(false)
-    }
-  }
-
   async function saveQuietHours() {
     setQuietHoursBusy(true)
     setQuietHoursNotice('')
@@ -219,12 +204,9 @@ export default function Marketplace() {
         quiet_start: quietHoursEnabled ? quietStart : null,
         quiet_end: quietHoursEnabled ? quietEnd : null,
         timezone: quietTimezone,
+        auto_track_searches: autoTrackSearches,
       })
-      setQuietHoursNotice(
-        quietHoursEnabled
-          ? 'Quiet hours saved. In-app alerts remain immediate; push alerts pause during this window.'
-          : 'Quiet hours are off. Push alerts can arrive at any time.',
-      )
+      setQuietHoursNotice('Alert preferences saved.')
     } catch (err) {
       setSavedSearchError(errorMessage(err))
     } finally {
@@ -238,6 +220,19 @@ export default function Marketplace() {
     try {
       await searchAlertsApi.remove(id)
       setSavedSearches((current) => current.filter((entry) => entry.id !== id))
+    } catch (err) {
+      setSavedSearchError(errorMessage(err))
+    } finally {
+      setSavedSearchBusy(false)
+    }
+  }
+
+  async function removeAutomaticSearches() {
+    setSavedSearchBusy(true)
+    setSavedSearchError('')
+    try {
+      await searchAlertsApi.removeAutomatic()
+      setSavedSearches((current) => current.filter((entry) => !entry.auto_tracked))
     } catch (err) {
       setSavedSearchError(errorMessage(err))
     } finally {
@@ -284,16 +279,9 @@ export default function Marketplace() {
             className={inputClass}
           />
         </label>
-        {user?.college && search.trim().length >= 2 && (
-          <button
-            type="button"
-            disabled={savedSearchBusy}
-            onClick={saveSearch}
-            className="mt-2 text-sm font-semibold text-brand-700 underline disabled:opacity-50"
-          >
-            {savedSearchBusy ? 'Saving search…' : '＋ Save this search for alerts'}
-          </button>
-        )}
+        <p className="mt-2 text-xs text-slate-500">
+          When automatic alerts are enabled, searches of 2 or more characters are stored for future marketplace and Need Board alerts. Turn this off or delete tracked terms below.
+        </p>
         {savedSearches.length > 0 && (
           <div className="mt-3 rounded-xl border border-brand-100 bg-white p-3">
             <h2 className="text-xs font-bold uppercase tracking-wide text-slate-600">Your search alerts</h2>
@@ -302,6 +290,7 @@ export default function Marketplace() {
                 <li key={saved.id} className="flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-xs text-brand-800">
                   <span>
                     {saved.keyword}
+                    {saved.auto_tracked && <span className="ml-1 text-brand-600">· automatic</span>}
                     {(saved.category_name || saved.branch_name) && (
                       <span className="ml-1 text-brand-600">
                         · {[saved.category_name, saved.branch_name].filter(Boolean).join(' · ')}
@@ -322,9 +311,37 @@ export default function Marketplace() {
             </ul>
           </div>
         )}
+        {savedSearches.some((saved) => saved.auto_tracked) && (
+          <button
+            type="button"
+            disabled={savedSearchBusy}
+            onClick={removeAutomaticSearches}
+            className="mt-2 text-xs font-semibold text-red-700 underline disabled:opacity-50"
+          >
+            Delete automatically tracked searches
+          </button>
+        )}
+        {autoTrackSearches && savedSearches.length >= 20 && !savedSearches.some((saved) => saved.auto_tracked) && (
+          <p role="status" className="mt-2 text-xs text-amber-800">
+            Your 20 search alerts are all manually saved. Remove one to make room for automatic alerts.
+          </p>
+        )}
 
         <div className="mt-3 rounded-xl border border-brand-100 bg-white p-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={autoTrackSearches}
+                onChange={(event) => setAutoTrackSearches(event.target.checked)}
+              />
+              Automatically save searches for alerts
+            </label>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            New searches may alert you when a matching marketplace item or campus request is posted. Turning this off stops tracking new searches; existing alerts stay until removed.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
               <input type="checkbox" checked={quietHoursEnabled} onChange={(event) => setQuietHoursEnabled(event.target.checked)} />
               Quiet hours for push alerts
