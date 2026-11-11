@@ -380,9 +380,8 @@ export default function Layout() {
       />
       <header ref={headerRef} className="site-header sticky top-0 z-40 border-b border-brand-200/80 bg-white/90 shadow-[0_4px_18px_rgba(23,90,109,0.05)] backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-[90rem] items-center gap-3 px-3 py-2.5 sm:px-5 lg:px-8">
-          <Link to="/" aria-label="Campustu OS v2 home" className="flex shrink-0 items-center gap-2">
+          <Link to="/" aria-label="Campustu home" className="flex shrink-0 items-center gap-2">
             <span className="wordmark-hover inline-block"><Wordmark className="text-xl sm:text-2xl" /></span>
-            <span className="rounded-full border border-brand-200 bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-brand-700">OS v2</span>
           </Link>
 
           {user ? (
@@ -399,6 +398,21 @@ export default function Layout() {
               <Link to="/signup" className="site-primary-action">Join your campus</Link>
             </nav>
           )}
+
+          <button
+            type="button"
+            className="site-global-search-toggle"
+            aria-label={siteSearchOpen ? 'Close feature search' : 'Search website features'}
+            aria-expanded={siteSearchOpen}
+            aria-controls="site-feature-search"
+            onClick={() => {
+              setMobileOpen(false)
+              setNotificationsOpen(false)
+              setSiteSearchOpen((open) => !open)
+            }}
+          >
+            <SearchIcon className="h-5 w-5" />
+          </button>
 
           {user && (
             <div className="site-header-actions ml-auto shrink-0 items-center gap-2 xl:ml-0">
@@ -539,21 +553,6 @@ export default function Layout() {
               <button type="button" className="site-logout hidden xl:inline-flex" onClick={handleLogout}>Log out</button>
             </div>
           )}
-
-          <button
-            type="button"
-            className="site-global-search-toggle"
-            aria-label={siteSearchOpen ? 'Close feature search' : 'Search website features'}
-            aria-expanded={siteSearchOpen}
-            aria-controls="site-feature-search"
-            onClick={() => {
-              setMobileOpen(false)
-              setNotificationsOpen(false)
-              setSiteSearchOpen((open) => !open)
-            }}
-          >
-            <SearchIcon className="h-5 w-5" />
-          </button>
 
           <button type="button" className="site-qr-toggle" onClick={openShareQr} aria-label="Share Campustu with QR code">
             <span aria-hidden="true">📱</span><span>QR</span>
