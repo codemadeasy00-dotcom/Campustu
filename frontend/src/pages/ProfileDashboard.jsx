@@ -8,6 +8,8 @@ import ItemPhoto from '../components/ItemPhoto.jsx'
 import { checkImageSafety } from '../utils/moderation.js'
 import PushNotifications from '../components/PushNotifications.jsx'
 import UserBadges from '../components/UserBadges.jsx'
+import BlockedUsersSettings from '../components/BlockedUsersSettings.jsx'
+import BlockUserButton from '../components/BlockUserButton.jsx'
 
 const DELETE_WINDOW_MS = 8 * 60 * 60 * 1000
 
@@ -570,6 +572,8 @@ export default function ProfileDashboard() {
         </div>
       </section>
 
+      <BlockedUsersSettings />
+
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-slate-500">Your account and campus activity</p>
         <button type="button" onClick={loadDashboard} disabled={refreshing} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50">
@@ -675,7 +679,17 @@ export default function ProfileDashboard() {
                 {managedClaims.map((claim) => (
                   <article key={claim.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-semibold text-slate-900">{claim.claimant_name}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-slate-900">{claim.claimant_name}</p>
+                        <BlockUserButton
+                          userId={claim.claimant_id}
+                          userName={claim.claimant_name}
+                          currentUserId={user?.id}
+                          onBlocked={(blockedUserId) => setManagedClaims((current) => (
+                            current.filter((entry) => entry.claimant_id !== blockedUserId)
+                          ))}
+                        />
+                      </div>
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
                         claim.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : claim.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900'
                       }`}>

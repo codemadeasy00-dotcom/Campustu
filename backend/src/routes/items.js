@@ -13,6 +13,7 @@ const { requireAuth, requireActive, requireCollege } = require('../middleware/au
 const { requireImageUploadsEnabled, requireMarketplaceWritable } = require('../middleware/system-controls')
 const { findBarterCycles } = require('../utils/barter-cycles')
 const { notifySearchAlertUser } = require('../utils/search-alerts')
+const { lockAndAssertUsersNotBlocked, notBlockedSql } = require('../utils/user-blocks')
 
 router.use(requireAuth)
 router.use(requireMarketplaceWritable)
@@ -186,7 +187,11 @@ function visibleTo(viewer, row) {
 }
 
 async function loadItem(id, viewer) {
-  const { rows } = await query(`${ITEM_SELECT} WHERE i.id = $1`, [id])
+  const { rows } = await query(
+    `${ITEM_SELECT} WHERE i.id = $1
+      AND ($3 IN ('admin', 'super_admin') OR ${notBlockedSql('$2', 'i.seller_id')})`,
+    [id, viewer.id, viewer.role],
+  )
   return visibleTo(viewer, rows[0]) ? shape(rows[0], viewer) : null
 }
 
@@ -280,6 +285,7 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
            LEFT JOIN branches search_branch ON search_branch.id = ss.branch_id
           WHERE ss.college_id = $1
             AND ss.user_id <> $4
+            AND ${notBlockedSql('ss.user_id', '$4')}
             AND recipient.status = 'active'
             AND recipient.deleted_at IS NULL
             AND recipient.college_id = ss.college_id
@@ -334,6 +340,7 @@ router.get('/', requireCollege, async (req, res) => {
   const where = [
     'i.college_id = $1',
     "i.status = 'available'",
+    `($3 IN ('admin', 'super_admin') OR ${notBlockedSql('$2', 'i.seller_id')})`,
     `(NOT EXISTS (
        SELECT 1 FROM item_reports ir
         WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
@@ -390,6 +397,7 @@ router.get('/barter-loops', requireCollege, async (req, res) => {
        LEFT JOIN categories wanted_category ON wanted_category.id = w.category_id
       WHERE i.college_id = $1
         AND i.status = 'available'
+        AND ($3 IN ('admin', 'super_admin') OR ${notBlockedSql('$2', 'i.seller_id')})
         AND NOT EXISTS (
           SELECT 1 FROM item_reports ir
            WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
@@ -400,13 +408,29 @@ router.get('/barter-loops', requireCollege, async (req, res) => {
              AND abo.badge_id = 'under_review' AND abo.enabled
         )
       GROUP BY i.id, u.display_name, c.name`,
-    [req.user.college_id],
+    [req.user.college_id, req.user.id, req.user.role],
   )
-  const { cycles, limited } = findBarterCycles(rows.map((item) => ({
+  const { cycles: candidateCycles, limited } = findBarterCycles(rows.map((item) => ({
     ...item,
     wanted_category_ids: item.wanted_category_ids.map(Number),
     category_id: Number(item.category_id),
   })), req.user.id)
+  const cycleUserIds = [...new Set(candidateCycles.flatMap((cycle) => cycle.map((item) => item.seller_id)))]
+  const { rows: blockedPairs } = cycleUserIds.length
+    ? await query(
+      `SELECT blocker_id, blocked_id
+         FROM user_blocks
+        WHERE blocker_id = ANY($1::uuid[]) AND blocked_id = ANY($1::uuid[])`,
+      [cycleUserIds],
+    )
+    : { rows: [] }
+  const blockedPairKeys = new Set(blockedPairs.map(({ blocker_id, blocked_id }) => `${blocker_id}:${blocked_id}`))
+  const cycles = candidateCycles.filter((cycle) => {
+    const participants = cycle.map((item) => item.seller_id)
+    return !participants.some((participant, index) => participants.slice(index + 1).some((other) => (
+      blockedPairKeys.has(`${participant}:${other}`) || blockedPairKeys.has(`${other}:${participant}`)
+    )))
+  })
   res.json({ limited,
     cycles: cycles.map((cycle) => cycle.map((item) => ({
       id: item.id,
@@ -428,7 +452,8 @@ router.get('/reservations/mine', requireCollege, async (req, res) => {
        JOIN items i ON i.id = r.item_id
        JOIN users buyer ON buyer.id = r.buyer_id
        JOIN users seller ON seller.id = r.seller_id
-      WHERE r.buyer_id = $1 OR r.seller_id = $1
+      WHERE (r.buyer_id = $1 OR r.seller_id = $1)
+        AND ${notBlockedSql('$1', `CASE WHEN r.buyer_id = $1 THEN r.seller_id ELSE r.buyer_id END`)}
       ORDER BY r.created_at DESC
       LIMIT 100`,
     [req.user.id],
@@ -439,6 +464,12 @@ router.get('/reservations/mine', requireCollege, async (req, res) => {
 router.post('/:id/reservations', requireActive, requireCollege, async (req, res) => {
   const { id } = idParam.parse(req.params)
   const { rows: [reservation] } = await tx(async (db) => {
+    const { rows: [listing] } = await db.query(
+      'SELECT seller_id FROM items WHERE id = $1',
+      [id],
+    )
+    if (!listing) throw new AppError(404, 'Listing not found')
+    await lockAndAssertUsersNotBlocked(db, req.user.id, listing.seller_id)
     const { rows: [item] } = await db.query(
       `SELECT i.id, i.seller_id, i.college_id, i.status,
               EXISTS (
@@ -456,6 +487,7 @@ router.post('/:id/reservations', requireActive, requireCollege, async (req, res)
     )
     if (!item || item.college_id !== req.user.college_id) throw new AppError(404, 'Listing not found')
     if (item.seller_id === req.user.id) throw new AppError(400, 'You cannot reserve your own listing')
+    if (item.seller_id !== listing.seller_id) throw new AppError(409, 'Listing owner changed. Please try again.')
     if (item.has_pending_reports) throw new AppError(409, 'This listing is temporarily unavailable while it is under moderation review')
     if (item.status !== 'available') throw new AppError(409, 'This listing is no longer available')
 
@@ -484,6 +516,12 @@ router.patch('/reservations/:id', requireActive, requireCollege, async (req, res
   const reservationId = idParam.parse({ id: req.params.id }).id
   const { action } = reservationActionSchema.parse(req.body)
   const { rows: [reservation] } = await tx(async (db) => {
+    const { rows: [participants] } = await db.query(
+      'SELECT buyer_id, seller_id FROM reservations WHERE id = $1',
+      [reservationId],
+    )
+    if (!participants) throw new AppError(404, 'Reservation not found')
+    await lockAndAssertUsersNotBlocked(db, participants.buyer_id, participants.seller_id)
     const { rows: [current] } = await db.query(
       `SELECT r.id, r.item_id, r.buyer_id, r.seller_id, r.status, i.price, i.college_id,
               EXISTS (
@@ -501,6 +539,9 @@ router.patch('/reservations/:id', requireActive, requireCollege, async (req, res
       [reservationId],
     )
     if (!current || current.college_id !== req.user.college_id) throw new AppError(404, 'Reservation not found')
+    if (current.buyer_id !== participants.buyer_id || current.seller_id !== participants.seller_id) {
+      throw new AppError(409, 'Reservation participants changed. Please try again.')
+    }
 
     if (action === 'accept') {
       if (current.seller_id !== req.user.id) throw new AppError(403, 'Only the seller can accept this reservation')
@@ -548,6 +589,12 @@ router.patch('/reservations/:id', requireActive, requireCollege, async (req, res
 router.post('/reservations/:id/confirm', requireActive, requireCollege, async (req, res) => {
   const reservationId = idParam.parse({ id: req.params.id }).id
   const { rows: [result] } = await tx(async (db) => {
+    const { rows: [participants] } = await db.query(
+      'SELECT buyer_id, seller_id FROM reservations WHERE id = $1',
+      [reservationId],
+    )
+    if (!participants) throw new AppError(404, 'Reservation not found')
+    await lockAndAssertUsersNotBlocked(db, participants.buyer_id, participants.seller_id)
     const { rows: [reservation] } = await db.query(
       `SELECT r.id, r.buyer_id, r.seller_id, r.status, i.college_id,
               EXISTS (
@@ -565,6 +612,9 @@ router.post('/reservations/:id/confirm', requireActive, requireCollege, async (r
       [reservationId],
     )
     if (!reservation || reservation.college_id !== req.user.college_id) throw new AppError(404, 'Reservation not found')
+    if (reservation.buyer_id !== participants.buyer_id || reservation.seller_id !== participants.seller_id) {
+      throw new AppError(409, 'Reservation participants changed. Please try again.')
+    }
     if (![reservation.buyer_id, reservation.seller_id].includes(req.user.id)) {
       throw new AppError(403, 'You are not part of this reservation')
     }
@@ -624,6 +674,7 @@ router.get('/:id/reservation', requireCollege, async (req, res) => {
         AND c.user_b = CASE WHEN r.buyer_id < r.seller_id THEN r.seller_id ELSE r.buyer_id END
       WHERE r.item_id = $1 AND i.college_id = $3
         AND (r.buyer_id = $2 OR r.seller_id = $2)
+        AND ${notBlockedSql('$2', `CASE WHEN r.buyer_id = $2 THEN r.seller_id ELSE r.buyer_id END`)}
       ORDER BY r.created_at DESC
       LIMIT 1`,
     [id, req.user.id, req.user.college_id],

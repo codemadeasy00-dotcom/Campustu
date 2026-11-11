@@ -542,12 +542,12 @@ export default function LostFoundNew() {
 
         <label className="block">
           <span className="mb-1 block text-sm font-semibold text-slate-700">Spot name *</span>
-          <input required minLength={2} maxLength={255} className={inputClass} value={form.location_name} onChange={(event) => updateForm('location_name', event.target.value)} placeholder="Building, room, or nearby landmark" />
+          <input required minLength={2} maxLength={255} className={inputClass} value={form.location_name} onChange={(event) => updateForm('location_name', event.target.value)} placeholder="Campus or nearby landmark" />
         </label>
 
         <section>
           <h2 className="mb-1 text-sm font-semibold text-slate-700">{form.status === 'lost' ? 'Approximate location lost *' : 'Where found *'}</h2>
-          <p className="mb-3 text-xs text-slate-500">Click the map, search for a place, or use Recenter me. A pin is required to publish.</p>
+          <p className="mb-3 text-xs text-slate-500">Click the map, search for a place, or use Recenter me. Public pins are approximate; your exact pin and handoff notes are only visible to you and campus admins. Avoid room numbers and personal details.</p>
           <CampusMap
             center={campusCenter}
             onSelectLocation={(coords) => {
@@ -586,7 +586,7 @@ export default function LostFoundNew() {
                 {label}
               </label>
             ))}
-            <input maxLength={255} className={inputClass} value={form.location_note} onChange={(event) => updateForm('location_note', event.target.value)} placeholder="Optional handoff or location note" />
+            <input maxLength={255} className={inputClass} value={form.location_note} onChange={(event) => updateForm('location_note', event.target.value)} placeholder="Private handoff note (visible only to you and admins)" />
           </fieldset>
         )}
 

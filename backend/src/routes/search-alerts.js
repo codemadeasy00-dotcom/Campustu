@@ -3,6 +3,7 @@ const { z } = require('zod')
 const { query, tx } = require('../db')
 const { AppError } = require('../utils/errors')
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth')
+const { notBlockedSql } = require('../utils/user-blocks')
 const { assertUserTextIsAllowed } = require('../utils/text-moderation')
 
 router.use(requireAuth, requireActive, requireCollege)
@@ -249,6 +250,7 @@ router.get('/notifications', async (req, res) => {
        FROM in_app_notifications n
        LEFT JOIN items i ON i.id = n.item_id
        LEFT JOIN need_board_requests request ON request.id = n.need_request_id
+       LEFT JOIN need_board_responses response ON response.id = n.need_response_id
        LEFT JOIN saved_searches search ON search.id = n.search_id
       WHERE n.user_id = $1
         AND (
@@ -256,6 +258,7 @@ router.get('/notifications', async (req, res) => {
             n.item_id IS NOT NULL
             AND i.college_id = $2
             AND i.status <> 'removed'
+            AND ${notBlockedSql('$1', 'i.seller_id')}
             AND NOT EXISTS (
               SELECT 1 FROM item_reports ir
                WHERE ir.marketplace_item_id = i.id AND ir.status = 'pending'
@@ -271,6 +274,10 @@ router.get('/notifications', async (req, res) => {
             n.need_request_id IS NOT NULL
             AND request.college_id = $2
             AND (n.need_response_id IS NULL OR request.user_id = $1)
+            AND (
+              (n.need_response_id IS NULL AND ${notBlockedSql('$1', 'request.user_id')})
+              OR (n.need_response_id IS NOT NULL AND ${notBlockedSql('$1', 'response.responder_id')})
+            )
             AND (n.need_response_id IS NOT NULL OR (request.status = 'open' AND request.expires_at > now()))
           )
         )

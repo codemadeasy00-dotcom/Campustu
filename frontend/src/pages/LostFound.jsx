@@ -9,6 +9,7 @@ import { processAndCompressImage } from '../utils/imageCompressor.js';
 import { checkImagesSafety } from '../utils/moderation.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import PageHero from '../components/PageHero.jsx';
+import BlockUserButton from '../components/BlockUserButton.jsx';
 import ItemPhoto from '../components/ItemPhoto.jsx';
 import ReportItemButton from '../components/ReportItemButton.jsx';
 import MapPlaceSearch from '../components/MapPlaceSearch.jsx';
@@ -1215,7 +1216,16 @@ export default function LostFound() {
                   <p className="text-center text-xs text-slate-500">This report is not accepting claims.</p>
                 )}
                 {!showMine && !isOwner && !isAdmin && (
-                  <div className="mt-2 flex justify-end border-t border-slate-100 pt-2">
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                    <BlockUserButton
+                      userId={item.user_id}
+                      userName={item.poster_name}
+                      currentUserId={user?.id}
+                      onBlocked={(blockedUserId) => {
+                        setItems((current) => current.filter((post) => post.user_id !== blockedUserId));
+                        setNearbyItems((current) => current?.filter((post) => post.user_id !== blockedUserId) ?? null);
+                      }}
+                    />
                     <ReportItemButton itemId={item.id} itemType="lost_found" />
                   </div>
                 )}
@@ -1312,7 +1322,18 @@ export default function LostFound() {
                 {managedClaims.map((claim) => (
                   <li key={claim.id} className="rounded-xl border border-slate-200 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-semibold text-slate-900">{claim.claimant_name}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-slate-900">{claim.claimant_name}</p>
+                        <BlockUserButton
+                          userId={claim.claimant_id}
+                          userName={claim.claimant_name}
+                          currentUserId={user?.id}
+                          onBlocked={(blockedUserId) => {
+                            setManagedClaims((current) => current.filter((entry) => entry.claimant_id !== blockedUserId));
+                            fetchItems();
+                          }}
+                        />
+                      </div>
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
                         claim.status === 'pending' ? 'bg-amber-100 text-amber-900' : claim.status === 'approved' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-600'
                       }`}>{claim.status}</span>

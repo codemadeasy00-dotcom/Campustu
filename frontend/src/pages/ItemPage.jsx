@@ -6,6 +6,7 @@ import { STATUS_STYLES, conditionLabel, formatPrice } from '../lib/format.js'
 import { getImageUrl } from '../lib/imageUrl.js'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 import ReportItemButton from '../components/ReportItemButton.jsx'
+import BlockUserButton from '../components/BlockUserButton.jsx'
 import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.jsx'
 import UserBadges from '../components/UserBadges.jsx'
 
@@ -216,6 +217,15 @@ export default function ItemPage() {
               ? 'No completed handovers yet.'
               : `Completed handovers with ${item.seller.trust_score} different student${item.seller.trust_score === 1 ? '' : 's'}.`}
           </div>
+          {!isOwner && user?.role !== 'admin' && (
+            <BlockUserButton
+              userId={item.seller.id}
+              userName={item.seller.display_name}
+              currentUserId={user?.id}
+              onBlocked={() => navigate('/marketplace')}
+              className="mt-3"
+            />
+          )}
         </div>
 
         {!isOwner && user?.role !== 'admin' && (

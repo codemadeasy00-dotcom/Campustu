@@ -5,6 +5,7 @@ import { Alert, inputClass } from '../components/ui.jsx'
 import PageHero from '../components/PageHero.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { trackUserSearch } from '../services/searchTracker.js'
+import BlockUserButton from '../components/BlockUserButton.jsx'
 
 const requestDurations = [6, 12, 24, 72, 168]
 const primaryActionClass = 'inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50'
@@ -285,6 +286,15 @@ export default function NeedBoard() {
             <p className="mt-5 text-xs text-slate-500">
               Posted by {detail.owner_name} · {detail.branch_name || 'Any branch'} · Expires {new Date(detail.expires_at).toLocaleString()}
             </p>
+            {!isOwner && user?.role !== 'admin' && (
+              <BlockUserButton
+                userId={detail.user_id}
+                userName={detail.owner_name}
+                currentUserId={user?.id}
+                onBlocked={() => navigate('/needs')}
+                className="mt-3"
+              />
+            )}
 
             {isOwner && (
               <div className="mt-6 border-t border-slate-100 pt-5">
@@ -296,7 +306,17 @@ export default function NeedBoard() {
                     {responses.map((response) => (
                       <li key={response.id} className="rounded-xl bg-slate-50 p-4">
                         <div className="flex flex-wrap justify-between gap-2 text-sm font-semibold text-slate-800">
-                          <span>{response.responder_name}</span>
+                          <span className="flex flex-wrap items-center gap-2">
+                            {response.responder_name}
+                            <BlockUserButton
+                              userId={response.responder_id}
+                              userName={response.responder_name}
+                              currentUserId={user?.id}
+                              onBlocked={(blockedUserId) => setResponses((current) => (
+                                current.filter((entry) => entry.responder_id !== blockedUserId)
+                              ))}
+                            />
+                          </span>
                           <span className="text-xs font-medium capitalize text-brand-700">
                             {response.offer_type === 'loan_offer' ? 'Non-binding loan offer' : 'Listing offer'}
                           </span>

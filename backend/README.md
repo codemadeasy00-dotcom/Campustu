@@ -53,7 +53,10 @@ their keyword/category/branch matches; quiet hours pause push only, while in-app
 Migration `029_automatic_search_alerts.sql` adds the default-on automatic search tracking preference
 and distinguishes automatic search history from alerts a student explicitly saves. Students can disable
 new tracking or delete automatically tracked searches from Profile settings. Apply migrations
-through `npm run db:migrate` before deploying backend code that depends on the new schema.
+through `npm run db:migrate` before deploying backend code that depends on the new schema. Migration
+`030_user_blocks.sql` adds account blocking. Blocking hides each account’s posts and conversations from
+the other, prevents new messages, reservations, claims, and barter loops, and cancels pending reservations
+and Lost & Found claims. Students can review and undo their own blocks under Profile → Safety & Privacy.
 The Need Board supports expiring requests, private replies, available-listing offers, and clearly labeled
 non-binding loan offers. `/api/search` combines available marketplace listings, active Lost & Found
 reports, and open Need Board requests without exposing posts hidden for moderation. Achievements use
@@ -69,6 +72,9 @@ the system does not fabricate XP or count a suggested barter loop as a completed
 | DELETE | /api/search-alerts/automatic | session cookie, active | Delete all automatically tracked search terms and their related alerts |
 | DELETE | /api/search-alerts/saved/:id | session cookie, active | Remove one of your saved alerts |
 | GET, PATCH | /api/search-alerts/preferences | session cookie, active | Read or update quiet hours and automatic search tracking preference |
+| GET | /api/blocks | session cookie, active | List accounts you have blocked |
+| POST | /api/blocks/:userId | session cookie, active | Block an account and cancel pending interactions |
+| DELETE | /api/blocks/:userId | session cookie, active | Unblock an account |
 | GET, POST | /api/needs | session cookie, active | Browse same-college requests or post a request with an expiry |
 | GET | /api/needs/:id | session cookie, active | View an open request; private responses are returned only to its owner |
 | POST | /api/needs/:id/responses | session cookie, active | Send one private listing or non-binding loan offer |

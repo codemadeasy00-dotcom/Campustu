@@ -5,6 +5,7 @@ const { AppError } = require('../utils/errors')
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth')
 const { assertUserTextIsAllowed } = require('../utils/text-moderation')
 const { notifySearchAlertUser } = require('../utils/search-alerts')
+const { lockAndAssertUsersNotBlocked, notBlockedSql } = require('../utils/user-blocks')
 
 router.use(requireAuth, requireActive, requireCollege)
 
@@ -52,7 +53,8 @@ const requestSelect = `
          branch.name AS branch_name,
          category.name AS category_name,
          (SELECT count(*)::int FROM need_board_responses response
-           WHERE response.request_id = request.id) AS response_count,
+           WHERE response.request_id = request.id
+             AND ${notBlockedSql('$2', 'response.responder_id')}) AS response_count,
          EXISTS (
            SELECT 1 FROM need_board_responses response
             WHERE response.request_id = request.id AND response.responder_id = $2
@@ -65,7 +67,7 @@ const requestSelect = `
 router.get('/', async (req, res) => {
   const filters = querySchema.parse(req.query)
   const params = [req.user.college_id, req.user.id]
-  const where = ['request.college_id = $1']
+  const where = ['request.college_id = $1', notBlockedSql('$2', 'request.user_id')]
 
   if (filters.mine === 'true') {
     where.push('request.user_id = $2')
@@ -159,6 +161,7 @@ router.post('/', async (req, res) => {
          LEFT JOIN branches matched_branch ON matched_branch.id = ss.branch_id
         WHERE ss.college_id = $1
           AND ss.user_id <> $3
+          AND ${notBlockedSql('ss.user_id', '$3')}
           AND recipient.status = 'active'
           AND recipient.deleted_at IS NULL
           AND recipient.college_id = ss.college_id
@@ -202,6 +205,7 @@ router.get('/:id', async (req, res) => {
     `${requestSelect}
       WHERE request.id = $1
         AND request.college_id = $3
+        AND ${notBlockedSql('$2', 'request.user_id')}
         AND (
           (request.status = 'open' AND request.expires_at > now())
           OR request.user_id = $2
@@ -221,8 +225,9 @@ router.get('/:id', async (req, res) => {
          JOIN users responder ON responder.id = response.responder_id
          LEFT JOIN items item ON item.id = response.item_id
         WHERE response.request_id = $1
+          AND ${notBlockedSql('$2', 'response.responder_id')}
         ORDER BY response.created_at`,
-      [id],
+      [id, req.user.id],
     )
     responses = rows
   }
@@ -248,6 +253,7 @@ router.post('/:id/responses', async (req, res) => {
     if (request.user_id === req.user.id) {
       throw new AppError(400, 'You cannot respond to your own campus request.')
     }
+    await lockAndAssertUsersNotBlocked(db, req.user.id, request.user_id)
     const { rows: [existing] } = await db.query(
       'SELECT id FROM need_board_responses WHERE request_id = $1 AND responder_id = $2',
       [id, req.user.id],

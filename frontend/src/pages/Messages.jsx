@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Alert } from '../components/ui.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { conversationsApi, errorMessage } from '../services/api.js'
+import BlockUserButton from '../components/BlockUserButton.jsx'
 
 function formatMessageTime(value) {
   const date = new Date(value)
@@ -229,14 +230,22 @@ export default function Messages() {
         <div className={`${conversationId ? '' : 'hidden md:flex'} min-h-[65vh] flex-col`}>
           {conversationId ? (
             <>
-              <header className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
+              <header className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
                 <Link to="/messages" className="rounded-lg px-2 py-1 text-sm font-semibold text-brand-700 hover:bg-brand-50 md:hidden">Back</Link>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <h2 className="truncate text-sm font-bold text-slate-900">
                     {selectedConversation?.other_user_name || 'Conversation'}
                   </h2>
                   <p className="truncate text-xs text-slate-500">{selectedConversation?.subject || 'Campus message thread'}</p>
                 </div>
+                {selectedConversation && (
+                  <BlockUserButton
+                    userId={selectedConversation.other_user_id}
+                    userName={selectedConversation.other_user_name}
+                    currentUserId={user?.id}
+                    onBlocked={() => navigate('/messages')}
+                  />
+                )}
               </header>
               <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/70 p-4">
                 {threadError && <Alert>{threadError}</Alert>}

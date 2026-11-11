@@ -5,6 +5,7 @@ const storage = require('../storage')
 const { AppError } = require('../utils/errors')
 const { requireAuth, requireCollege } = require('../middleware/auth')
 const { buildUserBadges, ITEM_BADGES, applyBadgeOverrides } = require('../utils/user-badges')
+const { notBlockedSql } = require('../utils/user-blocks')
 
 router.use(requireAuth)
 
@@ -46,6 +47,7 @@ router.get('/', async (req, res) => {
        JOIN user_trust t ON t.user_id = i.seller_id
        LEFT JOIN colleges c ON c.id = u.college_id
       WHERE w.user_id = $1 AND i.status <> 'removed'
+        AND ${notBlockedSql('$1', 'i.seller_id')}
         AND NOT (
           EXISTS (
             SELECT 1 FROM item_reports ir
@@ -105,6 +107,7 @@ router.post('/', requireCollege, async (req, res) => {
     const { rows: ok } = await db.query(
       `SELECT id FROM items
         WHERE id = ANY($1::uuid[]) AND college_id = $2 AND status = 'available' AND seller_id <> $3
+          AND ${notBlockedSql('$3', 'items.seller_id')}
           AND NOT EXISTS (
             SELECT 1 FROM item_reports ir
              WHERE ir.marketplace_item_id = items.id AND ir.status = 'pending'

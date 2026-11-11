@@ -12,6 +12,8 @@ const { buildUserBadges, ITEM_BADGES, applyBadgeOverrides } = require('../utils/
 const { createImageUpload } = require('../utils/image-upload');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const { notifyUser: notifyUserPush } = require('../utils/web-push');
+const { publicLostFoundLocation, publicLostFoundDistance } = require('../utils/lost-found-location');
+const { lockAndAssertUsersNotBlocked, notBlockedSql } = require('../utils/user-blocks');
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
 const { requireImageUploadsEnabled } = require('../middleware/system-controls');
 
@@ -162,6 +164,7 @@ function shapeLostFoundItem(row, viewer) {
     ...item
   } = row;
   const canSeeModeration = viewer?.role === 'admin' || viewer?.id === item.user_id;
+  const canSeeExactLocation = canSeeModeration;
   const itemBadges = applyBadgeOverrides([
     ...(flaggedForReview || hasPendingReports ? [{ id: 'under_review', label: 'Under Moderation Review' }] : []),
     ...(item.urgent ? [{ id: 'urgent', label: 'Urgent' }] : []),
@@ -171,6 +174,7 @@ function shapeLostFoundItem(row, viewer) {
     .filter((badge) => badge.id !== 'under_review' || canSeeModeration);
   return {
     ...item,
+    ...(canSeeExactLocation ? {} : publicLostFoundLocation(item)),
     photo: photoKey ? storage.urlFor(photoKey) : null,
     under_review: itemBadges.some(({ id }) => id === 'under_review'),
     urgent: itemBadges.some(({ id }) => id === 'urgent'),
@@ -307,15 +311,19 @@ router.get('/notifications', requireCollege, async (req, res, next) => {
           WHERE lif.user_id = $1
             AND lif.college_id = $2
             AND c.status = 'pending'
+            AND ${notBlockedSql('$1', 'c.claimant_id')}
           ORDER BY c.created_at DESC
           LIMIT 100`,
         [req.user.id, req.user.college_id],
       ),
       query(
-        `SELECT id, item_id, item_title, matched_item_title, similarity_score, created_at
-           FROM lost_found_match_notifications
-          WHERE owner_id = $1 AND college_id = $2
-          ORDER BY created_at DESC
+        `SELECT notification.id, notification.item_id, notification.item_title,
+                notification.matched_item_title, notification.similarity_score, notification.created_at
+           FROM lost_found_match_notifications notification
+           JOIN lost_found_items matched_item ON matched_item.id = notification.matched_item_id
+          WHERE notification.owner_id = $1 AND notification.college_id = $2
+            AND ${notBlockedSql('$1', 'matched_item.user_id')}
+          ORDER BY notification.created_at DESC
           LIMIT 100`,
         [req.user.id, req.user.college_id],
       ),
@@ -407,7 +415,7 @@ router.post('/:id/match-scan', requireActive, requireCollege, async (req, res, n
       if (item.already_scanned) return { already_scanned: true, removed: false };
 
       const { rows: [match] } = await db.query(
-        `SELECT id, title,
+        `SELECT id, user_id, title,
                 1 - (embedding <=> $1::vector) AS similarity_score
            FROM lost_found_items
           WHERE college_id = $2
@@ -416,9 +424,10 @@ router.post('/:id/match-scan', requireActive, requireCollege, async (req, res, n
             AND category = $5
             AND lifecycle_status = 'active'
             AND embedding IS NOT NULL
+            AND ${notBlockedSql('$6', 'user_id')}
           ORDER BY embedding <=> $1::vector
           LIMIT 1`,
-        [vectorString, item.college_id, item.id, item.status, item.category],
+        [vectorString, item.college_id, item.id, item.status, item.category, req.user.id],
       );
       const score = match
         ? Math.max(0, Math.min(1, Number(match.similarity_score)))
@@ -455,9 +464,10 @@ router.post('/:id/match-scan', requireActive, requireCollege, async (req, res, n
             AND status = $5
             AND lifecycle_status = 'active'
             AND embedding IS NOT NULL
+            AND ${notBlockedSql('$6', 'user_id')}
           ORDER BY embedding <=> $1::vector
           LIMIT 5`,
-        [vectorString, item.college_id, item.id, item.user_id, oppositeStatus],
+        [vectorString, item.college_id, item.id, item.user_id, oppositeStatus, req.user.id],
       );
       const notifiedOwners = [];
       for (const oppositeMatch of oppositeMatches) {
@@ -521,8 +531,17 @@ router.post('/claims/redeem', requireActive, requireCollege, async (req, res, ne
   try {
     const { claim_id: claimId, handover_code: handoverCode } = redeemSchema.parse(req.body);
     await tx(async (db) => {
+      const { rows: [participants] } = await db.query(
+        `SELECT lif.user_id AS owner_id, claim.claimant_id
+           FROM item_claims claim
+           JOIN lost_found_items lif ON lif.id = claim.item_id
+          WHERE claim.id = $1 AND lif.college_id = $2`,
+        [claimId, req.user.college_id],
+      );
+      if (!participants) throw new AppError(404, 'Claim not found.');
+      await lockAndAssertUsersNotBlocked(db, participants.owner_id, participants.claimant_id);
       const { rows: [claim] } = await db.query(
-        `SELECT c.id, c.item_id, c.status, c.handover_code,
+        `SELECT c.id, c.item_id, c.claimant_id, c.status, c.handover_code,
                 lif.user_id AS owner_id, lif.lifecycle_status, lif.flagged_for_review,
                 EXISTS (
                   SELECT 1 FROM item_reports ir
@@ -540,6 +559,9 @@ router.post('/claims/redeem', requireActive, requireCollege, async (req, res, ne
       );
       if (!claim) throw new AppError(404, 'Claim not found.');
       assertItemOwner({ user_id: claim.owner_id }, req.user);
+      if (claim.owner_id !== participants.owner_id || claim.claimant_id !== participants.claimant_id) {
+        throw new AppError(409, 'Claim participants changed. Please try again.');
+      }
       if (claim.status !== 'approved' || claim.lifecycle_status !== 'claim_pending') {
         throw new AppError(409, 'This claim is no longer awaiting handover verification.');
       }
@@ -576,10 +598,13 @@ router.get('/my-claims', requireCollege, async (req, res, next) => {
     const { rows } = await query(
       `SELECT c.id, c.item_id, c.claim_text, c.status, c.created_at, c.reviewed_at,
               CASE WHEN c.status = 'approved' THEN c.handover_code ELSE NULL END AS handover_code,
-              lif.title, lif.status AS item_status, lif.lifecycle_status, lif.location_name
+              lif.title, lif.status AS item_status, lif.lifecycle_status,
+              'Approximate campus area' AS location_name
          FROM item_claims c
          JOIN lost_found_items lif ON lif.id = c.item_id
-        WHERE c.claimant_id = $1 AND lif.college_id = $2
+        WHERE c.claimant_id = $1
+          AND lif.college_id = $2
+          AND ${notBlockedSql('$1', 'lif.user_id')}
         ORDER BY c.created_at DESC`,
       [req.user.id, req.user.college_id],
     );
@@ -599,6 +624,7 @@ router.get('/nearby', requireCollege, async (req, res, next) => {
       "lif.lifecycle_status = 'active'",
       'lif.latitude IS NOT NULL',
       'lif.longitude IS NOT NULL',
+      `($6 IN ('admin', 'super_admin') OR ${notBlockedSql('$5', 'lif.user_id')})`,
       `((NOT lif.flagged_for_review
           AND NOT EXISTS (
             SELECT 1 FROM item_reports ir
@@ -665,10 +691,10 @@ router.get('/nearby', requireCollege, async (req, res, next) => {
                 (SELECT storage_key FROM lost_found_photos
                   WHERE item_id = lif.id ORDER BY position LIMIT 1) AS photo_key,
                 2 * 6371000 * ASIN(SQRT(LEAST(1.0,
-                  POWER(SIN(RADIANS((lif.latitude::double precision - $1::double precision) / 2)), 2)
+                  POWER(SIN(RADIANS((round(lif.latitude::numeric, 3)::double precision - $1::double precision) / 2)), 2)
                   + COS(RADIANS($1::double precision))
-                  * COS(RADIANS(lif.latitude::double precision))
-                  * POWER(SIN(RADIANS((lif.longitude::double precision - $2::double precision) / 2)), 2)
+                  * COS(RADIANS(round(lif.latitude::numeric, 3)::double precision))
+                  * POWER(SIN(RADIANS((round(lif.longitude::numeric, 3)::double precision - $2::double precision) / 2)), 2)
                 ))) AS distance_meters
            FROM lost_found_items lif
            JOIN users u ON u.id = lif.user_id
@@ -693,7 +719,9 @@ router.get('/nearby', requireCollege, async (req, res, next) => {
     const hasMore = rows.length > 200;
     const items = rows.slice(0, 200).map((row) => ({
       ...shapeLostFoundItem(row, req.user),
-      distance_meters: Math.round(Number(row.distance_meters)),
+      distance_meters: req.user.role === 'admin' || req.user.id === row.user_id
+        ? Math.round(Number(row.distance_meters))
+        : publicLostFoundDistance(row.distance_meters),
     }));
 
     res.json({
@@ -759,6 +787,7 @@ router.get('/', requireCollege, async (req, res, next) => {
       LEFT JOIN colleges c ON c.id = u.college_id
       WHERE lif.college_id = $1
         AND lif.lifecycle_status = 'active'
+        AND ($3 IN ('admin', 'super_admin') OR ${notBlockedSql('$2', 'lif.user_id')})
         AND ((NOT lif.flagged_for_review
               AND NOT EXISTS (
                 SELECT 1 FROM item_reports ir
@@ -1032,7 +1061,7 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
       let acceptedSkipReason = null;
       if (vectorString) {
         const { rows } = await db.query(
-          `SELECT lif.id, lif.title, lif.description, lif.category, lif.status,
+          `SELECT lif.id, lif.user_id, lif.title, lif.description, lif.category, lif.status,
                   lif.location_name, lif.created_at,
                   (SELECT storage_key FROM lost_found_photos
                     WHERE item_id = lif.id ORDER BY position LIMIT 1) AS photo_key,
@@ -1043,9 +1072,10 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
               AND lif.category = $4
               AND lif.lifecycle_status = 'active'
               AND lif.embedding IS NOT NULL
+              AND ${notBlockedSql('$5', 'lif.user_id')}
             ORDER BY lif.embedding <=> $1::vector
             LIMIT 5`,
-          [vectorString, req.user.college_id, data.status, data.category],
+          [vectorString, req.user.college_id, data.status, data.category, req.user.id],
         );
         similarItems = rows
           .map((row) => ({
@@ -1150,6 +1180,7 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
             AND lif.lifecycle_status = 'active'
             AND lif.user_id <> $4
             AND lif.embedding IS NOT NULL
+            AND ${notBlockedSql('$4', 'lif.user_id')}
           ORDER BY lif.embedding <=> $1::vector
           LIMIT 5`,
         [vectorString, req.user.college_id, targetStatus, req.user.id]
@@ -1243,8 +1274,9 @@ router.get('/:id/claims', requireCollege, async (req, res, next) => {
          FROM item_claims c
          JOIN users u ON u.id = c.claimant_id
         WHERE c.item_id = $1
-        ORDER BY CASE WHEN c.status = 'pending' THEN 0 ELSE 1 END, c.created_at DESC`,
-      [itemId],
+           AND ${notBlockedSql('$2', 'c.claimant_id')}
+         ORDER BY CASE WHEN c.status = 'pending' THEN 0 ELSE 1 END, c.created_at DESC`,
+      [itemId, req.user.id],
     );
     res.json({ success: true, claims });
   } catch (err) {
@@ -1260,6 +1292,15 @@ router.patch('/:id/claims/:claimId', requireActive, requireCollege, async (req, 
     const { action } = reviewClaimSchema.parse(req.body);
 
     await tx(async (db) => {
+      const { rows: [participants] } = await db.query(
+        `SELECT lif.user_id AS owner_id, claim.claimant_id
+           FROM item_claims claim
+           JOIN lost_found_items lif ON lif.id = claim.item_id
+          WHERE claim.id = $1 AND claim.item_id = $2`,
+        [claimId, itemId],
+      );
+      if (!participants) throw new AppError(404, 'Claim not found.');
+      await lockAndAssertUsersNotBlocked(db, participants.owner_id, participants.claimant_id);
       const { rows: [item] } = await db.query(
         `SELECT id, user_id, lifecycle_status, flagged_for_review,
                 EXISTS (
@@ -1279,10 +1320,13 @@ router.patch('/:id/claims/:claimId', requireActive, requireCollege, async (req, 
       assertItemOwner(item, req.user);
 
       const { rows: [claim] } = await db.query(
-        'SELECT id, status FROM item_claims WHERE id = $1 AND item_id = $2 FOR UPDATE',
+        'SELECT id, claimant_id, status FROM item_claims WHERE id = $1 AND item_id = $2 FOR UPDATE',
         [claimId, itemId],
       );
       if (!claim) throw new AppError(404, 'Claim not found.');
+      if (item.user_id !== participants.owner_id || claim.claimant_id !== participants.claimant_id) {
+        throw new AppError(409, 'Claim participants changed. Please try again.');
+      }
       if (claim.status !== 'pending') throw new AppError(409, 'This claim has already been reviewed.');
 
       if (action === 'approve') {
@@ -1295,9 +1339,9 @@ router.patch('/:id/claims/:claimId', requireActive, requireCollege, async (req, 
         const handoverCode = String(crypto.randomInt(100000, 1000000));
         await db.query(
           `UPDATE item_claims
-              SET status = 'approved', handover_code = $2, reviewed_at = now()
+              SET status = 'approved', handover_code = $2, reviewed_at = now(), pre_claim_status = $3
             WHERE id = $1`,
-          [claimId, handoverCode],
+          [claimId, handoverCode, item.status],
         );
         await db.query(
           `UPDATE item_claims
@@ -1338,6 +1382,12 @@ router.post('/:id/claim', requireActive, requireCollege, async (req, res, next) 
     const { claim_text: claimText } = claimSchema.parse(req.body);
     assertUserTextIsAllowed([claimText]);
     const { rows: [claim] } = await tx(async (db) => {
+      const { rows: [owner] } = await db.query(
+        'SELECT user_id FROM lost_found_items WHERE id = $1 AND college_id = $2',
+        [itemId, req.user.college_id],
+      );
+      if (!owner) throw new AppError(404, 'Lost-and-found post not found.');
+      await lockAndAssertUsersNotBlocked(db, req.user.id, owner.user_id);
       const { rows: [item] } = await db.query(
         `SELECT id, user_id, lifecycle_status, flagged_for_review,
                 EXISTS (
@@ -1355,6 +1405,7 @@ router.post('/:id/claim', requireActive, requireCollege, async (req, res, next) 
       );
       if (!item) throw new AppError(404, 'Lost-and-found post not found.');
       if (item.user_id === req.user.id) throw new AppError(400, 'You cannot claim your own report.');
+      if (item.user_id !== owner.user_id) throw new AppError(409, 'Report owner changed. Please try again.');
       if (item.flagged_for_review || item.has_pending_reports) {
         throw new AppError(409, 'This report is temporarily unavailable while it is under moderation review.');
       }

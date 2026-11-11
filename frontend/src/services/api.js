@@ -93,6 +93,12 @@ export const supportApi = {
   createRequest: (payload) => request('/api/support/requests', { method: 'POST', json: payload }),
 }
 
+export const blocksApi = {
+  list: () => request('/api/blocks'),
+  block: (userId) => request(`/api/blocks/${encodeURIComponent(userId)}`, { method: 'POST' }),
+  unblock: (userId) => request(`/api/blocks/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
+}
+
 export const pushApi = {
   configuration: () => request('/api/push/vapid-public-key'),
   subscribe: (subscription) => request('/api/push/subscriptions', {

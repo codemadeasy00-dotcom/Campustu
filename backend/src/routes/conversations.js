@@ -6,6 +6,7 @@ const { query, tx } = require('../db');
 const { AppError } = require('../utils/errors');
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
+const { assertUsersNotBlocked, lockAndAssertUsersNotBlocked, notBlockedSql } = require('../utils/user-blocks');
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -52,7 +53,8 @@ router.get('/', async (req, res) => {
           ORDER BY m.id DESC
           LIMIT 1
        ) latest ON true
-      WHERE c.user_a = $1 OR c.user_b = $1
+      WHERE (c.user_a = $1 OR c.user_b = $1)
+        AND ${notBlockedSql('$1', `CASE WHEN c.user_a = $1 THEN c.user_b ELSE c.user_a END`)}
       ORDER BY COALESCE(c.last_message_at, c.created_at) DESC`,
     [req.user.id],
   );
@@ -78,7 +80,7 @@ router.post('/', requireActive, async (req, res) => {
                 ) AS has_pending_reports
            FROM items i
           WHERE i.id = $1
-          FOR SHARE`,
+          `,
         [data.item_id],
       );
       const item = rows[0];
@@ -106,7 +108,7 @@ router.post('/', requireActive, async (req, res) => {
            FROM item_claims c
            JOIN lost_found_items lif ON lif.id = c.item_id
           WHERE c.id = $1
-          FOR SHARE OF c, lif`,
+          `,
         [data.claim_id],
       );
       const claim = rows[0];
@@ -138,7 +140,7 @@ router.post('/', requireActive, async (req, res) => {
                 ) AS has_pending_reports
            FROM lost_found_items lif
           WHERE lif.id = $1
-          FOR SHARE`,
+          `,
         [data.lost_found_item_id],
       );
       const item = rows[0];
@@ -153,6 +155,7 @@ router.post('/', requireActive, async (req, res) => {
     }
 
     if (counterpartId === req.user.id) throw new AppError(400, 'You cannot message yourself about your own post.');
+    await lockAndAssertUsersNotBlocked(db, req.user.id, counterpartId);
     const userA = counterpartId < req.user.id ? counterpartId : req.user.id;
     const userB = counterpartId < req.user.id ? req.user.id : counterpartId;
 
@@ -178,10 +181,11 @@ router.get('/:id/messages', async (req, res) => {
   const conversationId = idSchema.parse(req.params.id);
   const after = cursorSchema.parse(req.query.after);
   const { rows: [conversation] } = await query(
-    'SELECT id FROM conversations WHERE id = $1 AND (user_a = $2 OR user_b = $2)',
+    'SELECT id, user_a, user_b FROM conversations WHERE id = $1 AND (user_a = $2 OR user_b = $2)',
     [conversationId, req.user.id],
   );
   if (!conversation) throw new AppError(404, 'Conversation not found.');
+  await assertUsersNotBlocked(query, conversation.user_a, conversation.user_b);
 
   const params = [conversationId];
   const cursorClause = after ? `AND m.id > $${params.push(after)}` : '';
@@ -227,7 +231,7 @@ router.post('/:id/messages', requireActive, async (req, res) => {
   assertUserTextIsAllowed([body]);
   const { rows: [message] } = await tx(async (db) => {
     const { rows: [conversation] } = await db.query(
-      `SELECT c.id,
+      `SELECT c.id, c.user_a, c.user_b,
               EXISTS (
                 SELECT 1 FROM items i
                  WHERE i.id = c.item_id AND (
@@ -260,6 +264,7 @@ router.post('/:id/messages', requireActive, async (req, res) => {
       [conversationId, req.user.id],
     );
     if (!conversation) throw new AppError(404, 'Conversation not found.');
+    await lockAndAssertUsersNotBlocked(db, conversation.user_a, conversation.user_b);
     if (conversation.marketplace_under_review || conversation.lost_found_under_review) {
       throw new AppError(409, 'This conversation is temporarily unavailable while its post is under moderation review.');
     }

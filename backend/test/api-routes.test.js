@@ -17,6 +17,7 @@ test('student core APIs are mounted behind authentication', async () => {
       '/api/search-alerts/preferences',
       '/api/needs',
       '/api/search?q=calculator',
+      '/api/blocks',
     ]) {
       const response = await fetch(`http://127.0.0.1:${port}${path}`)
       assert.equal(response.status, 401, `${path} should require authentication instead of returning 404`)

@@ -4,6 +4,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const config = require('./config');
+const { pool } = require('./db');
 const storage = require('./storage');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 const kitsRouter = require('./routes/kits');
@@ -49,7 +50,15 @@ const authLimiter = rateLimit({
   message: { error: 'Too many attempts. Please try again in a few minutes' },
 });
 
-app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Health check could not reach the database:', error);
+    res.status(503).json({ ok: false });
+  }
+});
 
 // API Routes (Mounted under /api/ to match frontend requests)
 app.use('/auth', authLimiter, require('./routes/auth'));
@@ -65,6 +74,7 @@ app.use('/api/search-alerts', searchAlertsRouter);
 app.use('/api/achievements', achievementsRouter);
 app.use('/api/needs', require('./routes/needs'));
 app.use('/api/search', require('./routes/campus-search'));
+app.use('/api/blocks', require('./routes/blocks'));
 app.use('/conversations', conversationsRouter);
 
 app.use('/kits', kitsRouter);

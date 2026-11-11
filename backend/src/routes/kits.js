@@ -4,6 +4,7 @@ const { query } = require('../db')
 const storage = require('../storage')
 const { requireAuth, requireCollege } = require('../middleware/auth')
 const { buildUserBadges, ITEM_BADGES, applyBadgeOverrides } = require('../utils/user-badges')
+const { notBlockedSql } = require('../utils/user-blocks')
 
 router.use(requireAuth)
 
@@ -82,6 +83,7 @@ router.get('/', requireCollege, async (req, res) => {
            JOIN user_trust t ON t.user_id = i.seller_id
            LEFT JOIN colleges c ON c.id = u.college_id
           WHERE i.college_id = $1 AND i.status = 'available' AND i.seller_id <> $2
+            AND ${notBlockedSql('$2', 'i.seller_id')}
             AND i.item_type_id = ANY($3::int[])
             AND ($4::int IS NULL OR i.branch_id IS NULL OR i.branch_id = $4)
             AND (i.semester IS NULL OR i.semester = $5)

@@ -2,6 +2,7 @@ const router = require('express').Router()
 const { z } = require('zod')
 const { query } = require('../db')
 const { requireAuth, requireCollege } = require('../middleware/auth')
+const { notBlockedSql } = require('../utils/user-blocks')
 
 router.use(requireAuth, requireCollege)
 
@@ -31,6 +32,7 @@ router.get('/', async (req, res) => {
          LEFT JOIN branches b ON b.id = i.branch_id
         WHERE i.college_id = input.college_id
           AND i.status = 'available'
+          AND (input.viewer_role IN ('admin', 'super_admin') OR ${notBlockedSql('input.viewer_id', 'i.seller_id')})
           AND to_tsvector('simple', concat_ws(' ', i.title, i.description)) @@ input.terms
           AND (
             i.seller_id = input.viewer_id OR input.viewer_role IN ('admin', 'super_admin')
@@ -56,6 +58,7 @@ router.get('/', async (req, res) => {
          LEFT JOIN branches user_branch ON user_branch.id = u.branch_id
         WHERE lif.college_id = input.college_id
           AND lif.lifecycle_status = 'active'
+          AND (input.viewer_role IN ('admin', 'super_admin') OR ${notBlockedSql('input.viewer_id', 'lif.user_id')})
           AND to_tsvector('simple', concat_ws(' ', lif.title, lif.description)) @@ input.terms
           AND (
             lif.user_id = input.viewer_id OR input.viewer_role IN ('admin', 'super_admin')
@@ -84,6 +87,7 @@ router.get('/', async (req, res) => {
         WHERE request.college_id = input.college_id
           AND request.status = 'open'
           AND request.expires_at > now()
+          AND (input.viewer_role IN ('admin', 'super_admin') OR ${notBlockedSql('input.viewer_id', 'request.user_id')})
           AND to_tsvector('simple', concat_ws(' ', request.title, request.description)) @@ input.terms
      )
      SELECT result_type, id, title, left(description, 240) AS description,
