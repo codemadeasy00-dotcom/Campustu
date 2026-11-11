@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { lostFoundApi, searchAlertsApi } from '../services/api.js'
@@ -9,13 +9,31 @@ import { SHARE_QR_OPEN_EVENT } from './ShareQRWidget.jsx'
 export const APP_NAME = 'Campustu'
 
 const primaryLinks = [
-  { to: '/search', label: 'Search campus' },
+  { to: '/', label: 'Home', end: true },
   { to: '/needs', label: 'Need Board' },
   { to: '/barter', label: 'Barter Loops' },
 ]
 
+const siteFeatures = [
+  { to: '/', label: 'Home', keywords: 'homepage explore dashboard' },
+  { to: '/search', label: 'Search campus', keywords: 'search items listings lost found requests' },
+  { to: '/marketplace', label: 'Marketplace', keywords: 'browse buy items products' },
+  { to: '/sell', label: 'Sell an item', keywords: 'create listing sell post item' },
+  { to: '/lost-found', label: 'Lost & Found', keywords: 'lost found report notices' },
+  { to: '/lost-found/report', label: 'Report lost or found item', keywords: 'create lost found report' },
+  { to: '/needs', label: 'Need Board', keywords: 'requests borrow needs' },
+  { to: '/barter', label: 'Barter Loops', keywords: 'exchange swap trade' },
+  { to: '/kits', label: 'Semester kits', keywords: 'course supplies branch semester' },
+  { to: '/wishlist', label: 'Wishlist', keywords: 'saved favorite items' },
+  { to: '/my-listings', label: 'My listings', keywords: 'your posts inventory' },
+  { to: '/messages', label: 'Messages', keywords: 'chat inbox conversations' },
+  { to: '/achievements', label: 'Quests & achievements', keywords: 'badges progress rewards' },
+  { to: '/profile', label: 'Profile & settings', keywords: 'account alerts preferences' },
+  { to: '/support', label: 'Help & support', keywords: 'help contact assistance' },
+]
+
 const mobileLinks = [
-  { to: '/', label: 'Market', icon: '📦', end: true },
+  { to: '/', label: 'Home', icon: '⌂', end: true },
   { to: '/needs', label: 'Needs', icon: '📋' },
   { to: '/barter', label: 'Barter', icon: '🔄' },
   { to: '/achievements', label: 'Quests', icon: '🏆' },
@@ -38,9 +56,9 @@ const quickLinks = [
 const navClass = ({ isActive }) =>
   `site-nav-link ${isActive ? 'site-nav-link-active' : ''}`
 
-function SearchIcon() {
+function SearchIcon({ className = 'mr-1.5 h-4 w-4' }) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="mr-1.5 h-4 w-4" stroke="currentColor" strokeWidth="2">
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className={className} stroke="currentColor" strokeWidth="2">
       <circle cx="10.8" cy="10.8" r="6.8" />
       <path strokeLinecap="round" d="m16 16 4 4" />
     </svg>
@@ -63,12 +81,16 @@ export default function Layout() {
   const showToast = useToast()
   const navigate = useNavigate()
   const location = useLocation()
+  const headerRef = useRef(null)
   const notificationsRef = useRef(null)
   const mobileToggleRef = useRef(null)
+  const searchInputRef = useRef(null)
   const notifiedClaimIdsRef = useRef(new Set())
   const notifiedMatchIdsRef = useRef(new Set())
   const notifiedSearchIdsRef = useRef(new Set())
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [siteSearchOpen, setSiteSearchOpen] = useState(false)
+  const [siteSearchTerm, setSiteSearchTerm] = useState('')
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [claimNotifications, setClaimNotifications] = useState([])
   const [matchNotifications, setMatchNotifications] = useState([])
@@ -77,10 +99,63 @@ export default function Layout() {
   const [unreadMatchCount, setUnreadMatchCount] = useState(0)
   const [scrollProgress, setScrollProgress] = useState(0)
   const [logoutError, setLogoutError] = useState('')
+  const matchingFeatures = useMemo(() => {
+    const query = siteSearchTerm.trim().toLowerCase()
+    const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    const features = user?.role === 'admin'
+      ? [...siteFeatures, { to: '/admin', label: 'Admin console', keywords: 'moderation review manage users' }]
+      : siteFeatures
+    if (!query) return features.slice(0, 6)
+    const normalizedQuery = normalize(query)
+    return features
+      .map((feature, index) => {
+        const label = normalize(feature.label)
+        const keywords = normalize(feature.keywords)
+        const rank = label === normalizedQuery ? 0 : label.includes(normalizedQuery) ? 1 : keywords.includes(normalizedQuery) ? 2 : 3
+        return { ...feature, index, rank }
+      })
+      .filter((feature) => feature.rank < 3)
+      .sort((left, right) => left.rank - right.rank || left.index - right.index)
+      .slice(0, 7)
+  }, [siteSearchTerm, user?.role])
+
   useEffect(() => {
     setMobileOpen(false)
     setNotificationsOpen(false)
+    setSiteSearchOpen(false)
+    setSiteSearchTerm('')
   }, [location.pathname])
+
+  useEffect(() => {
+    if (!siteSearchOpen) return undefined
+
+    searchInputRef.current?.focus()
+    const closeSearch = (event) => {
+      if (event.key === 'Escape') setSiteSearchOpen(false)
+      if (!headerRef.current?.contains(event.target)) setSiteSearchOpen(false)
+    }
+    window.addEventListener('keydown', closeSearch)
+    document.addEventListener('pointerdown', closeSearch)
+    return () => {
+      window.removeEventListener('keydown', closeSearch)
+      document.removeEventListener('pointerdown', closeSearch)
+    }
+  }, [siteSearchOpen])
+
+  function submitSiteSearch(event) {
+    event.preventDefault()
+    const query = siteSearchTerm.trim()
+    if (!query) {
+      searchInputRef.current?.focus()
+      return
+    }
+    if (matchingFeatures.length) {
+      navigate(matchingFeatures[0].to)
+    } else {
+      navigate(`/search?q=${encodeURIComponent(query)}`)
+    }
+    setSiteSearchOpen(false)
+  }
 
   useEffect(() => {
     if (!user?.id || !user?.college) {
@@ -303,7 +378,7 @@ export default function Layout() {
         className="pointer-events-none fixed left-0 top-0 z-50 h-1 bg-gradient-to-r from-teal-500 to-teal-300 transition-[width] duration-75"
         style={{ width: `${scrollProgress}%` }}
       />
-      <header className="site-header sticky top-0 z-40 border-b border-brand-200/80 bg-white/90 shadow-[0_4px_18px_rgba(23,90,109,0.05)] backdrop-blur-xl">
+      <header ref={headerRef} className="site-header sticky top-0 z-40 border-b border-brand-200/80 bg-white/90 shadow-[0_4px_18px_rgba(23,90,109,0.05)] backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-[90rem] items-center gap-3 px-3 py-2.5 sm:px-5 lg:px-8">
           <Link to="/" aria-label="Campustu OS v2 home" className="flex shrink-0 items-center gap-2">
             <span className="wordmark-hover inline-block"><Wordmark className="text-xl sm:text-2xl" /></span>
@@ -314,7 +389,6 @@ export default function Layout() {
             <nav aria-label="Main navigation" className="site-desktop-nav mx-auto hidden min-w-0 flex-1 items-center justify-center gap-1 lg:flex">
               {primaryLinks.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
-                  {item.to === '/search' && <SearchIcon />}
                   {item.label}
                 </NavLink>
               ))}
@@ -466,6 +540,21 @@ export default function Layout() {
             </div>
           )}
 
+          <button
+            type="button"
+            className="site-global-search-toggle"
+            aria-label={siteSearchOpen ? 'Close feature search' : 'Search website features'}
+            aria-expanded={siteSearchOpen}
+            aria-controls="site-feature-search"
+            onClick={() => {
+              setMobileOpen(false)
+              setNotificationsOpen(false)
+              setSiteSearchOpen((open) => !open)
+            }}
+          >
+            <SearchIcon className="h-5 w-5" />
+          </button>
+
           <button type="button" className="site-qr-toggle" onClick={openShareQr} aria-label="Share Campustu with QR code">
             <span aria-hidden="true">📱</span><span>QR</span>
           </button>
@@ -486,6 +575,43 @@ export default function Layout() {
             </span>
           </button>
         </div>
+
+        {siteSearchOpen && (
+          <section id="site-feature-search" className="site-global-search-panel" aria-label="Search website features">
+            <form className="site-global-search-form" role="search" onSubmit={submitSiteSearch}>
+              <SearchIcon />
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={siteSearchTerm}
+                onChange={(event) => setSiteSearchTerm(event.target.value)}
+                placeholder="Search pages and features…"
+                aria-label="Search pages and features"
+              />
+              <button type="submit" className="site-global-search-submit">Search</button>
+            </form>
+            {matchingFeatures.length > 0 ? (
+              <ul className="site-global-search-results" aria-label="Matching pages and features">
+                {matchingFeatures.map((feature) => (
+                  <li key={feature.to}>
+                    <Link
+                      to={feature.to}
+                      onClick={() => setSiteSearchOpen(false)}
+                      className="site-global-search-result"
+                    >
+                      {feature.label}
+                      <span aria-hidden="true">→</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="site-global-search-empty">
+                No matching feature. Press Search or Enter to search campus listings and posts.
+              </p>
+            )}
+          </section>
+        )}
 
         {mobileOpen && (
           <div id="mobile-site-navigation" className="site-mobile-panel xl:hidden">
@@ -516,7 +642,6 @@ export default function Layout() {
                 <div className="site-mobile-links">
                   {primaryLinks.map((item) => (
                     <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
-                      {item.to === '/search' && <SearchIcon />}
                       {item.label}
                     </NavLink>
                   ))}
