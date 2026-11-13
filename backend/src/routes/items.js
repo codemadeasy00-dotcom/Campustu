@@ -272,7 +272,7 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
       const { rows: alerts } = await db.query(
         `INSERT INTO in_app_notifications (user_id, search_id, item_id, title, message, match_reasons)
          SELECT ss.user_id, ss.id, $2, 'A saved search has a new match',
-                format('A new item, "%s", matches your saved search "%s".', $3, ss.keyword),
+                format('A new item, "%s", matches your saved search "%s".', $3::text, ss.keyword),
                 to_jsonb(array_remove(ARRAY[
                   format('Keyword: %s', ss.keyword),
                   CASE WHEN ss.category_id IS NOT NULL THEN format('Category: %s', search_category.name) END,
