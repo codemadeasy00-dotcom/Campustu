@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 const app = require('../src/app')
 const { pool } = require('../src/db')
 const { signToken } = require('../src/middleware/auth')
+const storage = require('../src/storage')
 
 const actorId = '8d69ca2e-fc32-4e27-b647-28ad6510f8ac'
 const targetId = '9c746c68-d834-4f4a-9bfe-c2086449e46f'
@@ -48,14 +49,24 @@ test('block management requires authentication and cancels existing interactions
         }],
       }
     }
+    if (text.startsWith('SELECT blocked.id, blocked.display_name, blocked.avatar_key')) {
+      return {
+        rows: [{
+          id: targetId,
+          display_name: 'Other student',
+          avatar_key: 'avatars/other-student.webp',
+          created_at: '2026-11-13T00:00:00.000Z',
+        }],
+      }
+    }
     if (text.startsWith('DELETE FROM user_blocks')) return { rows: [], rowCount: 1 }
     assert.fail(`Unexpected query: ${text}`)
   }
   pool.connect = async () => ({
     async query(text, params) {
       clientCalls.push({ text, params })
-      if (text.startsWith('SELECT id, display_name, avatar_url')) {
-        return { rows: [{ id: targetId, display_name: 'Other student', avatar_url: null }] }
+      if (text.startsWith('SELECT id, display_name, avatar_key')) {
+        return { rows: [{ id: targetId, display_name: 'Other student', avatar_key: 'avatars/other-student.webp' }] }
       }
       if (text.startsWith('UPDATE item_claims')) return { rows: [] }
       return { rows: [] }
@@ -67,6 +78,19 @@ test('block management requires authentication and cancels existing interactions
   await withServer(async (baseUrl) => {
     const unauthenticated = await fetch(`${baseUrl}/api/blocks`)
     assert.equal(unauthenticated.status, 401)
+
+    const list = await fetch(`${baseUrl}/api/blocks`, {
+      headers: { Cookie: `campustu_session=${token}` },
+    })
+    assert.equal(list.status, 200)
+    assert.deepEqual(await list.json(), {
+      blocked_users: [{
+        id: targetId,
+        display_name: 'Other student',
+        created_at: '2026-11-13T00:00:00.000Z',
+        avatar_url: storage.urlFor('avatars/other-student.webp'),
+      }],
+    })
 
     const selfBlock = await fetch(`${baseUrl}/api/blocks/${actorId}`, {
       method: 'POST',
@@ -81,7 +105,11 @@ test('block management requires authentication and cancels existing interactions
     assert.equal(response.status, 201)
     assert.deepEqual(await response.json(), {
       success: true,
-      blocked_user: { id: targetId, display_name: 'Other student', avatar_url: null },
+      blocked_user: {
+        id: targetId,
+        display_name: 'Other student',
+        avatar_url: storage.urlFor('avatars/other-student.webp'),
+      },
     })
 
     const unblock = await fetch(`${baseUrl}/api/blocks/${targetId}`, {

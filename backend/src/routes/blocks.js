@@ -4,14 +4,22 @@ const { query, tx } = require('../db')
 const { AppError } = require('../utils/errors')
 const { lockUserPair } = require('../utils/user-blocks')
 const { requireAuth, requireActive } = require('../middleware/auth')
+const storage = require('../storage')
 
 const userIdSchema = z.uuid()
+
+function serializeBlockedUser({ avatar_key, ...user }) {
+  return {
+    ...user,
+    avatar_url: avatar_key ? storage.urlFor(avatar_key) : null,
+  }
+}
 
 router.use(requireAuth, requireActive)
 
 router.get('/', async (req, res) => {
   const { rows } = await query(
-    `SELECT blocked.id, blocked.display_name, blocked.avatar_url, user_blocks.created_at
+    `SELECT blocked.id, blocked.display_name, blocked.avatar_key, user_blocks.created_at
        FROM user_blocks
        JOIN users blocked ON blocked.id = user_blocks.blocked_id
       WHERE user_blocks.blocker_id = $1
@@ -19,7 +27,7 @@ router.get('/', async (req, res) => {
       ORDER BY user_blocks.created_at DESC`,
     [req.user.id],
   )
-  res.json({ blocked_users: rows })
+  res.json({ blocked_users: rows.map(serializeBlockedUser) })
 })
 
 router.post('/:userId', async (req, res) => {
@@ -29,7 +37,7 @@ router.post('/:userId', async (req, res) => {
   const blockedUser = await tx(async (db) => {
     await lockUserPair(db, req.user.id, blockedId)
     const { rows: [user] } = await db.query(
-      `SELECT id, display_name, avatar_url
+      `SELECT id, display_name, avatar_key
          FROM users
         WHERE id = $1 AND deleted_at IS NULL
         FOR SHARE`,
@@ -90,7 +98,7 @@ router.post('/:userId', async (req, res) => {
     return user
   })
 
-  res.status(201).json({ success: true, blocked_user: blockedUser })
+  res.status(201).json({ success: true, blocked_user: serializeBlockedUser(blockedUser) })
 })
 
 router.delete('/:userId', async (req, res) => {
