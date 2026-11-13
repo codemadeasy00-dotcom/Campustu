@@ -31,7 +31,7 @@ const config = {
   jwtSecret: required('JWT_SECRET'),
   otpSecret: required('OTP_SECRET'),
   corsOrigins: isProd
-    ? ['https://campustu.vercel.app']
+    ? [...new Set([...configuredCorsOrigins, 'https://campustu.vercel.app'])]
     : [...new Set([...configuredCorsOrigins, 'http://localhost:5173'])],
   smtp: {
     host: process.env.SMTP_HOST || '',

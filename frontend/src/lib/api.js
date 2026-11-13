@@ -1,9 +1,9 @@
-import { API_BASE_URL } from '../services/api.js'
+import { API_BASE_URL, fetchWithRetry } from '../services/api.js'
 
 export { collegesApi } from '../services/api.js'
 
 export async function apiFetch(path, options = {}) {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetchWithRetry(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: 'include',
     headers: {

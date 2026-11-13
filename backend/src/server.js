@@ -41,8 +41,6 @@ async function startServer() {
     }, 60_000);
     mediaCleanupTimer.unref();
 
-    const collegeRoutes = require('./routes/colleges');
-    app.use('/api/colleges', collegeRoutes);
   } catch (error) {
     console.error('Database startup check failed:', error.message);
     process.exit(1);

@@ -30,6 +30,33 @@ export function errorMessage(err) {
 }
 
 const TIMEOUT_MS = 70_000 // the free server can take about a minute to wake up
+const RETRYABLE_STATUSES = new Set([502, 503, 504])
+const GET_RETRY_DELAYS_MS = [2000, 6000, 14000, 24000, 35000]
+
+export async function fetchWithRetry(url, init = {}) {
+  const method = (init.method || 'GET').toUpperCase()
+  let attempt = 0
+
+  while (true) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    let response
+    try {
+      response = await fetch(url, { ...init, signal: controller.signal })
+    } finally {
+      clearTimeout(timer)
+    }
+
+    if (method !== 'GET' || !RETRYABLE_STATUSES.has(response.status)) return response
+
+    const errorData = await response.clone().json().catch(() => null)
+    const delay = GET_RETRY_DELAYS_MS[attempt]
+    if (!delay || errorData?.code === 'DATABASE_MIGRATION_REQUIRED') return response
+
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    attempt += 1
+  }
+}
 
 async function request(endpoint, { method = 'GET', json, formData } = {}) {
   const headers = {}
@@ -42,13 +69,11 @@ async function request(endpoint, { method = 'GET', json, formData } = {}) {
     body = JSON.stringify(json)
   }
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   let res
   try {
-    const init = { method, headers, signal: controller.signal, credentials: 'include' }
+    const init = { method, headers, credentials: 'include' }
     if (body !== undefined) init.body = body
-    res = await fetch(`${API_BASE_URL}${endpoint}`, init)
+    res = await fetchWithRetry(`${API_BASE_URL}${endpoint}`, init)
   } catch (e) {
     reportAppError()
     throw new ApiError(
@@ -56,8 +81,6 @@ async function request(endpoint, { method = 'GET', json, formData } = {}) {
         ? 'The server took too long to answer. Please try again.'
         : 'Cannot reach the server. Check your internet connection and try again.',
     )
-  } finally {
-    clearTimeout(timer)
   }
 
   let data = null

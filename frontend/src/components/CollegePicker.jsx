@@ -8,10 +8,10 @@
 
 import { Component, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmDialog } from './ui.jsx';
-import { API_BASE_URL } from '../services/api.js'
+import { API_BASE_URL, fetchWithRetry } from '../services/api.js'
 
 async function getJson(path, options) {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetchWithRetry(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: 'include',
   });

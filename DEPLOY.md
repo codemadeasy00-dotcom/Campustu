@@ -192,7 +192,7 @@ On Render, set `CORS_ORIGIN=https://campustu.vercel.app` (add any other exact fr
    **Support Requests** tab and reply to the provided email address.
 
 ## Free-tier habits you must have
-- Render free web services sleep after idle time; open `/health` a few minutes before any demo.
+- Render free web services sleep after idle time; the browser retries safe read requests after transient gateway errors while the service wakes. Open `/health` a few minutes before any demo.
 - Supabase may pause on inactivity; log in and check weekly.
 - You control your data: take a database backup regularly (Supabase dashboard backups if your plan has them, or `pg_dump`).
   Do not assume a free plan keeps backups.
