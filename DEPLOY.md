@@ -99,6 +99,8 @@ A paused project means your site is down until you un-pause it in the dashboard.
    Migration `029_automatic_search_alerts.sql` enables transparent automatic search alerts and controls
    for disabling tracking and deleting automatically tracked search history. Apply pending migrations
    in order with `npm run db:migrate` from the backend directory before deploying the updated application.
+   Migration `030_user_blocks.sql` creates the `user_blocks` table used by Profile's Safety & Privacy
+   section and account-blocking features.
    User badges show college-email verification, staff role, and Power Trader eligibility (2 or more
    completed handovers with no pending reports). Lost-item urgent status is chosen by its poster;
    Verified Match is only shown after a handover code successfully resolves a claim. Pending reports
