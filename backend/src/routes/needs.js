@@ -166,7 +166,7 @@ router.post('/', async (req, res) => {
           AND recipient.deleted_at IS NULL
           AND recipient.college_id = ss.college_id
           AND (ss.category_id IS NULL OR ss.category_id = $4)
-          AND (ss.branch_id IS NULL OR $5 IS NULL OR ss.branch_id = $5)
+          AND (ss.branch_id IS NULL OR $5::smallint IS NULL OR ss.branch_id = $5::smallint)
           AND to_tsvector('simple', concat_ws(' ', $6::text, $7::text))
               @@ plainto_tsquery('simple', ss.keyword)
        ON CONFLICT (search_id, need_request_id)
