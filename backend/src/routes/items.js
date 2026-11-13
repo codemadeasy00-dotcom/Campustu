@@ -290,7 +290,7 @@ router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, uplo
             AND recipient.deleted_at IS NULL
             AND recipient.college_id = ss.college_id
             AND (ss.category_id IS NULL OR ss.category_id = $6)
-            AND (ss.branch_id IS NULL OR $7 IS NULL OR ss.branch_id = $7)
+            AND (ss.branch_id IS NULL OR $7::smallint IS NULL OR ss.branch_id = $7::smallint)
             AND to_tsvector('simple', concat_ws(' ', $3::text, $5::text))
                 @@ plainto_tsquery('simple', ss.keyword)
          ON CONFLICT (search_id, item_id)
