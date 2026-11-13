@@ -38,3 +38,19 @@ test('migration lock is released when migration work fails', async () => {
   await assert.rejects(migrate(client), /schema unavailable/)
   assert.equal(calls.at(-1), "SELECT pg_advisory_unlock(hashtext('campustu:schema-migrations')::bigint)")
 })
+
+test('migration runner fails before touching the database when migration files are missing', async () => {
+  const calls = []
+  const client = {
+    async query(text) {
+      calls.push(text)
+      return { rows: [] }
+    },
+  }
+
+  await assert.rejects(
+    migrate(client, path.join(__dirname, 'missing-migrations')),
+    /Database migrations directory is missing/,
+  )
+  assert.deepEqual(calls, [])
+})

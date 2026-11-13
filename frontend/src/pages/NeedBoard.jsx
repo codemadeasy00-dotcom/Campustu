@@ -387,7 +387,7 @@ export default function NeedBoard() {
               <input className={`${inputClass} mt-1`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campus requests" />
               <span className="mt-1 block text-xs font-normal text-slate-500">
                 When automatic alerts are enabled, searches are used for future marketplace and Need Board alerts.{' '}
-                <Link to="/marketplace" className="font-semibold text-brand-700 underline">Manage alert settings</Link>.
+                <Link to="/profile" className="font-semibold text-brand-700 underline">Manage alert settings</Link>.
               </span>
             </label>
             <label className="text-sm font-medium text-slate-700">

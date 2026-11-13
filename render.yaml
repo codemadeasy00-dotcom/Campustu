@@ -1,14 +1,11 @@
-# Render "Blueprint": describes the API service so Render can create it from your GitHub repo.
-# NOT TESTED by me (I cannot log in to Render). If Render rejects it, create the service by hand
-# with the same values (see DEPLOY.md, Step 5).
+# Keep the repository root available: the backend startup migration runner reads db/migrations.
 services:
   - type: web
     name: campuskit-api
     runtime: node
     plan: free
-    rootDir: backend
-    buildCommand: npm ci
-    startCommand: npm start
+    buildCommand: npm --prefix backend ci
+    startCommand: npm --prefix backend start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

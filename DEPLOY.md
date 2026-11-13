@@ -139,7 +139,9 @@ A paused project means your site is down until you un-pause it in the dashboard.
 ## Step 5 - Render (the API)
 Option A (blueprint): Render dashboard -> New -> Blueprint -> pick your GitHub repo. It reads `render.yaml`.
 Option B (by hand): New -> Web Service -> your repo, then set:
-- Root directory: `backend`   Build command: `npm ci`   Start command: `npm start`
+- Root directory: repository root (leave blank/default)   Build command: `npm --prefix backend ci`
+  Start command: `npm --prefix backend start`
+  The root must include `db/migrations`; the backend applies pending migrations on startup.
 - Instance type: Free   Health check path: `/health`
 Environment variables (both options; secrets are typed into Render, never into the repo):
 ```

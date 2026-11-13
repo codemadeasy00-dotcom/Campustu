@@ -79,7 +79,7 @@ export default function CampusSearch() {
       </form>
       <p className="mt-2 text-xs text-slate-500">
         When automatic alerts are enabled, campus searches are used for future marketplace and Need Board alerts.{' '}
-        <Link to="/marketplace" className="font-semibold text-brand-700 underline">Manage alert settings</Link>.
+        <Link to="/profile" className="font-semibold text-brand-700 underline">Manage alert settings</Link>.
       </p>
 
       {loading && <p className="py-10 text-center text-sm text-slate-500">Searching your campus…</p>}
