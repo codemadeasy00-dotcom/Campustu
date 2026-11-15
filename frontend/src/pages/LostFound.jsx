@@ -306,11 +306,11 @@ export default function LostFound() {
   const [moderationProgress, setModerationProgress] = useState('');
   const photoPreviewsRef = React.useRef([]);
 
+  const [modalPin, setModalPin] = useState(null);
+  const [selectedLayer, setSelectedLayer] = useState('standard');
   const campusCenter = getCollegeMapCenter(user?.college);
   const mapCenter = nearbyCenter ?? campusCenter ?? getMapCenter(null, nearbyItems ?? items);
   const reportMapCenter = modalPin ?? campusCenter ?? getMapCenter(null, items);
-  const [modalPin, setModalPin] = useState(null);
-  const [selectedLayer, setSelectedLayer] = useState('standard');
 
   useEffect(() => {
     const campusRadius = Number(user?.college?.search_radius_meters);
