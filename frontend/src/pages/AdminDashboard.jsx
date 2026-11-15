@@ -837,6 +837,37 @@ function SupportRequests({ onError, onSuccess }) {
   )
 }
 
+function collegeFormError(college) {
+  const name = college.name.trim()
+  const shortCode = college.short_code.trim().toLowerCase()
+  const city = college.city.trim()
+  const emailDomain = college.email_domain.trim().replace(/^@+/, '').toLowerCase()
+  const latitudeText = college.latitude.trim()
+  const longitudeText = college.longitude.trim()
+
+  if (name.length < 3 || name.length > 150) return 'College name must be 3–150 characters.'
+  if (!/^[a-z0-9][a-z0-9-]{1,14}$/.test(shortCode)) return 'Short code must be 2–15 letters, numbers, or hyphens.'
+  if (city.length < 2 || city.length > 80) return 'City must be 2–80 characters.'
+  if (college.state.trim().length > 80) return 'State must be 80 characters or fewer.'
+  if (emailDomain && !/^(?!-)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(emailDomain)) {
+    return 'Enter a valid email domain, or leave it blank.'
+  }
+  if (Boolean(latitudeText) !== Boolean(longitudeText)) {
+    return 'Enter both map center coordinates, or leave both blank.'
+  }
+  if (latitudeText) {
+    const latitude = Number(latitudeText)
+    const longitude = Number(longitudeText)
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return 'Latitude must be between -90 and 90.'
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return 'Longitude must be between -180 and 180.'
+  }
+  const searchRadius = Number(college.search_radius_meters)
+  if (!Number.isInteger(searchRadius) || searchRadius < 100 || searchRadius > 50000) {
+    return 'Search radius must be a whole number from 100 to 50,000 meters.'
+  }
+  return ''
+}
+
 function AddCollege({ onError, onSuccess }) {
   const [form, setForm] = useState({
     name: '', short_code: '', city: '', state: '', email_domain: '',
@@ -846,24 +877,28 @@ function AddCollege({ onError, onSuccess }) {
   const [colleges, setColleges] = useState([])
   const [editingCollege, setEditingCollege] = useState(null)
   const [savingCollege, setSavingCollege] = useState(false)
+  const [formError, setFormError] = useState('')
 
   useEffect(() => {
     adminApi.colleges().then((result) => setColleges(result.colleges || [])).catch((error) => onError(errorMessage(error)))
   }, [onError])
 
   function update(key, value) {
+    setFormError('')
     setForm((current) => ({ ...current, [key]: value }))
   }
 
   async function submit(event) {
     event.preventDefault()
-    const latitude = form.latitude.trim() ? Number(form.latitude) : null
-    const longitude = form.longitude.trim() ? Number(form.longitude) : null
-    if ((latitude == null) !== (longitude == null)) {
-      onError('Enter both map center coordinates, or leave both blank.')
+    const validationError = collegeFormError(form)
+    if (validationError) {
+      setFormError(validationError)
       return
     }
 
+    const latitude = form.latitude.trim() ? Number(form.latitude) : null
+    const longitude = form.longitude.trim() ? Number(form.longitude) : null
+    setFormError('')
     setBusy(true)
     try {
       const { college } = await adminApi.createCollege({
@@ -874,9 +909,12 @@ function AddCollege({ onError, onSuccess }) {
       })
       setColleges((current) => [...current, college].sort((a, b) => a.name.localeCompare(b.name)))
       setForm({ name: '', short_code: '', city: '', state: '', email_domain: '', latitude: '', longitude: '', search_radius_meters: '1000' })
+      setFormError('')
       onSuccess(`Added ${college.name}.`)
     } catch (error) {
-      onError(errorMessage(error))
+      const message = errorMessage(error)
+      setFormError(message)
+      onError(message)
     } finally {
       setBusy(false)
     }
@@ -895,6 +933,7 @@ function AddCollege({ onError, onSuccess }) {
   }
 
   function editCollege(college) {
+    setFormError('')
     setEditingCollege({
       id: college.id,
       name: college.name,
@@ -910,18 +949,20 @@ function AddCollege({ onError, onSuccess }) {
 
   async function saveCollege(approve = false) {
     if (!editingCollege) return
-    const latitude = editingCollege.latitude.trim() ? Number(editingCollege.latitude) : null
-    const longitude = editingCollege.longitude.trim() ? Number(editingCollege.longitude) : null
-    if ((latitude == null) !== (longitude == null)) {
-      onError('Enter both map center coordinates, or leave both blank.')
+    const validationError = collegeFormError(editingCollege)
+    if (validationError) {
+      setFormError(validationError)
       return
     }
 
+    const latitude = editingCollege.latitude.trim() ? Number(editingCollege.latitude) : null
+    const longitude = editingCollege.longitude.trim() ? Number(editingCollege.longitude) : null
     const reason = approve
       ? window.prompt(`Approval reason for ${editingCollege.name}?`)
       : undefined
     if (approve && (!reason || reason.trim().length < 5)) return
 
+    setFormError('')
     setSavingCollege(true)
     try {
       const { id, ...collegeDetails } = editingCollege
@@ -936,7 +977,9 @@ function AddCollege({ onError, onSuccess }) {
       setEditingCollege(null)
       onSuccess(approve ? `${result.college.name} updated and approved.` : `${result.college.name} updated.`)
     } catch (error) {
-      onError(errorMessage(error))
+      const message = errorMessage(error)
+      setFormError(message)
+      onError(message)
     } finally {
       setSavingCollege(false)
     }
@@ -958,7 +1001,8 @@ function AddCollege({ onError, onSuccess }) {
       <p className="text-sm text-slate-700">
         Email-domain restrictions are optional. Leave both map-center fields blank if the campus does not have a verified center yet.
       </p>
-      <form onSubmit={submit} className="grid gap-4 border bg-white p-5 sm:grid-cols-2">
+      <form noValidate onSubmit={submit} className="grid gap-4 border bg-white p-5 sm:grid-cols-2">
+        {!editingCollege && formError && <p role="alert" className="border border-red-300 bg-red-50 p-3 text-sm text-red-900 sm:col-span-2">{formError}</p>}
         {fields.map(([key, label, type]) => (
           <label key={key} className="space-y-1 text-sm font-semibold">
             <span>{label}</span>
@@ -974,10 +1018,11 @@ function AddCollege({ onError, onSuccess }) {
             />
           </label>
         ))}
-        <button disabled={busy} className="border bg-teal-900 px-4 py-2 font-semibold text-white disabled:opacity-50 sm:col-span-2">{busy ? 'Adding…' : 'Add approved campus'}</button>
+        <button type="submit" disabled={busy} className="border bg-teal-900 px-4 py-2 font-semibold text-white disabled:opacity-50 sm:col-span-2">{busy ? 'Adding…' : 'Add approved campus'}</button>
       </form>
       {editingCollege && (
         <form
+          noValidate
           className="grid gap-4 border-2 border-teal-800 bg-teal-50 p-5 sm:grid-cols-2"
           onSubmit={(event) => {
             event.preventDefault()
@@ -987,6 +1032,7 @@ function AddCollege({ onError, onSuccess }) {
           <div className="sm:col-span-2">
             <h2 className="text-lg font-bold">Edit {editingCollege.name}</h2>
             <p className="text-sm text-slate-700">Check the campus details and map center before approving.</p>
+            {formError && <p role="alert" className="mt-2 border border-red-300 bg-red-50 p-3 text-sm text-red-900">{formError}</p>}
           </div>
           {fields.map(([key, label, type]) => (
             <label key={key} className="space-y-1 text-sm font-semibold">
@@ -999,7 +1045,10 @@ function AddCollege({ onError, onSuccess }) {
                 max={key === 'latitude' ? 90 : key === 'longitude' ? 180 : key === 'search_radius_meters' ? 50000 : undefined}
                 className={inputClass}
                 value={editingCollege[key]}
-                onChange={(event) => setEditingCollege((current) => ({ ...current, [key]: event.target.value }))}
+                onChange={(event) => {
+                  setFormError('')
+                  setEditingCollege((current) => ({ ...current, [key]: event.target.value }))
+                }}
               />
             </label>
           ))}
