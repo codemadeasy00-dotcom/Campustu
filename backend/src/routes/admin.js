@@ -5,6 +5,7 @@ const { query, tx } = require('../db');
 const { AppError } = require('../utils/errors');
 const config = require('../config');
 const { requireAuth, requireActive, requireAdmin } = require('../middleware/auth');
+const { lockUserPair } = require('../utils/user-blocks');
 const {
   hashAdminPassword,
   verifyAdminPassword,
@@ -204,6 +205,20 @@ const controlSchema = z.object({
   enabled: z.boolean(),
   note: z.string().trim().max(500).optional(),
 });
+const adminBlocksQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+const postLocationsQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  college_id: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+const removeBlockSchema = z.object({
+  reason: z.string().trim().min(5).max(1000),
+});
 
 function requestDetails(req) {
   return {
@@ -288,6 +303,131 @@ router.get('/reports', async (_req, res) => {
     image_review_queue: [],
     image_review_note: 'NSFWJS currently runs only in the submitter’s browser; its unverified client-side scores are not treated as an authoritative moderation signal.',
   });
+});
+
+router.get('/post-locations', async (req, res) => {
+  const filters = postLocationsQuerySchema.parse(req.query);
+  const params = [];
+  const whereLostFound = ["lif.lifecycle_status <> 'removed'"];
+  const whereMarketplace = ["item.status <> 'removed'"];
+  if (filters.college_id) {
+    params.push(filters.college_id);
+    whereLostFound.push(`lif.college_id = $${params.length}`);
+    whereMarketplace.push(`item.college_id = $${params.length}`);
+  }
+  if (filters.q) {
+    params.push(filters.q);
+    const searchParam = `$${params.length}`;
+    whereLostFound.push(
+      `position(lower(${searchParam}) in lower(concat_ws(' ', lif.title, lif.location_name, owner.display_name))) > 0`,
+    );
+    whereMarketplace.push(
+      `position(lower(${searchParam}) in lower(concat_ws(' ', item.title, item.preferred_place, owner.display_name))) > 0`,
+    );
+  }
+  params.push(filters.limit, filters.offset);
+  const limitParam = `$${params.length - 1}`;
+  const offsetParam = `$${params.length}`;
+
+  const { rows } = await query(
+    `SELECT lif.id, 'lost_found' AS post_type, lif.title, lif.status::text AS status,
+            lif.lifecycle_status, lif.location_name, lif.latitude, lif.longitude,
+            lif.college_id, campus.name AS college_name, owner.display_name AS owner_name,
+            lif.created_at
+       FROM lost_found_items lif
+       JOIN users owner ON owner.id = lif.user_id
+       LEFT JOIN colleges campus ON campus.id = lif.college_id
+      WHERE ${whereLostFound.join(' AND ')}
+     UNION ALL
+     SELECT item.id, 'marketplace' AS post_type, item.title, item.status::text AS status,
+            NULL::text AS lifecycle_status, item.preferred_place AS location_name,
+            NULL::numeric AS latitude, NULL::numeric AS longitude,
+            item.college_id, campus.name AS college_name, owner.display_name AS owner_name,
+            item.created_at
+       FROM items item
+       JOIN users owner ON owner.id = item.seller_id
+       LEFT JOIN colleges campus ON campus.id = item.college_id
+      WHERE ${whereMarketplace.join(' AND ')}
+      ORDER BY created_at DESC, title
+      LIMIT ${limitParam} OFFSET ${offsetParam}`,
+    params,
+  );
+  res.json({
+    success: true,
+    posts: rows,
+    limit: filters.limit,
+    offset: filters.offset,
+    has_more: rows.length === filters.limit,
+  });
+});
+
+router.get('/blocks', async (req, res) => {
+  const filters = adminBlocksQuerySchema.parse(req.query);
+  const params = [];
+  const where = [];
+  if (filters.q) {
+    params.push(filters.q);
+    where.push(
+      `position(lower($${params.length}) in lower(concat_ws(' ',
+        blocker.display_name, blocker.email, blocked.display_name, blocked.email,
+        blocker_campus.name, blocked_campus.name))) > 0`,
+    );
+  }
+  params.push(filters.limit, filters.offset);
+  const limitParam = `$${params.length - 1}`;
+  const offsetParam = `$${params.length}`;
+  const { rows } = await query(
+    `SELECT user_blocks.blocker_id, blocker.display_name AS blocker_name,
+            blocker.email AS blocker_email, blocker_campus.name AS blocker_college,
+            user_blocks.blocked_id, blocked.display_name AS blocked_name,
+            blocked.email AS blocked_email, blocked_campus.name AS blocked_college,
+            user_blocks.created_at
+       FROM user_blocks
+       JOIN users blocker ON blocker.id = user_blocks.blocker_id
+       JOIN users blocked ON blocked.id = user_blocks.blocked_id
+       LEFT JOIN colleges blocker_campus ON blocker_campus.id = blocker.college_id
+       LEFT JOIN colleges blocked_campus ON blocked_campus.id = blocked.college_id
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY user_blocks.created_at DESC
+      LIMIT ${limitParam} OFFSET ${offsetParam}`,
+    params,
+  );
+  res.json({
+    success: true,
+    blocks: rows,
+    limit: filters.limit,
+    offset: filters.offset,
+    has_more: rows.length === filters.limit,
+  });
+});
+
+router.delete('/blocks/:blockerId/:blockedId', async (req, res) => {
+  const blockerId = z.uuid().parse(req.params.blockerId);
+  const blockedId = z.uuid().parse(req.params.blockedId);
+  if (blockerId === blockedId) throw new AppError(400, 'A student cannot be blocked by themselves.');
+  const { reason } = removeBlockSchema.parse(req.body);
+
+  await tx(async (db) => {
+    await lockUserPair(db, blockerId, blockedId);
+    const { rows: [block] } = await db.query(
+      `SELECT blocker_id, blocked_id
+         FROM user_blocks
+        WHERE blocker_id = $1 AND blocked_id = $2
+        FOR UPDATE`,
+      [blockerId, blockedId],
+    );
+    if (!block) throw new AppError(404, 'Block relationship not found.');
+    await db.query(
+      'DELETE FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2',
+      [blockerId, blockedId],
+    );
+    await writeAudit(db, req, 'admin_remove_user_block', 'user', blockerId, {
+      blocker_id: blockerId,
+      blocked_id: blockedId,
+      reason,
+    });
+  });
+  res.json({ success: true, removed: true });
 });
 
 router.patch('/reports/:id', async (req, res) => {

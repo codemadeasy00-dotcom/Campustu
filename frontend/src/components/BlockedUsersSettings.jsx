@@ -56,7 +56,30 @@ export default function BlockedUsersSettings() {
         <ul className="divide-y divide-slate-200">
           {blockedUsers.map((user) => (
             <li key={user.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-              <span className="font-semibold text-slate-800">{user.display_name}</span>
+              <div className="flex min-w-0 items-center gap-3">
+                {user.avatar_url ? (
+                  <img
+                    src={user.avatar_url}
+                    alt=""
+                    className="h-11 w-11 shrink-0 rounded-full border border-slate-200 object-cover"
+                  />
+                ) : (
+                  <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-50 font-bold text-brand-800">
+                    {(user.display_name || 'U').trim().charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-slate-800">{user.display_name}</span>
+                  {(user.college_name || user.branch_name) && (
+                    <span className="mt-0.5 block truncate text-xs text-slate-600">
+                      {[user.college_name, user.branch_name].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    Blocked {new Date(user.created_at).toLocaleDateString()}
+                  </span>
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={() => unblockUser(user.id)}

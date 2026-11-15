@@ -6,30 +6,10 @@ import MapPlaceSearch from './MapPlaceSearch.jsx'
 import MapLocationBootstrap from './MapLocationBootstrap.jsx'
 import UserBadges from './UserBadges.jsx'
 import { validMapCoordinates } from '../lib/map.js'
+import { campusMapIcons } from '../lib/map-icons.js'
 import 'leaflet/dist/leaflet.css'
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css'
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css'
-
-const markerIcons = {
-  marketplace: L.divIcon({
-    className: 'campus-map-marker campus-map-marker--marketplace',
-    html: '<span></span>',
-    iconSize: [24, 32],
-    iconAnchor: [12, 30],
-  }),
-  lost: L.divIcon({
-    className: 'campus-map-marker campus-map-marker--lost',
-    html: '<span></span>',
-    iconSize: [24, 32],
-    iconAnchor: [12, 30],
-  }),
-  found: L.divIcon({
-    className: 'campus-map-marker campus-map-marker--found',
-    html: '<span></span>',
-    iconSize: [24, 32],
-    iconAnchor: [12, 30],
-  }),
-}
 
 function coordinatesFor(item) {
   return validMapCoordinates(item.latitude, item.longitude)
@@ -197,7 +177,7 @@ function SelectedLocation({ coords, radiusMeters }) {
 
   return (
     <>
-      <Marker position={position} />
+      <Marker position={position} icon={campusMapIcons.selected} />
       {radiusMeters > 0 && (
         <Circle
           center={position}
@@ -246,7 +226,11 @@ export default function CampusMap({
       <div className="flex flex-col gap-4 border-b border-brand-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-bold text-brand-700">Campus map</h2>
-          <p className="mt-1 text-xs text-slate-500">Explore listings with a saved campus location.</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {campusCenter || mapItems.length
+              ? 'Explore listings with a saved campus location.'
+              : 'No campus center is configured yet. Search for your campus or use Recenter me.'}
+          </p>
         </div>
         <div className="flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Filter map pins">
           {[
@@ -272,10 +256,10 @@ export default function CampusMap({
       </div>
 
       <div className="campus-map-container map-fullscreen-container relative h-[min(60vh,400px)] min-h-[300px] w-full sm:h-[400px]">
-        {initialCenter ? (
+        {initialCenter || !onSelectLocation ? (
           <MapContainer
-            center={initialCenter}
-            zoom={14}
+            center={initialCenter ?? [0, 0]}
+            zoom={initialCenter ? 14 : 2}
             scrollWheelZoom={false}
             zoomControl={false}
             className="h-full w-full"
@@ -315,8 +299,8 @@ export default function CampusMap({
               {visibleItems.map((item) => {
                 const position = coordinatesFor(item)
                 const icon = item.type === 'marketplace'
-                  ? markerIcons.marketplace
-                  : item.status === 'found' ? markerIcons.found : markerIcons.lost
+                  ? campusMapIcons.marketplace
+                  : item.status === 'found' ? campusMapIcons.found : campusMapIcons.lost
 
                 return (
                   <Marker key={`${item.type}-${item.id}`} position={position} icon={icon}>
@@ -364,6 +348,13 @@ export default function CampusMap({
               {mapItems.length === 0
                 ? 'No posts with map locations yet. Lost & found posts appear here when a location pin is added.'
                 : 'No located posts in this category yet.'}
+            </p>
+          </div>
+        )}
+        {!initialCenter && !onSelectLocation && (
+          <div className="pointer-events-none absolute inset-x-4 bottom-4 z-[400] text-center">
+            <p role="status" className="mx-auto max-w-lg rounded-xl border border-brand-100 bg-white/95 px-4 py-3 text-xs text-slate-700">
+              Showing the map overview only. Search for your campus or use Recenter me; no location or sample pins are being shown.
             </p>
           </div>
         )}

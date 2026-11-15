@@ -19,9 +19,13 @@ router.use(requireAuth, requireActive)
 
 router.get('/', async (req, res) => {
   const { rows } = await query(
-    `SELECT blocked.id, blocked.display_name, blocked.avatar_key, user_blocks.created_at
+    `SELECT blocked.id, blocked.display_name, blocked.avatar_key, user_blocks.created_at,
+            college.name AS college_name,
+            COALESCE(branch.name, blocked.branch_other) AS branch_name
        FROM user_blocks
        JOIN users blocked ON blocked.id = user_blocks.blocked_id
+       LEFT JOIN colleges college ON college.id = blocked.college_id
+       LEFT JOIN branches branch ON branch.id = blocked.branch_id
       WHERE user_blocks.blocker_id = $1
         AND blocked.deleted_at IS NULL
       ORDER BY user_blocks.created_at DESC`,

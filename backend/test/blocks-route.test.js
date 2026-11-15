@@ -56,6 +56,8 @@ test('block management requires authentication and cancels existing interactions
           display_name: 'Other student',
           avatar_key: 'avatars/other-student.webp',
           created_at: '2026-11-13T00:00:00.000Z',
+          college_name: 'Campus University',
+          branch_name: 'Computer Science',
         }],
       }
     }
@@ -89,6 +91,8 @@ test('block management requires authentication and cancels existing interactions
         display_name: 'Other student',
         created_at: '2026-11-13T00:00:00.000Z',
         avatar_url: storage.urlFor('avatars/other-student.webp'),
+        college_name: 'Campus University',
+        branch_name: 'Computer Science',
       }],
     })
 

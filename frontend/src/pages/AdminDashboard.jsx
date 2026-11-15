@@ -5,10 +5,14 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { Alert, inputClass } from '../components/ui.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 import UserBadges from '../components/UserBadges.jsx'
+import CampusMap from '../components/CampusMap.jsx'
+import { getMapCenter } from '../lib/map.js'
 
 const TABS = [
   { id: 'moderation', label: 'Moderation Queue' },
   { id: 'users', label: 'User Management' },
+  { id: 'blocks', label: 'Block Relationships' },
+  { id: 'locations', label: 'Post Locations' },
   { id: 'support', label: 'Support Requests' },
   { id: 'colleges', label: 'Add College' },
   { id: 'controls', label: 'System & Safety' },
@@ -219,6 +223,241 @@ function ModerationQueue({ onError }) {
         </div>
       </section>
     </div>
+  )
+}
+
+function BlockRelationships({ onError, onSuccess }) {
+  const [search, setSearch] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
+  const [blocks, setBlocks] = useState([])
+  const [hasMore, setHasMore] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const [busy, setBusy] = useState(false)
+
+  const refresh = useCallback(async () => {
+    setBusy(true)
+    try {
+      const result = await adminApi.blockRelationships({ q: appliedSearch, limit: 50, offset })
+      setBlocks((current) => offset ? [...current, ...result.blocks] : result.blocks)
+      setHasMore(result.has_more)
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }, [appliedSearch, offset, onError])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  async function removeBlock(block) {
+    const blocking = `${block.blocker_name} (${block.blocker_email})`
+    const blocked = `${block.blocked_name} (${block.blocked_email})`
+    if (!window.confirm(
+      `Remove the block from ${blocking} against ${blocked}? This will not restore interactions that were cancelled when the block was created.`,
+    )) return
+    const reason = window.prompt('Reason for removing this block? This will be recorded in the admin audit log.')
+    if (!reason || reason.trim().length < 5) return
+
+    setBusy(true)
+    try {
+      await adminApi.removeBlockRelationship(block.blocker_id, block.blocked_id, reason.trim())
+      setBlocks((current) => current.filter((entry) => (
+        entry.blocker_id !== block.blocker_id || entry.blocked_id !== block.blocked_id
+      )))
+      onSuccess('Block relationship removed and recorded in the audit log.')
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function submitSearch(event) {
+    event.preventDefault()
+    setOffset(0)
+    setAppliedSearch(search.trim())
+  }
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-bold">Who blocked whom</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Search by either student’s name, email, or campus. Removing a relationship is audited and does not undo actions already cancelled by the block.
+        </p>
+      </div>
+      <form onSubmit={submitSearch} className="flex flex-col gap-2 sm:flex-row">
+        <label className="sr-only" htmlFor="admin-block-search">Search block relationships</label>
+        <input
+          id="admin-block-search"
+          className={inputClass}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search name, email, or campus"
+        />
+        <button type="submit" disabled={busy} className="border bg-teal-900 px-4 py-2 font-semibold text-white disabled:opacity-50">
+          Search
+        </button>
+      </form>
+
+      {blocks.length === 0 && !busy ? (
+        <p className="border bg-white p-4">{appliedSearch ? 'No matching block relationships.' : 'No block relationships found.'}</p>
+      ) : (
+        <div className="overflow-x-auto border bg-white">
+          <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+            <thead className="bg-teal-900 text-white">
+              <tr>{['Blocking student', 'Blocked student', 'Created', 'Admin action'].map((title) => <th key={title} className="border p-3">{title}</th>)}</tr>
+            </thead>
+            <tbody>
+              {blocks.map((block) => (
+                <tr key={`${block.blocker_id}-${block.blocked_id}`} className="border-b align-top">
+                  <td className="border p-3">
+                    <strong>{block.blocker_name}</strong>
+                    <span className="block text-slate-600">{block.blocker_email}</span>
+                    <span className="block text-xs text-slate-500">{block.blocker_college || 'Campus unavailable'}</span>
+                  </td>
+                  <td className="border p-3">
+                    <strong>{block.blocked_name}</strong>
+                    <span className="block text-slate-600">{block.blocked_email}</span>
+                    <span className="block text-xs text-slate-500">{block.blocked_college || 'Campus unavailable'}</span>
+                  </td>
+                  <td className="border p-3">{new Date(block.created_at).toLocaleString()}</td>
+                  <td className="border p-3">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => removeBlock(block)}
+                      className="border border-red-700 px-3 py-1.5 text-red-800 disabled:opacity-50"
+                    >
+                      Remove block
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {hasMore && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setOffset((current) => current + 50)}
+          className="border bg-white px-4 py-2 font-semibold text-teal-950 disabled:opacity-50"
+        >
+          {busy ? 'Loading…' : 'Load more'}
+        </button>
+      )}
+    </section>
+  )
+}
+
+function PostLocations({ onError }) {
+  const [search, setSearch] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
+  const [posts, setPosts] = useState([])
+  const [hasMore, setHasMore] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const [busy, setBusy] = useState(false)
+
+  const refresh = useCallback(async () => {
+    setBusy(true)
+    try {
+      const result = await adminApi.postLocations({ q: appliedSearch, limit: 100, offset })
+      setPosts((current) => offset ? [...current, ...result.posts] : result.posts)
+      setHasMore(result.has_more)
+    } catch (error) {
+      onError(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }, [appliedSearch, offset, onError])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  function submitSearch(event) {
+    event.preventDefault()
+    setOffset(0)
+    setAppliedSearch(search.trim())
+  }
+
+  const mapItems = posts.filter((post) => (
+    post.post_type === 'lost_found'
+      ? post.lifecycle_status === 'active'
+      : ['available', 'reserved'].includes(post.status)
+  )).map((post) => ({
+    id: post.id,
+    title: post.title,
+    type: post.post_type === 'lost_found' ? 'lost-found' : 'marketplace',
+    status: post.status,
+    latitude: post.latitude,
+    longitude: post.longitude,
+    locationName: post.location_name,
+  }))
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-bold">Post locations and stored coordinates</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          This view uses saved post data only. The map shows active posts with valid coordinates. Lost &amp; Found pins use their stored coordinates; marketplace listings store a preferred-place description, not map coordinates.
+        </p>
+      </div>
+      <form onSubmit={submitSearch} className="flex flex-col gap-2 sm:flex-row">
+        <label className="sr-only" htmlFor="admin-location-search">Search posts and locations</label>
+        <input
+          id="admin-location-search"
+          className={inputClass}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search post, owner, or place"
+        />
+        <button type="submit" disabled={busy} className="border bg-teal-900 px-4 py-2 font-semibold text-white disabled:opacity-50">
+          Search
+        </button>
+      </form>
+      <CampusMap items={mapItems} center={getMapCenter(null, mapItems)} />
+      {posts.length === 0 && !busy ? (
+        <p className="border bg-white p-4">{appliedSearch ? 'No matching posts.' : 'No posts found.'}</p>
+      ) : (
+        <div className="overflow-x-auto border bg-white">
+          <table className="w-full min-w-[900px] border-collapse text-left text-sm">
+            <thead className="bg-teal-900 text-white">
+              <tr>{['Type / post', 'Owner', 'Campus', 'Saved place', 'Stored coordinates', 'Created'].map((title) => <th key={title} className="border p-3">{title}</th>)}</tr>
+            </thead>
+            <tbody>
+              {posts.map((post) => (
+                <tr key={`${post.post_type}-${post.id}`} className="border-b align-top">
+                  <td className="border p-3">
+                    <strong>{post.title}</strong>
+                    <span className="block text-xs capitalize text-slate-500">{post.post_type.replace('_', ' ')} · {post.status}{post.lifecycle_status ? ` / ${post.lifecycle_status}` : ''}</span>
+                  </td>
+                  <td className="border p-3">{post.owner_name || 'Unavailable'}</td>
+                  <td className="border p-3">{post.college_name || 'Campus unavailable'}</td>
+                  <td className="border p-3">{post.location_name || 'No place recorded'}</td>
+                  <td className="border p-3 font-mono text-xs">
+                    {post.latitude != null && post.longitude != null
+                      ? `${post.latitude}, ${post.longitude}`
+                      : 'No coordinates stored'}
+                  </td>
+                  <td className="border p-3">{new Date(post.created_at).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {hasMore && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setOffset(posts.length)}
+          className="border bg-white px-4 py-2 font-semibold text-teal-950 disabled:opacity-50"
+        >
+          {busy ? 'Loading…' : 'Load more'}
+        </button>
+      )}
+    </section>
   )
 }
 
@@ -1117,6 +1356,8 @@ export default function AdminDashboard() {
               >
                 {tab === item.id && item.id === 'moderation' && <ModerationQueue onError={showError} />}
                 {tab === item.id && item.id === 'users' && <UserManagement onError={showError} onSuccess={showSuccess} />}
+                {tab === item.id && item.id === 'blocks' && <BlockRelationships onError={showError} onSuccess={showSuccess} />}
+                {tab === item.id && item.id === 'locations' && <PostLocations onError={showError} />}
                 {tab === item.id && item.id === 'support' && <SupportRequests onError={showError} onSuccess={showSuccess} />}
                 {tab === item.id && item.id === 'colleges' && <AddCollege onError={showError} onSuccess={showSuccess} />}
                 {tab === item.id && item.id === 'controls' && <SystemSafety onError={showError} />}

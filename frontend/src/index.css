@@ -120,6 +120,10 @@ textarea {
   background: #16a34a;
 }
 
+.campus-map-marker--selected span {
+  background: #2563eb;
+}
+
 /* The chunky logo lettering: dark blue letters with a light teal outline. */
 .wordmark {
   font-family: 'Fredoka', ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif;

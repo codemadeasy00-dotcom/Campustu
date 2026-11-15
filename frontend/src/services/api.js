@@ -314,6 +314,22 @@ export const adminApi = {
   }),
   dashboard: () => request('/api/admin/dashboard'),
   reports: () => request('/api/admin/reports'),
+  postLocations: (filters = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
+    })
+    return request(`/api/admin/post-locations?${params.toString()}`)
+  },
+  blockRelationships: ({ q = '', limit = 50, offset = 0 } = {}) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (q) params.set('q', q)
+    return request(`/api/admin/blocks?${params.toString()}`)
+  },
+  removeBlockRelationship: (blockerId, blockedId, reason) => request(
+    `/api/admin/blocks/${encodeURIComponent(blockerId)}/${encodeURIComponent(blockedId)}`,
+    { method: 'DELETE', json: { reason } },
+  ),
   searchUsers: (q) => request(`/api/admin/users?q=${encodeURIComponent(q)}`),
   user: (id) => request(`/api/admin/users/${encodeURIComponent(id)}`),
   setUserBadges: (id, payload) => request(`/api/admin/users/${encodeURIComponent(id)}/badges`, {

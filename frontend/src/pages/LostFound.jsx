@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Circle, CircleMarker, MapContainer, TileLayer, Marker, Popup, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
-import L from 'leaflet';
 import { lostFoundApi, errorMessage } from '../services/api.js';
 import { Alert, useToast } from '../components/ui.jsx';
 import { processAndCompressImage } from '../utils/imageCompressor.js';
@@ -16,6 +15,7 @@ import MapPlaceSearch from '../components/MapPlaceSearch.jsx';
 import MapLocationBootstrap from '../components/MapLocationBootstrap.jsx';
 import UserBadges from '../components/UserBadges.jsx';
 import { getCollegeMapCenter, getMapCenter } from '../lib/map.js';
+import { campusMapIcons } from '../lib/map-icons.js';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 
@@ -57,33 +57,6 @@ function LostFoundSkeleton() {
     </ul>
   );
 }
-
-// Leaflet default marker fix
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-// Custom Pins
-const redIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
-const greenIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
 
 const cartoApiKey = import.meta.env.VITE_CARTO_API_KEY;
 const standardTileUrl = cartoApiKey
@@ -156,6 +129,7 @@ function LocationPinPicker({ position, setPosition }) {
       draggable={true}
       eventHandlers={eventHandlers}
       position={position}
+      icon={campusMapIcons.selected}
     />
   );
 }
@@ -1019,7 +993,7 @@ export default function LostFound() {
                   <Marker
                     key={item.id}
                     position={[Number(item.latitude), Number(item.longitude)]}
-                    icon={item.status === 'lost' ? redIcon : greenIcon}
+                    icon={item.status === 'lost' ? campusMapIcons.lost : campusMapIcons.found}
                   >
                     <Popup>
                       <div className="p-1 max-w-[180px]">
