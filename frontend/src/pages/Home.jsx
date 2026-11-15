@@ -9,6 +9,7 @@ import { Alert, Button, inputClass } from '../components/ui.jsx'
 import Wordmark from '../components/Wordmark.jsx'
 import CampusMap from '../components/CampusMap.jsx'
 import UserBadges from '../components/UserBadges.jsx'
+import { getMapCenter } from '../lib/map.js'
 
 export default function Home() {
   const { user } = useAuth()
@@ -34,6 +35,9 @@ function Welcome() {
             <Link to="/signup" className="rounded-full bg-cream px-6 py-3 text-sm font-bold text-brand-700 shadow transition hover:bg-white">Join your campus</Link>
             <Link to="/login" className="rounded-full border border-white/50 bg-white/10 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/20">Log in</Link>
           </div>
+          <p className="mt-4 max-w-xl text-xs leading-5 text-white/80">
+            Campus listings are available after you select your college and verify your student email.
+          </p>
         </div>
       </section>
 
@@ -47,7 +51,7 @@ function Welcome() {
             <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-xl font-bold text-brand-700">{feature.icon}</span>
             <h2 className="mt-4 font-bold text-brand-700">{feature.title}</h2>
             <p className="mt-1 text-sm leading-5 text-slate-600">{feature.text}</p>
-            <span className="mt-3 inline-block text-xs font-semibold text-brand-700 group-hover:underline">Create an account <span aria-hidden="true">→</span></span>
+            <span className="mt-3 inline-block text-xs font-semibold text-brand-700 group-hover:underline">Sign up to browse campus posts <span aria-hidden="true">→</span></span>
           </Link>
         ))}
       </section>
@@ -142,13 +146,6 @@ function Dashboard() {
       imageUrl: item.photo,
     })),
   ], [recent, lostFound])
-  const campusCenter = user.college?.center_lat != null
-    && user.college?.center_lng != null
-    && Number.isFinite(Number(user.college.center_lat))
-    && Number.isFinite(Number(user.college.center_lng))
-    ? [Number(user.college.center_lat), Number(user.college.center_lng)]
-    : [18.1678, 73.3364]
-
   const submitSearch = (event) => {
     event.preventDefault()
     const query = search.trim()
@@ -332,7 +329,7 @@ function Dashboard() {
         </section>
       </div>
 
-      <CampusMap items={mapItems} center={campusCenter} />
+      <CampusMap items={mapItems} center={getMapCenter(user.college, mapItems)} />
     </div>
   )
 }

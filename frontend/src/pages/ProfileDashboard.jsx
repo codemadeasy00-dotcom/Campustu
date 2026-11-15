@@ -540,7 +540,7 @@ export default function ProfileDashboard() {
         <div>
           <h2 id="search-alert-settings-title" className="font-mono text-lg font-bold text-teal-950">Search alert settings</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Searches of at least two characters can be used to alert you when a matching marketplace item or Need Board request is posted.
+            When enabled, searches of at least two characters can alert you about matching marketplace items and Need Board requests. Turning this off stops future alerts from automatically tracked searches; manually saved searches stay active. Existing alerts are kept until cleared or read.
           </p>
         </div>
         {searchAlertsError && <Alert>{searchAlertsError}</Alert>}
@@ -555,7 +555,7 @@ export default function ProfileDashboard() {
           <span>
             Enable automated search match alerts
             <span className="mt-1 block text-xs font-normal text-slate-500">
-              Search terms are kept privately for your account. Disable this at any time to stop tracking new searches.
+              Search terms are kept privately for your account. Clear automatic search alert history below to delete automatically tracked terms and their alerts.
             </span>
           </span>
         </label>

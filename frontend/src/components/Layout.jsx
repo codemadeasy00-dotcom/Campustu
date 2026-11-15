@@ -402,7 +402,7 @@ export default function Layout() {
           <button
             type="button"
             className="site-global-search-toggle"
-            aria-label={siteSearchOpen ? 'Close feature search' : 'Search website features'}
+            aria-label={siteSearchOpen ? 'Close search' : 'Search pages and campus posts'}
             aria-expanded={siteSearchOpen}
             aria-controls="site-feature-search"
             onClick={() => {
@@ -576,7 +576,7 @@ export default function Layout() {
         </div>
 
         {siteSearchOpen && (
-          <section id="site-feature-search" className="site-global-search-panel" aria-label="Search website features">
+          <section id="site-feature-search" className="site-global-search-panel" aria-label="Search pages and campus posts">
             <form className="site-global-search-form" role="search" onSubmit={submitSiteSearch}>
               <SearchIcon />
               <input
@@ -584,30 +584,46 @@ export default function Layout() {
                 type="search"
                 value={siteSearchTerm}
                 onChange={(event) => setSiteSearchTerm(event.target.value)}
-                placeholder="Search pages and features…"
-                aria-label="Search pages and features"
+                placeholder="Search pages or campus posts…"
+                aria-label="Search pages or campus posts"
               />
-              <button type="submit" className="site-global-search-submit">Search</button>
+              <button type="submit" className="site-global-search-submit">Open page</button>
             </form>
             {matchingFeatures.length > 0 ? (
-              <ul className="site-global-search-results" aria-label="Matching pages and features">
-                {matchingFeatures.map((feature) => (
-                  <li key={feature.to}>
-                    <Link
-                      to={feature.to}
-                      onClick={() => setSiteSearchOpen(false)}
-                      className="site-global-search-result"
-                    >
-                      {feature.label}
-                      <span aria-hidden="true">→</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <p className="mt-3 px-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Pages and features</p>
+                <ul className="site-global-search-results" aria-label="Matching pages and features">
+                  {matchingFeatures.map((feature) => (
+                    <li key={feature.to}>
+                      <Link
+                        to={feature.to}
+                        onClick={() => setSiteSearchOpen(false)}
+                        className="site-global-search-result"
+                      >
+                        {feature.label}
+                        <span aria-hidden="true">→</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </>
             ) : (
               <p className="site-global-search-empty">
-                No matching feature. Press Search or Enter to search campus listings and posts.
+                No matching page or feature.
               </p>
+            )}
+            {siteSearchTerm.trim().length >= 2 && (
+              <div className="mt-2 border-t border-brand-100 pt-2">
+                <p className="px-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Campus posts</p>
+                <Link
+                  to={`/search?q=${encodeURIComponent(siteSearchTerm.trim())}`}
+                  onClick={() => setSiteSearchOpen(false)}
+                  className="site-global-search-result"
+                >
+                  Search listings, Lost &amp; Found, and requests for “{siteSearchTerm.trim()}”
+                  <span aria-hidden="true">→</span>
+                </Link>
+              </div>
             )}
           </section>
         )}

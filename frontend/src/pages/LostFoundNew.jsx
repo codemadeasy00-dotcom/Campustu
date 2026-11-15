@@ -7,11 +7,11 @@ import { processAndCompressImage } from '../utils/imageCompressor.js'
 import { checkImagesSafety } from '../utils/moderation.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
+import { getCollegeMapCenter } from '../lib/map.js'
 
 const DRAFT_STORAGE_KEY = 'campustu_lost_found_draft_v1'
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024
 const MAX_PHOTOS = 5
-const DEFAULT_CENTER = [18.1678, 73.3364]
 const CATEGORIES = [
   'Electronics & Gadgets',
   'Books & Study Materials',
@@ -103,12 +103,7 @@ export default function LostFoundNew() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const campusDefaultRadius = Math.min(5000, Math.max(50, Number(user?.college?.search_radius_meters) || 100))
-  const campusCenter = user?.college?.center_lat != null
-    && user?.college?.center_lng != null
-    && Number.isFinite(Number(user.college.center_lat))
-    && Number.isFinite(Number(user?.college?.center_lng))
-    ? [Number(user.college.center_lat), Number(user.college.center_lng)]
-    : DEFAULT_CENTER
+  const campusCenter = getCollegeMapCenter(user?.college)
   const [draftState] = useState(readDraft)
   const [form, setForm] = useState(() => emptyForm(campusDefaultRadius))
   const [draftReady, setDraftReady] = useState(false)

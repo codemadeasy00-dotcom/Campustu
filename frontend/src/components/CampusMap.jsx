@@ -3,12 +3,12 @@ import { Circle, CircleMarker, MapContainer, Marker, Popup, TileLayer, ZoomContr
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import MapPlaceSearch from './MapPlaceSearch.jsx'
+import MapLocationBootstrap from './MapLocationBootstrap.jsx'
 import UserBadges from './UserBadges.jsx'
+import { validMapCoordinates } from '../lib/map.js'
 import 'leaflet/dist/leaflet.css'
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css'
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css'
-
-const DEFAULT_CENTER = [18.1678, 73.3364]
 
 const markerIcons = {
   marketplace: L.divIcon({
@@ -32,12 +32,7 @@ const markerIcons = {
 }
 
 function coordinatesFor(item) {
-  if (item.latitude == null || item.longitude == null || item.latitude === '' || item.longitude === '') return null
-  const latitude = Number(item.latitude)
-  const longitude = Number(item.longitude)
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
-  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null
-  return [latitude, longitude]
+  return validMapCoordinates(item.latitude, item.longitude)
 }
 
 function FitPins({ items }) {
@@ -224,7 +219,7 @@ function MapCenter({ center, zoom }) {
 
 export default function CampusMap({
   items = [],
-  center = DEFAULT_CENTER,
+  center = null,
   className = '',
   onSelectLocation,
   selectedCoords = null,
@@ -232,11 +227,14 @@ export default function CampusMap({
 }) {
   const [filter, setFilter] = useState('all')
   const [selectedLayer, setSelectedLayer] = useState('standard')
+  const campusCenter = validMapCoordinates(center?.[0], center?.[1])
+  const selectedCenter = validMapCoordinates(selectedCoords?.lat, selectedCoords?.lng)
   const pickerCenter = useMemo(
-    () => selectedCoords ? [selectedCoords.lat, selectedCoords.lng] : center,
-    [center, selectedCoords?.lat, selectedCoords?.lng],
+    () => selectedCenter ?? campusCenter,
+    [campusCenter?.[0], campusCenter?.[1], selectedCenter?.[0], selectedCenter?.[1]],
   )
   const mapItems = useMemo(() => items.filter((item) => coordinatesFor(item)), [items])
+  const initialCenter = selectedCenter ?? campusCenter ?? mapItems.map(coordinatesFor).find(Boolean) ?? null
   const visibleItems = useMemo(
     () => mapItems.filter((item) => filter === 'all' || item.type === filter),
     [filter, mapItems],
@@ -274,80 +272,93 @@ export default function CampusMap({
       </div>
 
       <div className="campus-map-container map-fullscreen-container relative h-[min(60vh,400px)] min-h-[300px] w-full sm:h-[400px]">
-        <MapContainer
-          center={center}
-          zoom={14}
-          scrollWheelZoom={false}
-          zoomControl={false}
-          className="h-full w-full"
-        >
-          {onSelectLocation && <MapCenter center={pickerCenter} zoom={selectedCoords ? 17 : 14} />}
-          <TileLayer
-            key={selectedLayer}
-            attribution={selectedLayer === 'standard'
-              ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              : 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'}
-            url={selectedLayer === 'standard'
-              ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-              : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'}
-          />
-          <ZoomControl position="bottomleft" />
-          <SearchControl onSelectLocation={onSelectLocation} />
-          <LayerControl selectedLayer={selectedLayer} onSelectLayer={setSelectedLayer} />
-          <FullscreenControl />
-          <LocateControl onSelectLocation={onSelectLocation} />
-          {onSelectLocation && <LocationPicker onSelectLocation={onSelectLocation} />}
-          {onSelectLocation && <SelectedLocation coords={selectedCoords} radiusMeters={radiusMeters} />}
-          <FitPins items={visibleItems} />
-          {visibleItems.map((item) => {
-            const position = coordinatesFor(item)
-            const radius = Number(item.radius_meters)
-            if (item.type !== 'lost-found' || item.status !== 'lost' || !position || !Number.isFinite(radius) || radius <= 0) return null
-            return (
-              <Circle
-                key={`radius-${item.id}`}
-                center={position}
-                radius={radius}
-                pathOptions={{ color: '#dc2626', fillColor: '#ef4444', fillOpacity: 0.08, weight: 1 }}
-              />
-            )
-          })}
-          <MarkerClusterGroup chunkedLoading>
+        {initialCenter ? (
+          <MapContainer
+            center={initialCenter}
+            zoom={14}
+            scrollWheelZoom={false}
+            zoomControl={false}
+            className="h-full w-full"
+          >
+            {onSelectLocation && pickerCenter && <MapCenter center={pickerCenter} zoom={selectedCenter ? 17 : 14} />}
+            <TileLayer
+              key={selectedLayer}
+              attribution={selectedLayer === 'standard'
+                ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                : 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'}
+              url={selectedLayer === 'standard'
+                ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+                : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'}
+            />
+            <ZoomControl position="bottomleft" />
+            <SearchControl onSelectLocation={onSelectLocation} />
+            <LayerControl selectedLayer={selectedLayer} onSelectLayer={setSelectedLayer} />
+            <FullscreenControl />
+            <LocateControl onSelectLocation={onSelectLocation} />
+            {onSelectLocation && <LocationPicker onSelectLocation={onSelectLocation} />}
+            {onSelectLocation && <SelectedLocation coords={selectedCoords} radiusMeters={radiusMeters} />}
+            <FitPins items={visibleItems} />
             {visibleItems.map((item) => {
               const position = coordinatesFor(item)
-              const icon = item.type === 'marketplace'
-                ? markerIcons.marketplace
-                : item.status === 'found' ? markerIcons.found : markerIcons.lost
-
+              const radius = Number(item.radius_meters)
+              if (item.type !== 'lost-found' || item.status !== 'lost' || !position || !Number.isFinite(radius) || radius <= 0) return null
               return (
-                <Marker key={`${item.type}-${item.id}`} position={position} icon={icon}>
-                  <Popup>
-                    <div className="max-w-56">
-                      {item.imageUrl && (
-                        <img src={item.imageUrl} alt="" className="mb-2 h-24 w-full rounded-lg object-cover" />
-                      )}
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                        item.type === 'marketplace'
-                          ? 'bg-brand-50 text-brand-700'
-                          : item.status === 'found'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-red-100 text-red-800'
-                      }`}>
-                        {item.type === 'marketplace' ? 'Marketplace' : item.status}
-                      </span>
-                      <h3 className="mb-1 mt-2 font-bold text-slate-900">{item.title}</h3>
-                      <UserBadges badges={item.type === 'marketplace' ? item.badges : item.item_badges} className="mb-2" />
-                      {item.description && <p className="text-xs text-slate-600">{item.description}</p>}
-                      {item.price != null && <p className="mt-2 text-sm font-bold text-brand-700">₹{item.price}</p>}
-                      {item.locationName && <p className="mt-2 text-xs text-slate-500">{item.locationName}</p>}
-                    </div>
-                  </Popup>
-                </Marker>
+                <Circle
+                  key={`radius-${item.id}`}
+                  center={position}
+                  radius={radius}
+                  pathOptions={{ color: '#dc2626', fillColor: '#ef4444', fillOpacity: 0.08, weight: 1 }}
+                />
               )
             })}
-          </MarkerClusterGroup>
-        </MapContainer>
-        {visibleItems.length === 0 && !onSelectLocation && (
+            <MarkerClusterGroup chunkedLoading>
+              {visibleItems.map((item) => {
+                const position = coordinatesFor(item)
+                const icon = item.type === 'marketplace'
+                  ? markerIcons.marketplace
+                  : item.status === 'found' ? markerIcons.found : markerIcons.lost
+
+                return (
+                  <Marker key={`${item.type}-${item.id}`} position={position} icon={icon}>
+                    <Popup>
+                      <div className="max-w-56">
+                        {item.imageUrl && (
+                          <img src={item.imageUrl} alt="" className="mb-2 h-24 w-full rounded-lg object-cover" />
+                        )}
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          item.type === 'marketplace'
+                            ? 'bg-brand-50 text-brand-700'
+                            : item.status === 'found'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-red-100 text-red-800'
+                        }`}>
+                          {item.type === 'marketplace' ? 'Marketplace' : item.status}
+                        </span>
+                        <h3 className="mb-1 mt-2 font-bold text-slate-900">{item.title}</h3>
+                        <UserBadges badges={item.type === 'marketplace' ? item.badges : item.item_badges} className="mb-2" />
+                        {item.description && <p className="text-xs text-slate-600">{item.description}</p>}
+                        {item.price != null && <p className="mt-2 text-sm font-bold text-brand-700">₹{item.price}</p>}
+                        {item.locationName && <p className="mt-2 text-xs text-slate-500">{item.locationName}</p>}
+                      </div>
+                    </Popup>
+                  </Marker>
+                )
+              })}
+            </MarkerClusterGroup>
+          </MapContainer>
+        ) : onSelectLocation ? (
+          <div className="flex h-full items-center justify-center bg-slate-50 p-4">
+            <MapLocationBootstrap
+              id="campus-map-initial-location"
+              onSelect={(coords) => onSelectLocation(coords)}
+            />
+          </div>
+        ) : (
+          <div role="status" className="flex h-full items-center justify-center bg-slate-50 p-6 text-center text-sm text-slate-600">
+            No verified campus center or posts with saved map coordinates are available yet.
+          </div>
+        )}
+        {initialCenter && visibleItems.length === 0 && !onSelectLocation && (
           <div className="pointer-events-none absolute inset-x-4 top-1/2 z-[400] -translate-y-1/2 text-center">
             <p className="mx-auto max-w-sm rounded-2xl border border-brand-100 bg-cream/95 px-4 py-3 text-sm text-slate-600 shadow">
               {mapItems.length === 0

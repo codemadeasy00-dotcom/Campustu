@@ -55,16 +55,44 @@ export function ConfirmDialog({
   onCancel,
 }) {
   const cancelButtonRef = useRef(null)
+  const dialogRef = useRef(null)
+  const cancelHandlerRef = useRef(onCancel)
+  cancelHandlerRef.current = onCancel
 
   useEffect(() => {
     if (!open) return undefined
+    const previousFocus = document.activeElement
     cancelButtonRef.current?.focus()
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onCancel()
+      if (event.key === 'Escape') {
+        cancelHandlerRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = [...dialogRef.current.querySelectorAll(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )].filter((element) => element.getClientRects().length > 0)
+      if (!focusable.length) {
+        event.preventDefault()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current.contains(document.activeElement))) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [open, onCancel])
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus()
+    }
+  }, [open])
 
   if (!open) return null
 
@@ -72,10 +100,11 @@ export function ConfirmDialog({
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-3 sm:p-4"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onCancel()
+        if (event.target === event.currentTarget) cancelHandlerRef.current()
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"

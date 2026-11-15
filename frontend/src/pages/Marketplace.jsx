@@ -264,7 +264,7 @@ export default function Marketplace() {
           />
         </label>
         <p className="mt-2 text-xs text-slate-500">
-          When enabled, searches of 2 or more characters can alert you to matching listings and campus requests.{' '}
+          When enabled, searches of 2 or more characters can create alerts for matching listings and campus requests. Turn this off or clear tracked terms in{' '}
           <Link to="/profile" className="font-semibold text-brand-700 underline">Manage automated search alerts in your profile</Link>.
         </p>
         {savedSearches.length > 0 && (

@@ -185,7 +185,10 @@ export default function ItemPage() {
         <UserBadges badges={item.badges} className="mt-2" />
         <h1 className="mt-2 text-2xl font-bold">{item.title}</h1>
         <p className="mt-1 text-3xl font-bold text-brand-700">{formatPrice(item.price)}</p>
-        <p className="text-xs text-slate-500">Asking price. Pay the seller directly when you meet.</p>
+        <p className="text-xs text-slate-500">Asking price. Campustu does not collect payment; pay the seller directly when you meet.</p>
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
+          Meet in a busy public campus spot, inspect the item before paying, and confirm the handover in Campustu only after it is complete. Never share passwords or verification codes.
+        </p>
         {item.wanted_categories?.length > 0 && (
           <p className="mt-3 rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
             <strong>Open to barter for:</strong> {item.wanted_categories.join(', ')}

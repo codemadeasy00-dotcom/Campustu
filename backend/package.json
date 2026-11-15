@@ -36,6 +36,7 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "s3rver": "^3.7.1"
   }
 }

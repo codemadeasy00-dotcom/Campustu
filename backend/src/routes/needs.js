@@ -157,6 +157,7 @@ router.post('/', async (req, res) => {
               ]::text[], NULL))
          FROM saved_searches ss
          JOIN users recipient ON recipient.id = ss.user_id
+         LEFT JOIN search_alert_preferences alert_preferences ON alert_preferences.user_id = ss.user_id
          LEFT JOIN categories matched_category ON matched_category.id = ss.category_id
          LEFT JOIN branches matched_branch ON matched_branch.id = ss.branch_id
         WHERE ss.college_id = $1
@@ -165,6 +166,7 @@ router.post('/', async (req, res) => {
           AND recipient.status = 'active'
           AND recipient.deleted_at IS NULL
           AND recipient.college_id = ss.college_id
+          AND (NOT ss.auto_tracked OR COALESCE(alert_preferences.auto_track_searches, true))
           AND (ss.category_id IS NULL OR ss.category_id = $4)
           AND (ss.branch_id IS NULL OR $5::smallint IS NULL OR ss.branch_id = $5::smallint)
           AND to_tsvector('simple', concat_ws(' ', $6::text, $7::text))

@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 
 export const SHARE_QR_OPEN_EVENT = 'campustu:open-share-qr'
 
 export default function ShareQRWidget() {
   const [isOpen, setIsOpen] = useState(false)
+  const dialogRef = useRef(null)
+  const closeButtonRef = useRef(null)
   const shareUrl = typeof window !== 'undefined' ? window.location.origin : 'https://campustu.vercel.app'
 
   useEffect(() => {
@@ -17,13 +19,37 @@ export default function ShareQRWidget() {
 
   useEffect(() => {
     if (!isOpen) return undefined
+    const previousFocus = document.activeElement
+    closeButtonRef.current?.focus()
 
     function closeOnEscape(event) {
-      if (event.key === 'Escape') setIsOpen(false)
+      if (event.key === 'Escape') {
+        setIsOpen(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = [...dialogRef.current.querySelectorAll('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')]
+        .filter((element) => element.getClientRects().length > 0)
+      if (!focusable.length) {
+        event.preventDefault()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current.contains(document.activeElement))) {
+        event.preventDefault()
+        first.focus()
+      }
     }
 
     window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape)
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus()
+    }
   }, [isOpen])
 
   return (
@@ -36,6 +62,7 @@ export default function ShareQRWidget() {
           }}
         >
           <section
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="share-qr-title"
@@ -49,6 +76,7 @@ export default function ShareQRWidget() {
             </div>
             <p className="mb-4 text-xs text-slate-600">Point another device's camera here to open this page.</p>
             <button
+              ref={closeButtonRef}
               type="button"
               onClick={() => setIsOpen(false)}
               className="w-full rounded-full bg-brand-700 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600"

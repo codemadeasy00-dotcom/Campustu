@@ -231,7 +231,7 @@ export default function NewListing() {
               ))}
             </select>
           </Field>
-          <Field label="Preferred meeting place" hint="A public place on your campus.">
+          <Field label="Preferred meeting place" hint="Choose a busy public campus spot. Do not include a room number, dorm address, or other private location.">
             <input maxLength={120} className={inputClass} value={form.preferred_place} onChange={set('preferred_place')} placeholder="e.g. main gate" />
           </Field>
 

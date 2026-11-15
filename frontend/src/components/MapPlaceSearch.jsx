@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useMap } from 'react-leaflet'
 import { placesApi } from '../services/api.js'
 
-export default function MapPlaceSearch({ onSelect, id = 'map-place-search' }) {
-  const map = useMap()
+export function PlaceSearchInput({
+  onSelect,
+  id = 'map-place-search',
+  className = 'absolute left-3 right-3 top-3 z-[1000] sm:right-auto sm:w-[min(24rem,calc(100%-1.5rem))]',
+}) {
   const rootRef = useRef(null)
   const requestNumber = useRef(0)
   const [query, setQuery] = useState('')
@@ -84,7 +87,7 @@ export default function MapPlaceSearch({ onSelect, id = 'map-place-search' }) {
   const showResults = focused && results.length > 0
 
   return (
-    <div ref={rootRef} className="absolute left-3 right-3 top-3 z-[1000] sm:right-auto sm:w-[min(24rem,calc(100%-1.5rem))]">
+    <div ref={rootRef} className={className}>
       <div className="flex items-center rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-900/15 transition focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-100">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="ml-3 h-5 w-5 shrink-0 text-brand-700" stroke="currentColor" strokeWidth="2">
           <circle cx="11" cy="11" r="6.5" />
@@ -184,5 +187,19 @@ export default function MapPlaceSearch({ onSelect, id = 'map-place-search' }) {
         </p>
       )}
     </div>
+  )
+}
+
+export default function MapPlaceSearch({ onSelect, ...props }) {
+  const map = useMap()
+
+  return (
+    <PlaceSearchInput
+      {...props}
+      onSelect={(place) => {
+        map.flyTo([place.lat, place.lng], 16, { duration: 0.8 })
+        onSelect?.(place)
+      }}
+    />
   )
 }

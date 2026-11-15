@@ -78,7 +78,7 @@ export default function CampusSearch() {
         <button className={`${primaryActionClass} shrink-0`} type="submit">Search campus</button>
       </form>
       <p className="mt-2 text-xs text-slate-500">
-        When automatic alerts are enabled, campus searches are used for future marketplace and Need Board alerts.{' '}
+        When enabled, searches of 2 or more characters can be tracked for future marketplace and Need Board alerts. You can turn this off or clear tracked terms in{' '}
         <Link to="/profile" className="font-semibold text-brand-700 underline">Manage alert settings</Link>.
       </p>
 

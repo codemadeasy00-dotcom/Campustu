@@ -13,7 +13,9 @@ import BlockUserButton from '../components/BlockUserButton.jsx';
 import ItemPhoto from '../components/ItemPhoto.jsx';
 import ReportItemButton from '../components/ReportItemButton.jsx';
 import MapPlaceSearch from '../components/MapPlaceSearch.jsx';
+import MapLocationBootstrap from '../components/MapLocationBootstrap.jsx';
 import UserBadges from '../components/UserBadges.jsx';
+import { getCollegeMapCenter, getMapCenter } from '../lib/map.js';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 
@@ -330,12 +332,9 @@ export default function LostFound() {
   const [moderationProgress, setModerationProgress] = useState('');
   const photoPreviewsRef = React.useRef([]);
 
-  const defaultCenter = user?.college?.center_lat != null
-    && user?.college?.center_lng != null
-    && Number.isFinite(Number(user.college.center_lat))
-    && Number.isFinite(Number(user?.college?.center_lng))
-    ? [Number(user.college.center_lat), Number(user.college.center_lng)]
-    : [18.1678, 73.3364];
+  const campusCenter = getCollegeMapCenter(user?.college);
+  const mapCenter = nearbyCenter ?? campusCenter ?? getMapCenter(null, nearbyItems ?? items);
+  const reportMapCenter = modalPin ?? campusCenter ?? getMapCenter(null, items);
   const [modalPin, setModalPin] = useState(null);
   const [selectedLayer, setSelectedLayer] = useState('standard');
 
@@ -980,7 +979,8 @@ export default function LostFound() {
         )}
         
         <div className="map-fullscreen-container relative z-0 h-[min(60vh,450px)] min-h-[260px] w-full overflow-hidden rounded-xl sm:h-[450px]">
-          <MapContainer center={defaultCenter} zoom={16} zoomControl={false} scrollWheelZoom={true} className="lost-found-map w-full h-full z-0">
+          {mapCenter ? (
+            <MapContainer center={mapCenter} zoom={16} zoomControl={false} scrollWheelZoom={true} className="lost-found-map w-full h-full z-0">
             <TileLayer
               key={selectedLayer}
               attribution={selectedLayer === 'standard'
@@ -1038,7 +1038,12 @@ export default function LostFound() {
                 ) : null
               ))}
             </MarkerClusterGroup>
-          </MapContainer>
+            </MapContainer>
+          ) : (
+            <div className="flex h-full items-center justify-center bg-slate-50 p-4">
+              <MapLocationBootstrap id="lost-found-nearby-map-initial-location" onSelect={(coords) => selectNearbyCenter([coords.lat, coords.lng])} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -1693,7 +1698,8 @@ export default function LostFound() {
                   Click on Map to Pinpoint Location
                 </label>
                 <div className="map-fullscreen-container relative h-[min(55vh,360px)] min-h-[260px] w-full overflow-hidden rounded-xl border border-slate-200 sm:h-[300px]">
-                  <MapContainer center={modalPin ?? defaultCenter} zoom={16} zoomControl={false} scrollWheelZoom={false} className="lost-found-map w-full h-full">
+                  {reportMapCenter ? (
+                    <MapContainer center={reportMapCenter} zoom={16} zoomControl={false} scrollWheelZoom={false} className="lost-found-map w-full h-full">
                     <TileLayer
                       attribution={standardTileAttribution}
                       url={standardTileUrl}
@@ -1703,7 +1709,15 @@ export default function LostFound() {
                     <FullscreenButton />
                     <LocateUserButton onLocationFound={(coords) => setModalPin(coords)} />
                     <LocationPinPicker position={modalPin} setPosition={setModalPin} />
-                  </MapContainer>
+                    </MapContainer>
+                  ) : (
+                    <div className="flex h-full items-center justify-center bg-slate-50 p-4">
+                      <MapLocationBootstrap
+                        id="lost-found-report-map-initial-location"
+                        onSelect={({ lat, lng }) => setModalPin([lat, lng])}
+                      />
+                    </div>
+                  )}
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
                   {modalPin
