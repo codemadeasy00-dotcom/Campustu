@@ -15,17 +15,17 @@ function coordinatesFor(item) {
   return validMapCoordinates(item.latitude, item.longitude)
 }
 
-function FitPins({ items }) {
+function FitPins({ items, animations }) {
   const map = useMap()
   const positions = items.map(coordinatesFor).filter(Boolean)
 
   useEffect(() => {
     if (positions.length === 1) {
-      map.setView(positions[0], 16)
+      map.setView(positions[0], 16, { animate: animations })
     } else if (positions.length > 1) {
-      map.fitBounds(L.latLngBounds(positions), { padding: [32, 32], maxZoom: 16 })
+      map.fitBounds(L.latLngBounds(positions), { padding: [32, 32], maxZoom: 16, animate: animations })
     }
-  }, [map, items])
+  }, [animations, map, items])
 
   return null
 }
@@ -189,11 +189,11 @@ function SelectedLocation({ coords, radiusMeters }) {
   )
 }
 
-function MapCenter({ center, zoom }) {
+function MapCenter({ center, zoom, animations }) {
   const map = useMap()
   useEffect(() => {
-    map.setView(center, zoom)
-  }, [center, map, zoom])
+    map.setView(center, zoom, { animate: animations })
+  }, [animations, center, map, zoom])
   return null
 }
 
@@ -204,6 +204,8 @@ export default function CampusMap({
   onSelectLocation,
   selectedCoords = null,
   radiusMeters = 0,
+  focusedItemId = null,
+  animations = true,
 }) {
   const [filter, setFilter] = useState('all')
   const [selectedLayer, setSelectedLayer] = useState('standard')
@@ -262,9 +264,12 @@ export default function CampusMap({
             zoom={initialCenter ? 14 : 2}
             scrollWheelZoom={false}
             zoomControl={false}
+            zoomAnimation={animations}
+            fadeAnimation={animations}
+            markerZoomAnimation={animations}
             className="h-full w-full"
           >
-            {onSelectLocation && pickerCenter && <MapCenter center={pickerCenter} zoom={selectedCenter ? 17 : 14} />}
+            {onSelectLocation && pickerCenter && <MapCenter center={pickerCenter} zoom={selectedCenter ? 17 : 14} animations={animations} />}
             <TileLayer
               key={selectedLayer}
               attribution={selectedLayer === 'standard'
@@ -281,7 +286,7 @@ export default function CampusMap({
             <LocateControl onSelectLocation={onSelectLocation} />
             {onSelectLocation && <LocationPicker onSelectLocation={onSelectLocation} />}
             {onSelectLocation && <SelectedLocation coords={selectedCoords} radiusMeters={radiusMeters} />}
-            <FitPins items={visibleItems} />
+            <FitPins items={visibleItems} animations={animations} />
             {visibleItems.map((item) => {
               const position = coordinatesFor(item)
               const radius = Number(item.radius_meters)
@@ -295,10 +300,12 @@ export default function CampusMap({
                 />
               )
             })}
-            <MarkerClusterGroup chunkedLoading>
+            <MarkerClusterGroup chunkedLoading animate={animations}>
               {visibleItems.map((item) => {
                 const position = coordinatesFor(item)
-                const icon = item.type === 'marketplace'
+                const icon = item.id === focusedItemId
+                  ? campusMapIcons.selected
+                  : item.type === 'marketplace'
                   ? campusMapIcons.marketplace
                   : item.status === 'found' ? campusMapIcons.found : campusMapIcons.lost
 

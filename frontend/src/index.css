@@ -51,6 +51,19 @@ textarea {
   max-width: 100%;
 }
 
+.admin-console,
+.admin-console * {
+  animation: none !important;
+  scroll-behavior: auto !important;
+  transition: none !important;
+}
+
+.admin-console .admin-map {
+  border-color: #cbd5e1 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
 .lost-found-map .leaflet-control-zoom a {
   border-color: #a9ded9;
   background: #fffdf7;

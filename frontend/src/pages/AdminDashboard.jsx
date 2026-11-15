@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { adminApi, errorMessage, moderationApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -356,9 +356,11 @@ function PostLocations({ onError }) {
   const [search, setSearch] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
   const [posts, setPosts] = useState([])
+  const [focusedPostKey, setFocusedPostKey] = useState('')
   const [hasMore, setHasMore] = useState(false)
   const [offset, setOffset] = useState(0)
   const [busy, setBusy] = useState(false)
+  const mapSectionRef = useRef(null)
 
   const refresh = useCallback(async () => {
     setBusy(true)
@@ -377,30 +379,47 @@ function PostLocations({ onError }) {
 
   function submitSearch(event) {
     event.preventDefault()
+    setFocusedPostKey('')
     setOffset(0)
     setAppliedSearch(search.trim())
   }
 
-  const mapItems = posts.filter((post) => (
+  function toMapItem(post) {
+    return {
+      id: post.id,
+      title: post.title,
+      type: post.post_type === 'lost_found' ? 'lost-found' : 'marketplace',
+      status: post.status,
+      latitude: post.latitude,
+      longitude: post.longitude,
+      locationName: post.location_name,
+    }
+  }
+
+  const focusedPost = posts.find((post) => `${post.post_type}-${post.id}` === focusedPostKey)
+  const activeMapItems = posts.filter((post) => (
     post.post_type === 'lost_found'
       ? post.lifecycle_status === 'active'
       : ['available', 'reserved'].includes(post.status)
-  )).map((post) => ({
-    id: post.id,
-    title: post.title,
-    type: post.post_type === 'lost_found' ? 'lost-found' : 'marketplace',
-    status: post.status,
-    latitude: post.latitude,
-    longitude: post.longitude,
-    locationName: post.location_name,
-  }))
+  )).map(toMapItem)
+  const focusedPostHasCoordinates = focusedPost && getMapCenter(null, [focusedPost])
+  const mapItems = focusedPostHasCoordinates ? [toMapItem(focusedPost)] : activeMapItems
+
+  function focusPost(post) {
+    if (!getMapCenter(null, [post])) return
+    setFocusedPostKey(`${post.post_type}-${post.id}`)
+    const mapTop = mapSectionRef.current?.getBoundingClientRect().top
+    if (mapTop != null) {
+      window.scrollTo({ top: window.scrollY + mapTop - 16, behavior: 'instant' })
+    }
+  }
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <div>
         <h2 className="text-xl font-bold">Post locations and stored coordinates</h2>
         <p className="mt-1 text-sm text-slate-600">
-          This view uses saved post data only. The map shows active posts with valid coordinates. Lost &amp; Found pins use their stored coordinates; marketplace listings store a preferred-place description, not map coordinates.
+          Select a post with coordinates to center the map on its saved location. Active posts appear by default. Lost &amp; Found pins use stored coordinates; marketplace listings store a preferred-place description, not map coordinates.
         </p>
       </div>
       <form onSubmit={submitSearch} className="flex flex-col gap-2 sm:flex-row">
@@ -412,24 +431,50 @@ function PostLocations({ onError }) {
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search post, owner, or place"
         />
-        <button type="submit" disabled={busy} className="border bg-teal-900 px-4 py-2 font-semibold text-white disabled:opacity-50">
+        <button type="submit" disabled={busy} className="border border-slate-700 bg-slate-800 px-4 py-2 font-semibold text-white disabled:opacity-50">
           Search
         </button>
       </form>
-      <CampusMap items={mapItems} center={getMapCenter(null, mapItems)} />
+      {focusedPost && (
+        <p role="status" className="border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+          Showing saved location for <strong>{focusedPost.title}</strong>
+          {focusedPost.lifecycle_status && ` · ${focusedPost.status} / ${focusedPost.lifecycle_status}`}
+        </p>
+      )}
+      <div ref={mapSectionRef} className="scroll-mt-4">
+        <CampusMap
+          items={mapItems}
+          center={getMapCenter(null, mapItems)}
+          focusedItemId={focusedPost?.id ?? null}
+          animations={false}
+          className="admin-map rounded border border-slate-300 shadow-none"
+        />
+      </div>
       {posts.length === 0 && !busy ? (
-        <p className="border bg-white p-4">{appliedSearch ? 'No matching posts.' : 'No posts found.'}</p>
+        <p className="border border-slate-300 bg-white p-4">{appliedSearch ? 'No matching posts.' : 'No posts found.'}</p>
       ) : (
-        <div className="overflow-x-auto border bg-white">
+        <div className="overflow-x-auto border border-slate-300 bg-white">
           <table className="w-full min-w-[900px] border-collapse text-left text-sm">
-            <thead className="bg-teal-900 text-white">
+            <thead className="bg-slate-800 text-white">
               <tr>{['Type / post', 'Owner', 'Campus', 'Saved place', 'Stored coordinates', 'Created'].map((title) => <th key={title} className="border p-3">{title}</th>)}</tr>
             </thead>
             <tbody>
               {posts.map((post) => (
-                <tr key={`${post.post_type}-${post.id}`} className="border-b align-top">
+                <tr
+                  key={`${post.post_type}-${post.id}`}
+                  className={`border-b align-top ${`${post.post_type}-${post.id}` === focusedPostKey ? 'bg-slate-100' : ''}`}
+                >
                   <td className="border p-3">
-                    <strong>{post.title}</strong>
+                    {getMapCenter(null, [post]) ? (
+                      <button
+                        type="button"
+                        onClick={() => focusPost(post)}
+                        className="text-left font-semibold text-slate-900 underline decoration-slate-400 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700"
+                        aria-label={`Show ${post.title} on map`}
+                      >
+                        {post.title}
+                      </button>
+                    ) : <strong>{post.title}</strong>}
                     <span className="block text-xs capitalize text-slate-500">{post.post_type.replace('_', ' ')} · {post.status}{post.lifecycle_status ? ` / ${post.lifecycle_status}` : ''}</span>
                   </td>
                   <td className="border p-3">{post.owner_name || 'Unavailable'}</td>
@@ -1268,16 +1313,17 @@ export default function AdminDashboard() {
   if (user?.role !== 'admin') return <Navigate to="/" replace />
 
   return (
-    <main className="min-h-screen p-3 sm:p-6">
-      <div className="mx-auto max-w-7xl border-2 border-teal-900 bg-[#fbfaf3]">
-        <header className="border-b-2 border-teal-900 bg-white p-5">
+    <main className="admin-console min-h-screen bg-slate-100 p-3 sm:p-6">
+      <div className="mx-auto max-w-7xl border border-slate-300 bg-white">
+        <header className="border-b border-slate-200 bg-white p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-black text-teal-950 sm:text-3xl">Campustu Admin Console</h1>
-              <p className="mt-1 text-sm text-slate-700">Administrative actions are permission-checked on the server and written to the audit log.</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Administration</p>
+              <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">Campustu Admin Console</h1>
+              <p className="mt-1 text-sm text-slate-600">Administrative actions are permission-checked on the server and written to the audit log.</p>
             </div>
             {authStatus?.unlocked && (
-              <button type="button" onClick={lockConsole} className="border border-teal-800 px-3 py-2 text-sm font-semibold text-teal-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
+              <button type="button" onClick={lockConsole} className="border border-slate-400 px-3 py-2 text-sm font-semibold text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700">
                 Lock console
               </button>
             )}
@@ -1297,17 +1343,17 @@ export default function AdminDashboard() {
                   key={label}
                   type="button"
                   onClick={() => selectTab(destination)}
-                  className="border border-teal-200 bg-[#fbfaf3] p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+                  className="border border-slate-300 bg-white p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700"
                 >
                   <span className="block text-xs font-semibold text-slate-600">{label}</span>
-                  <span className="mt-1 block text-xl font-bold text-teal-950">{value}</span>
+                  <span className="mt-1 block text-xl font-bold text-slate-900">{value}</span>
                 </button>
               ))}
             </div>
           )}
         </header>
         {error && <div className="m-4" role="alert"><Alert>{error}</Alert></div>}
-        {notice && <div role="status" className="m-4 border border-teal-700 bg-teal-50 p-3 text-sm text-teal-950">{notice}</div>}
+        {notice && <div role="status" className="m-4 border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800">{notice}</div>}
         {authLoading ? (
           <p role="status" className="p-6">Checking admin access…</p>
         ) : !authStatus ? (
@@ -1326,7 +1372,7 @@ export default function AdminDashboard() {
               aria-label="Admin modules"
               role="tablist"
               onKeyDown={onTabKeyDown}
-              className="sticky top-0 z-30 flex overflow-x-auto border-b-2 border-teal-900 bg-teal-50"
+              className="sticky top-0 z-30 flex overflow-x-auto border-b border-slate-300 bg-slate-100"
             >
               {TABS.map((item) => (
                 <button
@@ -1338,7 +1384,7 @@ export default function AdminDashboard() {
                   aria-controls={`admin-panel-${item.id}`}
                   tabIndex={tab === item.id ? 0 : -1}
                   onClick={() => selectTab(item.id)}
-                  className={`shrink-0 rounded-none border-r border-teal-900 px-3 py-3 text-sm font-bold focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-teal-700 sm:px-5 ${tab === item.id ? 'bg-teal-900 text-white' : 'bg-white text-teal-950'}`}
+                  className={`shrink-0 rounded-none border-r border-slate-300 px-3 py-3 text-sm font-semibold focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-slate-700 sm:px-5 ${tab === item.id ? 'bg-slate-800 text-white' : 'bg-white text-slate-700'}`}
                 >
                   {item.label}
                 </button>
@@ -1352,7 +1398,7 @@ export default function AdminDashboard() {
                 aria-labelledby={`admin-tab-${item.id}`}
                 tabIndex={0}
                 hidden={tab !== item.id}
-                className="min-h-96 p-4 focus-visible:outline-2 focus-visible:outline-teal-700 sm:p-6"
+                className="min-h-96 p-4 focus-visible:outline-2 focus-visible:outline-slate-700 sm:p-6"
               >
                 {tab === item.id && item.id === 'moderation' && <ModerationQueue onError={showError} />}
                 {tab === item.id && item.id === 'users' && <UserManagement onError={showError} onSuccess={showSuccess} />}
