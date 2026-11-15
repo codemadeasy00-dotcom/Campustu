@@ -184,8 +184,14 @@ const collegeSchema = z.object({
     },
     z.string().trim().toLowerCase().regex(/^(?!-)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/).nullable(),
   ),
-  latitude: z.coerce.number().finite().min(-90).max(90),
-  longitude: z.coerce.number().finite().min(-180).max(180),
+  latitude: z.preprocess(
+    (value) => value === '' ? null : value,
+    z.union([z.null(), z.coerce.number().finite().min(-90).max(90)]),
+  ),
+  longitude: z.preprocess(
+    (value) => value === '' ? null : value,
+    z.union([z.null(), z.coerce.number().finite().min(-180).max(180)]),
+  ),
   search_radius_meters: z.coerce.number().int().min(100).max(50000).default(1000),
 });
 const collegeUpdateSchema = collegeSchema.extend({
@@ -219,6 +225,12 @@ const postLocationsQuerySchema = z.object({
 const removeBlockSchema = z.object({
   reason: z.string().trim().min(5).max(1000),
 });
+
+function assertCollegeCoordinatePair(college) {
+  if ((college.latitude == null) !== (college.longitude == null)) {
+    throw new AppError(400, 'Enter both map center coordinates, or leave both blank.');
+  }
+}
 
 function requestDetails(req) {
   return {
@@ -963,6 +975,7 @@ router.get('/colleges', async (_req, res) => {
 router.patch('/colleges/:id', async (req, res) => {
   const collegeId = z.coerce.number().int().positive().parse(req.params.id);
   const college = collegeUpdateSchema.parse(req.body);
+  assertCollegeCoordinatePair(college);
   assertUserTextIsAllowed([college.name, college.city, college.state, college.short_code, college.reason]);
   const { rows: [updatedCollege] } = await tx(async (db) => {
     const { rows: [updated] } = await db.query(
@@ -1040,6 +1053,7 @@ router.patch('/colleges/:id/status', async (req, res) => {
 
 router.post('/colleges', async (req, res) => {
   const college = collegeSchema.parse(req.body);
+  assertCollegeCoordinatePair(college);
   assertUserTextIsAllowed([college.name, college.city, college.state, college.short_code]);
   const { rows: [created] } = await tx(async (db) => {
     const { rows: [result] } = await db.query(

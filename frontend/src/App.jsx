@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Link, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import ShareQRWidget from './components/ShareQRWidget.jsx'
@@ -36,9 +36,6 @@ function NotFound() {
 const guard = (el) => <ProtectedRoute>{el}</ProtectedRoute>
 
 export default function App() {
-  const location = useLocation()
-  const isAdminRoute = location.pathname === '/admin' || location.pathname.startsWith('/admin/')
-
   return (
     <>
       <Suspense fallback={<PageLoading message="Loading Campustu…" />}>
@@ -70,7 +67,7 @@ export default function App() {
           </Route>
         </Routes>
       </Suspense>
-      {!isAdminRoute && <ShareQRWidget />}
+      <ShareQRWidget />
     </>
   )
 }

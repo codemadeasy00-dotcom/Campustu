@@ -59,8 +59,8 @@ textarea {
 }
 
 .admin-console .admin-map {
-  border-color: #cbd5e1 !important;
-  border-radius: 0 !important;
+  border-color: #a9ded9 !important;
+  border-radius: 0.75rem !important;
   box-shadow: none !important;
 }
 

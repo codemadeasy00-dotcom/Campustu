@@ -431,12 +431,12 @@ function PostLocations({ onError }) {
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search post, owner, or place"
         />
-        <button type="submit" disabled={busy} className="border border-slate-700 bg-slate-800 px-4 py-2 font-semibold text-white disabled:opacity-50">
+        <button type="submit" disabled={busy} className="border border-teal-900 bg-teal-900 px-4 py-2 font-semibold text-white disabled:opacity-50">
           Search
         </button>
       </form>
       {focusedPost && (
-        <p role="status" className="border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+        <p role="status" className="border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-950">
           Showing saved location for <strong>{focusedPost.title}</strong>
           {focusedPost.lifecycle_status && ` · ${focusedPost.status} / ${focusedPost.lifecycle_status}`}
         </p>
@@ -447,29 +447,29 @@ function PostLocations({ onError }) {
           center={getMapCenter(null, mapItems)}
           focusedItemId={focusedPost?.id ?? null}
           animations={false}
-          className="admin-map rounded border border-slate-300 shadow-none"
+          className="admin-map"
         />
       </div>
       {posts.length === 0 && !busy ? (
-        <p className="border border-slate-300 bg-white p-4">{appliedSearch ? 'No matching posts.' : 'No posts found.'}</p>
+        <p className="border border-teal-200 bg-white p-4">{appliedSearch ? 'No matching posts.' : 'No posts found.'}</p>
       ) : (
-        <div className="overflow-x-auto border border-slate-300 bg-white">
+        <div className="overflow-x-auto border border-teal-200 bg-white">
           <table className="w-full min-w-[900px] border-collapse text-left text-sm">
-            <thead className="bg-slate-800 text-white">
+            <thead className="bg-teal-900 text-white">
               <tr>{['Type / post', 'Owner', 'Campus', 'Saved place', 'Stored coordinates', 'Created'].map((title) => <th key={title} className="border p-3">{title}</th>)}</tr>
             </thead>
             <tbody>
               {posts.map((post) => (
                 <tr
                   key={`${post.post_type}-${post.id}`}
-                  className={`border-b align-top ${`${post.post_type}-${post.id}` === focusedPostKey ? 'bg-slate-100' : ''}`}
+                  className={`border-b align-top ${`${post.post_type}-${post.id}` === focusedPostKey ? 'bg-teal-50' : ''}`}
                 >
                   <td className="border p-3">
                     {getMapCenter(null, [post]) ? (
                       <button
                         type="button"
                         onClick={() => focusPost(post)}
-                        className="text-left font-semibold text-slate-900 underline decoration-slate-400 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700"
+                        className="text-left font-semibold text-teal-900 underline decoration-teal-700 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
                         aria-label={`Show ${post.title} on map`}
                       >
                         {post.title}
@@ -857,12 +857,19 @@ function AddCollege({ onError, onSuccess }) {
 
   async function submit(event) {
     event.preventDefault()
+    const latitude = form.latitude.trim() ? Number(form.latitude) : null
+    const longitude = form.longitude.trim() ? Number(form.longitude) : null
+    if ((latitude == null) !== (longitude == null)) {
+      onError('Enter both map center coordinates, or leave both blank.')
+      return
+    }
+
     setBusy(true)
     try {
       const { college } = await adminApi.createCollege({
         ...form,
-        latitude: Number(form.latitude),
-        longitude: Number(form.longitude),
+        latitude,
+        longitude,
         search_radius_meters: Number(form.search_radius_meters),
       })
       setColleges((current) => [...current, college].sort((a, b) => a.name.localeCompare(b.name)))
@@ -881,6 +888,7 @@ function AddCollege({ onError, onSuccess }) {
     try {
       const result = await adminApi.setCollegeStatus(college.id, status, reason.trim())
       setColleges((current) => current.map((entry) => entry.id === college.id ? result.college : entry))
+      onSuccess(`${college.name} ${status}.`)
     } catch (error) {
       onError(errorMessage(error))
     }
@@ -902,6 +910,13 @@ function AddCollege({ onError, onSuccess }) {
 
   async function saveCollege(approve = false) {
     if (!editingCollege) return
+    const latitude = editingCollege.latitude.trim() ? Number(editingCollege.latitude) : null
+    const longitude = editingCollege.longitude.trim() ? Number(editingCollege.longitude) : null
+    if ((latitude == null) !== (longitude == null)) {
+      onError('Enter both map center coordinates, or leave both blank.')
+      return
+    }
+
     const reason = approve
       ? window.prompt(`Approval reason for ${editingCollege.name}?`)
       : undefined
@@ -912,8 +927,8 @@ function AddCollege({ onError, onSuccess }) {
       const { id, ...collegeDetails } = editingCollege
       const result = await adminApi.updateCollege(id, {
         ...collegeDetails,
-        latitude: Number(editingCollege.latitude),
-        longitude: Number(editingCollege.longitude),
+        latitude,
+        longitude,
         search_radius_meters: Number(editingCollege.search_radius_meters),
         ...(approve ? { status: 'approved', reason: reason.trim() } : {}),
       })
@@ -933,18 +948,30 @@ function AddCollege({ onError, onSuccess }) {
     ['city', 'City', 'text'],
     ['state', 'State', 'text'],
     ['email_domain', 'Email domain (optional, e.g. dbatu.ac.in)', 'text'],
-    ['latitude', 'Latitude', 'number'],
-    ['longitude', 'Longitude', 'number'],
+    ['latitude', 'Map center latitude (optional)', 'number'],
+    ['longitude', 'Map center longitude (optional)', 'number'],
     ['search_radius_meters', 'Search radius (meters)', 'number'],
   ]
 
   return (
     <div className="space-y-6">
+      <p className="text-sm text-slate-700">
+        Email-domain restrictions are optional. Leave both map-center fields blank if the campus does not have a verified center yet.
+      </p>
       <form onSubmit={submit} className="grid gap-4 border bg-white p-5 sm:grid-cols-2">
         {fields.map(([key, label, type]) => (
           <label key={key} className="space-y-1 text-sm font-semibold">
             <span>{label}</span>
-            <input required={key !== 'state'} type={type} step={type === 'number' && key !== 'search_radius_meters' ? 'any' : undefined} min={key === 'search_radius_meters' ? 100 : undefined} max={key === 'search_radius_meters' ? 50000 : undefined} className={inputClass} value={form[key]} onChange={(event) => update(key, event.target.value)} />
+            <input
+              required={!['state', 'email_domain', 'latitude', 'longitude'].includes(key)}
+              type={type}
+              step={type === 'number' && key !== 'search_radius_meters' ? 'any' : undefined}
+              min={key === 'latitude' ? -90 : key === 'longitude' ? -180 : key === 'search_radius_meters' ? 100 : undefined}
+              max={key === 'latitude' ? 90 : key === 'longitude' ? 180 : key === 'search_radius_meters' ? 50000 : undefined}
+              className={inputClass}
+              value={form[key]}
+              onChange={(event) => update(key, event.target.value)}
+            />
           </label>
         ))}
         <button disabled={busy} className="border bg-teal-900 px-4 py-2 font-semibold text-white disabled:opacity-50 sm:col-span-2">{busy ? 'Adding…' : 'Add approved campus'}</button>
@@ -965,7 +992,7 @@ function AddCollege({ onError, onSuccess }) {
             <label key={key} className="space-y-1 text-sm font-semibold">
               <span>{label}</span>
               <input
-                required={!['state', 'email_domain'].includes(key)}
+                required={!['state', 'email_domain', 'latitude', 'longitude'].includes(key)}
                 type={type}
                 step={type === 'number' && key !== 'search_radius_meters' ? 'any' : undefined}
                 min={key === 'latitude' ? -90 : key === 'longitude' ? -180 : key === 'search_radius_meters' ? 100 : undefined}
@@ -1313,9 +1340,9 @@ export default function AdminDashboard() {
   if (user?.role !== 'admin') return <Navigate to="/" replace />
 
   return (
-    <main className="admin-console min-h-screen bg-slate-100 p-3 sm:p-6">
-      <div className="mx-auto max-w-7xl border border-slate-300 bg-white">
-        <header className="border-b border-slate-200 bg-white p-5 sm:p-6">
+    <main className="admin-console min-h-screen p-3 sm:p-6">
+      <div className="mx-auto max-w-7xl border-2 border-teal-900 bg-[#fbfaf3]">
+        <header className="border-b-2 border-teal-900 bg-white p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Administration</p>
@@ -1323,7 +1350,7 @@ export default function AdminDashboard() {
               <p className="mt-1 text-sm text-slate-600">Administrative actions are permission-checked on the server and written to the audit log.</p>
             </div>
             {authStatus?.unlocked && (
-              <button type="button" onClick={lockConsole} className="border border-slate-400 px-3 py-2 text-sm font-semibold text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700">
+              <button type="button" onClick={lockConsole} className="border border-teal-800 px-3 py-2 text-sm font-semibold text-teal-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
                 Lock console
               </button>
             )}
@@ -1343,17 +1370,17 @@ export default function AdminDashboard() {
                   key={label}
                   type="button"
                   onClick={() => selectTab(destination)}
-                  className="border border-slate-300 bg-white p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700"
+                  className="border border-teal-200 bg-[#fbfaf3] p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
                 >
                   <span className="block text-xs font-semibold text-slate-600">{label}</span>
-                  <span className="mt-1 block text-xl font-bold text-slate-900">{value}</span>
+                  <span className="mt-1 block text-xl font-bold text-teal-950">{value}</span>
                 </button>
               ))}
             </div>
           )}
         </header>
         {error && <div className="m-4" role="alert"><Alert>{error}</Alert></div>}
-        {notice && <div role="status" className="m-4 border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800">{notice}</div>}
+        {notice && <div role="status" className="m-4 border border-teal-700 bg-teal-50 p-3 text-sm text-teal-950">{notice}</div>}
         {authLoading ? (
           <p role="status" className="p-6">Checking admin access…</p>
         ) : !authStatus ? (
@@ -1372,7 +1399,7 @@ export default function AdminDashboard() {
               aria-label="Admin modules"
               role="tablist"
               onKeyDown={onTabKeyDown}
-              className="sticky top-0 z-30 flex overflow-x-auto border-b border-slate-300 bg-slate-100"
+              className="sticky top-0 z-30 flex overflow-x-auto border-b-2 border-teal-900 bg-teal-50"
             >
               {TABS.map((item) => (
                 <button
@@ -1384,7 +1411,7 @@ export default function AdminDashboard() {
                   aria-controls={`admin-panel-${item.id}`}
                   tabIndex={tab === item.id ? 0 : -1}
                   onClick={() => selectTab(item.id)}
-                  className={`shrink-0 rounded-none border-r border-slate-300 px-3 py-3 text-sm font-semibold focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-slate-700 sm:px-5 ${tab === item.id ? 'bg-slate-800 text-white' : 'bg-white text-slate-700'}`}
+                  className={`shrink-0 rounded-none border-r border-teal-900 px-3 py-3 text-sm font-bold focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-teal-700 sm:px-5 ${tab === item.id ? 'bg-teal-900 text-white' : 'bg-white text-teal-950'}`}
                 >
                   {item.label}
                 </button>

@@ -39,6 +39,7 @@ test('admin can inspect saved post coordinates and remove block relationships wi
   const originalQuery = pool.query
   const originalConnect = pool.connect
   const clientCalls = []
+  let collegeInsertParams
   t.after(() => {
     pool.query = originalQuery
     pool.connect = originalConnect
@@ -106,6 +107,22 @@ test('admin can inspect saved post coordinates and remove block relationships wi
       if (text.startsWith('SELECT blocker_id, blocked_id')) {
         return { rows: [{ blocker_id: blockerId, blocked_id: blockedId }] }
       }
+      if (text.startsWith('INSERT INTO colleges')) {
+        collegeInsertParams = params
+        return {
+          rows: [{
+            id: 12,
+            name: 'Example Campus',
+            short_code: 'example-campus',
+            city: 'Sample City',
+            email_domain: null,
+            center_lat: null,
+            center_lng: null,
+            search_radius_meters: 1000,
+            status: 'approved',
+          }],
+        }
+      }
       return { rows: [] }
     },
     release() {},
@@ -130,6 +147,36 @@ test('admin can inspect saved post coordinates and remove block relationships wi
     assert.equal(blocks.status, 200)
     assert.equal((await blocks.json()).blocks[0].blocked_email, 'second@example.edu')
 
+    const invalidCampus = await fetch(`${baseUrl}/api/admin/colleges`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Example Campus',
+        short_code: 'example-campus',
+        city: 'Sample City',
+        email_domain: '',
+        latitude: 12.5,
+        longitude: null,
+      }),
+    })
+    assert.equal(invalidCampus.status, 400)
+
+    const campus = await fetch(`${baseUrl}/api/admin/colleges`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Example Campus',
+        short_code: 'example-campus',
+        city: 'Sample City',
+        email_domain: '',
+        latitude: null,
+        longitude: null,
+        search_radius_meters: 1000,
+      }),
+    })
+    assert.equal(campus.status, 201)
+    assert.deepEqual((await campus.json()).college.center_lat, null)
+
     const response = await fetch(`${baseUrl}/api/admin/blocks/${blockerId}/${blockedId}`, {
       method: 'DELETE',
       headers: { ...headers, 'Content-Type': 'application/json' },
@@ -140,7 +187,12 @@ test('admin can inspect saved post coordinates and remove block relationships wi
   })
 
   assert.ok(clientCalls.some(({ text }) => text.startsWith('DELETE FROM user_blocks')))
-  const audit = clientCalls.find(({ text }) => text.startsWith('INSERT INTO admin_audit_logs'))
+  const audit = clientCalls.find(({ text, params }) => (
+    text.startsWith('INSERT INTO admin_audit_logs') && params[1] === 'admin_remove_user_block'
+  ))
   assert.ok(audit)
   assert.equal(JSON.parse(audit.params[5]).reason, 'Reviewed the safety request')
+  assert.equal(collegeInsertParams[4], null)
+  assert.equal(collegeInsertParams[5], null)
+  assert.equal(collegeInsertParams[6], null)
 })
