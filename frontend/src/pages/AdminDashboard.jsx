@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Navigate } from 'react-router-dom'
 import { adminApi, errorMessage, moderationApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { Alert, inputClass } from '../components/ui.jsx'
@@ -877,6 +876,7 @@ function AddCollege({ onError, onSuccess }) {
   const [colleges, setColleges] = useState([])
   const [editingCollege, setEditingCollege] = useState(null)
   const [savingCollege, setSavingCollege] = useState(false)
+  const [processingCollegeId, setProcessingCollegeId] = useState(null)
   const [formError, setFormError] = useState('')
 
   useEffect(() => {
@@ -922,13 +922,21 @@ function AddCollege({ onError, onSuccess }) {
 
   async function setCollegeStatus(college, status) {
     const reason = window.prompt(`${status === 'approved' ? 'Approval' : 'Rejection'} reason for ${college.name}?`)
-    if (!reason || reason.trim().length < 5) return
+    if (reason === null) return
+    const trimmedReason = reason.trim()
+    if (trimmedReason.length < 5) {
+      onError('Enter a reason with at least 5 characters.')
+      return
+    }
+    setProcessingCollegeId(college.id)
     try {
-      const result = await adminApi.setCollegeStatus(college.id, status, reason.trim())
+      const result = await adminApi.setCollegeStatus(college.id, status, trimmedReason)
       setColleges((current) => current.map((entry) => entry.id === college.id ? result.college : entry))
       onSuccess(`${college.name} ${status}.`)
     } catch (error) {
       onError(errorMessage(error))
+    } finally {
+      setProcessingCollegeId(null)
     }
   }
 
@@ -1078,10 +1086,14 @@ function AddCollege({ onError, onSuccess }) {
                 {` · map center ${college.center_lat ?? 'not set'}, ${college.center_lng ?? 'not set'} · ${college.status}`}
               </span>
               <span className="flex gap-2">
-                <button type="button" onClick={() => editCollege(college)} className="border px-2 py-1 text-teal-900">Edit</button>
+                <button type="button" disabled={processingCollegeId !== null} onClick={() => editCollege(college)} className="border px-2 py-1 text-teal-900 disabled:opacity-50">Edit</button>
                 {college.status === 'pending' && <>
-                  <button type="button" onClick={() => setCollegeStatus(college, 'approved')} className="border px-2 py-1 text-teal-900">Approve</button>
-                  <button type="button" onClick={() => setCollegeStatus(college, 'rejected')} className="border px-2 py-1 text-red-800">Reject</button>
+                  <button type="button" disabled={processingCollegeId !== null} onClick={() => setCollegeStatus(college, 'approved')} className="border px-2 py-1 text-teal-900 disabled:opacity-50">
+                    {processingCollegeId === college.id ? 'Saving…' : 'Approve'}
+                  </button>
+                  <button type="button" disabled={processingCollegeId !== null} onClick={() => setCollegeStatus(college, 'rejected')} className="border px-2 py-1 text-red-800 disabled:opacity-50">
+                    {processingCollegeId === college.id ? 'Saving…' : 'Reject'}
+                  </button>
                 </>}
               </span>
             </li>
@@ -1386,7 +1398,18 @@ export default function AdminDashboard() {
     }
   }
 
-  if (user?.role !== 'admin') return <Navigate to="/" replace />
+  if (user?.role !== 'admin') {
+    return (
+      <main className="mx-auto max-w-2xl p-4 sm:p-8">
+        <h1 className="mb-3 text-2xl font-bold text-slate-900">Admin access unavailable</h1>
+        <Alert kind="warn">
+          The signed-in account ({user?.email || 'unknown email'}) does not have the admin role. Admin access
+          must be granted to a verified account by a database administrator. Sign in with an admin-enabled
+          account and reload this page.
+        </Alert>
+      </main>
+    )
+  }
 
   return (
     <main className="admin-console min-h-screen p-3 sm:p-6">
