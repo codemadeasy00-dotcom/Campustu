@@ -15,7 +15,8 @@ test('production CORS allows configured frontend origins and the default Vercel 
     S3_PUBLIC_BASE_URL: 'https://storage.example.test',
     CORS_ORIGIN: 'https://campustu.example, https://preview.campustu.example',
   }
-  const previous = Object.fromEntries(Object.keys(variables).map((key) => [key, process.env[key]]))
+  const keysToRestore = [...Object.keys(variables), 'NEW_USER_MAX_PRICE']
+  const previous = Object.fromEntries(keysToRestore.map((key) => [key, process.env[key]]))
   const configPath = require.resolve('../src/config')
   t.after(() => {
     Object.entries(previous).forEach(([key, value]) => {
@@ -26,6 +27,7 @@ test('production CORS allows configured frontend origins and the default Vercel 
   })
 
   Object.assign(process.env, variables)
+  process.env.NEW_USER_MAX_PRICE = ''
   delete require.cache[configPath]
   const config = require('../src/config')
 
@@ -34,4 +36,5 @@ test('production CORS allows configured frontend origins and the default Vercel 
     'https://preview.campustu.example',
     'https://campustu.vercel.app',
   ])
+  assert.equal(config.newUserMaxPrice, 1500)
 })

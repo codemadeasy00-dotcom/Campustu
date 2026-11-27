@@ -8,6 +8,8 @@ const BLOCKED_LABELS = new Set(['porn', 'hentai', 'sexy']);
 const BLOCK_THRESHOLD = 0.6;
 
 let modelPromise;
+let modelWarmPromise;
+let modelClassified = false;
 
 async function loadModel() {
   if (!modelPromise) {
@@ -53,10 +55,32 @@ async function classifyImage(data, width, height) {
   const model = await loadModel();
   const tensor = tf.tensor3d(data, [height, width, 3], 'int32');
   try {
-    return await model.classify(tensor);
+    const predictions = await model.classify(tensor);
+    modelClassified = true;
+    return predictions;
   } finally {
     tensor.dispose();
   }
+}
+
+async function warmImageSafetyModel() {
+  if (modelClassified) return;
+  if (!modelWarmPromise) {
+    modelWarmPromise = (async () => {
+      const model = await loadModel();
+      const tensor = tf.zeros([IMAGE_SIZE, IMAGE_SIZE, 3], 'int32');
+      try {
+        await model.classify(tensor);
+        modelClassified = true;
+      } finally {
+        tensor.dispose();
+      }
+    })().catch((error) => {
+      modelWarmPromise = null;
+      throw error;
+    });
+  }
+  await modelWarmPromise;
 }
 
 async function screenPhoto(buffer, classify = classifyImage) {
@@ -94,6 +118,7 @@ async function screenPhoto(buffer, classify = classifyImage) {
 
 module.exports = {
   screenPhoto,
+  warmImageSafetyModel,
   assertValidPredictions,
   flaggedPrediction,
 };

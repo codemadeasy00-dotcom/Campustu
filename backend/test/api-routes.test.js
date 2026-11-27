@@ -12,6 +12,7 @@ test('student core APIs are mounted behind authentication', async () => {
     const { port } = server.address()
 
     for (const path of [
+      '/items/image-safety-ready',
       '/api/achievements',
       '/api/search-alerts/saved',
       '/api/search-alerts/preferences',

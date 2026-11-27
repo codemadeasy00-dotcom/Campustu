@@ -20,9 +20,31 @@ export class ApiError extends Error {
   }
 }
 
+function defaultHttpErrorMessage(status) {
+  const messages = {
+    400: 'Please check the information and try again.',
+    401: 'Your session has expired. Please sign in again.',
+    402: 'This request could not be completed. Please try again or contact support.',
+    403: 'Your account is not allowed to do this yet. Check the requirements and try again.',
+    404: 'We could not find what you requested. Refresh the page and try again.',
+    409: 'This information has changed. Refresh the page and try again.',
+    413: 'The photo or form is too large. Choose a smaller photo and try again.',
+    422: 'Please check the information and try again.',
+    429: 'Too many requests. Wait a little and try again.',
+    500: 'Something went wrong on our end. Please try again later.',
+    502: 'The server is temporarily unavailable. Please try again shortly.',
+    503: 'This service is temporarily unavailable. Please try again shortly.',
+    504: 'The server took too long to respond. Please try again shortly.',
+  }
+  return messages[status] || 'We could not complete that request. Please try again later.'
+}
+
 // Turns an error into one readable sentence for the screen.
 export function errorMessage(err) {
   reportAppError()
+  if (err?.submissionMayHaveSucceeded) {
+    return "We couldn't confirm whether this item was published. It may already be live. Check My Listings before trying again."
+  }
   if (err instanceof ApiError && Array.isArray(err.details) && err.details.length) {
     return err.details.map((d) => (d.field ? `${d.field}: ${d.message}` : d.message)).join(' | ')
   }
@@ -51,7 +73,9 @@ export async function fetchWithRetry(url, init = {}) {
 
     const errorData = await response.clone().json().catch(() => null)
     const delay = GET_RETRY_DELAYS_MS[attempt]
-    if (!delay || errorData?.code === 'DATABASE_MIGRATION_REQUIRED') return response
+    if (!delay || ['DATABASE_MIGRATION_REQUIRED', 'IMAGE_SCREENING_UNAVAILABLE'].includes(errorData?.code)) {
+      return response
+    }
 
     await new Promise((resolve) => setTimeout(resolve, delay))
     attempt += 1
@@ -96,7 +120,11 @@ async function request(endpoint, { method = 'GET', json, formData } = {}) {
     } else {
       reportAppError()
     }
-    throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data?.details, data?.code, data)
+    const serverMessage = data?.error
+    const message = !serverMessage || /^Request failed \(\d{3}\)$/.test(serverMessage)
+      ? defaultHttpErrorMessage(res.status)
+      : serverMessage
+    throw new ApiError(message, res.status, data?.details, data?.code, data)
   }
   return data
 }
@@ -220,7 +248,17 @@ export const itemsApi = {
     }
     return request(`/items?${params.toString()}`)
   },
-  create: (formData) => request('/items', { method: 'POST', formData }),
+  create: async (formData) => {
+    await request('/items/image-safety-ready')
+    try {
+      return await request('/items', { method: 'POST', formData })
+    } catch (error) {
+      if (error instanceof ApiError && [0, 500, 502, 504].includes(error.status)) {
+        error.submissionMayHaveSucceeded = true
+      }
+      throw error
+    }
+  },
   get: (id) => request(`/items/${encodeURIComponent(id)}`),
   mine: () => request('/items/mine'),
   barterLoops: () => request('/items/barter-loops'),

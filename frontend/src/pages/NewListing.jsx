@@ -36,6 +36,8 @@ export default function NewListing() {
 
   const frozen = user.status !== 'active'
   const categories = meta.categories.filter((c) => c.scope !== 'lost_found')
+  const newUserMaxPrice = meta.seller_limits?.new_user_max_price
+  const newUserMaxActiveListings = meta.seller_limits?.new_user_max_active_listings
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
   const listingSelection = form.item_type_id
     ? `type:${form.item_type_id}`
@@ -92,6 +94,9 @@ export default function NewListing() {
     if (processingPhotos) return setError('Wait for photo processing to finish.')
     if (photos.length < 1) return setError('Add at least one photo.')
     if (!form.item_type_id && !form.category_id) return setError('Choose an item type or a category.')
+    if (!user.is_trusted && Number.isFinite(newUserMaxPrice) && Number(form.price) > newUserMaxPrice) {
+      return setError(`New accounts can list items up to Rs ${newUserMaxPrice}. Complete handovers to become a trusted member.`)
+    }
 
     const data = new FormData()
     for (const [key, value] of Object.entries(form)) {
@@ -123,7 +128,11 @@ export default function NewListing() {
       <div className="mt-4 space-y-3">
         {frozen && <Alert kind="warn">Your account is frozen pending admin review, so you cannot list items right now.</Alert>}
         {!user.is_trusted && !frozen && (
-          <Alert kind="info">New accounts have a price limit and a cap on active listings. Complete handovers to become a trusted member.</Alert>
+          <Alert kind="info">
+            {newUserMaxPrice == null
+              ? 'New accounts have a price limit and a cap on active listings. Complete handovers to become a trusted member.'
+              : `New accounts can list items up to Rs ${newUserMaxPrice} and have up to ${newUserMaxActiveListings} active listings. Complete handovers to become a trusted member.`}
+          </Alert>
         )}
         {categories.length === 0 && meta.item_types.length === 0 && (
           <Alert kind="warn">The site admin has not added categories yet, so listing is not possible.</Alert>

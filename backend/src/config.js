@@ -63,7 +63,7 @@ const config = {
   },
   otp: { ttlMinutes: 10, maxAttempts: 5, resendSeconds: 60 },
   jwtExpiresIn: '7d',
-  newUserMaxPrice: int('NEW_USER_MAX_PRICE', 500),
+  newUserMaxPrice: int('NEW_USER_MAX_PRICE', 1500),
   newUserMaxActiveListings: int('NEW_USER_MAX_ACTIVE_LISTINGS', 5),
   oddSemesterStartMonth: int('ODD_SEMESTER_START_MONTH', 7),
   maxPhotosPerItem: 5,

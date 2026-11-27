@@ -148,6 +148,7 @@ Option B (by hand): New -> Web Service -> your repo, then set:
 Environment variables (both options; secrets are typed into Render, never into the repo):
 ```
 NODE_ENV=production            TRUST_PROXY=1             DATABASE_SSL=true
+NEW_USER_MAX_PRICE=1500
 DATABASE_URL=...               JWT_SECRET=... (32+ chars)  OTP_SECRET=... (32+ chars)
 PUBLIC_BASE_URL=https://<your-render-name>.onrender.com
 CORS_ORIGIN=                    (the website address, once you have one)
@@ -198,7 +199,7 @@ On Render, set `CORS_ORIGIN=https://campustu.vercel.app` (add any other exact fr
    **Support Requests** tab and reply to the provided email address.
 
 ## Free-tier habits you must have
-- Render free web services sleep after idle time; the browser retries safe read requests after transient gateway errors while the service wakes. Open `/health` a few minutes before any demo.
+- Render free web services sleep after idle time; the browser retries safe read requests after transient gateway errors while the service wakes. Marketplace creation first calls authenticated `GET /items/image-safety-ready` to wake the service and warm the image model before sending the non-retryable create request. Open `/health` a few minutes before any demo.
 - Supabase may pause on inactivity; log in and check weekly.
 - You control your data: take a database backup regularly (Supabase dashboard backups if your plan has them, or `pg_dump`).
   Do not assume a free plan keeps backups.

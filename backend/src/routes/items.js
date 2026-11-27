@@ -8,6 +8,7 @@ const { processPhoto } = require('../utils/images')
 const { assertUserTextIsAllowed } = require('../utils/text-moderation')
 const { createImageUpload } = require('../utils/image-upload')
 const { screenUploadedImages } = require('../middleware/image-safety')
+const { warmImageSafetyModel } = require('../utils/image-safety')
 const { AppError } = require('../utils/errors')
 const { buildUserBadges, ITEM_BADGES, applyBadgeOverrides } = require('../utils/user-badges')
 const { requireAuth, requireActive, requireCollege } = require('../middleware/auth')
@@ -22,6 +23,21 @@ router.use(requireMarketplaceWritable)
 
 // Photos are held in memory only long enough to be checked, cleaned and saved.
 const upload = createImageUpload(config.maxPhotosPerItem)
+
+router.get('/image-safety-ready', requireActive, requireCollege, async (_req, res) => {
+  try {
+    await warmImageSafetyModel()
+  } catch (error) {
+    console.error('Could not warm the image safety model before marketplace upload:', error)
+    throw new AppError(
+      503,
+      'Image safety screening is temporarily unavailable. Please try uploading again later.',
+      'IMAGE_SCREENING_UNAVAILABLE',
+    )
+  }
+  res.set('Cache-Control', 'no-store')
+  res.json({ ready: true })
+})
 
 // multipart forms send everything as text, and empty optional fields as ''.
 const blankToUndefined = (v) => (v === '' || v === null ? undefined : v)

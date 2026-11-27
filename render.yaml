@@ -14,6 +14,8 @@ services:
         value: "22"
       - key: TRUST_PROXY
         value: "1"
+      - key: NEW_USER_MAX_PRICE
+        value: "1500"
       - key: DATABASE_SSL
         value: "true"
       - key: JWT_SECRET
