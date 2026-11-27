@@ -1435,10 +1435,7 @@ function ChangeAdminPassword({ onError, onSuccess }) {
 }
 
 export default function AdminDashboard() {
-  const { user, signOut } = useAuth()
-  const showToast = useToast()
-  const location = useLocation()
-  const navigate = useNavigate()
+  const { user } = useAuth()
   const [tab, setTab] = useState('moderation')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
