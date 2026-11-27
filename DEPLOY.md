@@ -188,6 +188,8 @@ On Render, set `CORS_ORIGIN=https://campustu.vercel.app` (add any other exact fr
    the latest frontend and backend, sign in with that account, and open `https://your-site-domain/admin`.
    The first visit asks you to create an admin-only password (14+ characters with uppercase, lowercase,
    a number, and a symbol). Later visits require that password as well as the verified account session.
+   If you forget it, use **Forgot your admin password?** on the locked console, sign in again with the
+   email code, and set a new admin password. Resetting it revokes older admin sessions.
    Admin unlock expires after 30 minutes; use the **Lock console** button to lock it sooner. Change the
    admin password from the console's **Change admin password** section. Do not share the password or use
    the admin account as a shared student login. Banned accounts can be unbanned from **User Management**;

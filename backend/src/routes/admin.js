@@ -39,11 +39,28 @@ const passwordAttemptLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
 });
+const ADMIN_PASSWORD_RESET_AUTH_SECONDS = 10 * 60;
 const adminPasswordLoginSchema = z.object({ password: z.string().min(1).max(128) });
 const changeAdminPasswordSchema = z.object({
   current_password: z.string().min(1).max(128),
   new_password: passwordSchema,
 });
+
+function requireRecentLogin(req, _res, next) {
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    !Number.isInteger(req.authIssuedAt)
+    || req.authIssuedAt > now + 30
+    || now - req.authIssuedAt > ADMIN_PASSWORD_RESET_AUTH_SECONDS
+  ) {
+    throw new AppError(
+      403,
+      'Sign out and verify your email again before resetting your admin password.',
+      'ADMIN_PASSWORD_RESET_REAUTH_REQUIRED',
+    );
+  }
+  next();
+}
 
 router.get('/auth/status', async (req, res) => {
   const { rows: [user] } = await query(
@@ -104,6 +121,34 @@ router.post('/auth/unlock', passwordAttemptLimiter, async (req, res) => {
      VALUES ($1, 'unlock_admin_console', 'unlock_admin_console', 'user', $2, '{}'::jsonb, $3, $4)`,
     [req.user.id, String(req.user.id), req.ip || null, req.get('user-agent') || null],
   );
+  res.json({ success: true, unlocked: true });
+});
+
+router.post('/auth/reset-password', passwordAttemptLimiter, requireRecentLogin, async (req, res) => {
+  const { password } = adminPasswordLoginSchema.extend({ password: passwordSchema }).parse(req.body);
+  const encodedHash = await hashAdminPassword(password);
+  const { rows: [user] } = await tx(async (db) => {
+    const { rows: [lockedUser] } = await db.query(
+      `SELECT admin_password_version
+         FROM users
+        WHERE id = $1 AND role = 'admin' AND status = 'active'
+          AND deleted_at IS NULL AND email_verified_at IS NOT NULL
+        FOR UPDATE`,
+      [req.user.id],
+    );
+    if (!lockedUser) throw new AppError(403, 'An active, verified admin account is required to reset this password.');
+    const { rows: [updated] } = await db.query(
+      `UPDATE users
+          SET admin_password_hash = $2,
+              admin_password_version = admin_password_version + 1
+        WHERE id = $1
+        RETURNING admin_password_version`,
+      [req.user.id, encodedHash],
+    );
+    await writeAudit(db, req, 'reset_admin_password', 'user', req.user.id);
+    return { rows: [updated] };
+  });
+  setAdminSessionCookie(res, req.user.id, Number(user.admin_password_version));
   res.json({ success: true, unlocked: true });
 });
 

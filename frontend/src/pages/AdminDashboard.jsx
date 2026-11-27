@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { adminApi, errorMessage, moderationApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { Alert, inputClass } from '../components/ui.jsx'
@@ -1192,7 +1193,7 @@ function AuditLogs({ onError }) {
   )
 }
 
-function AdminPasswordGate({ configured, onUnlocked, onError }) {
+function AdminPasswordGate({ configured, canReset, onRecover, onUnlocked, onError }) {
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1203,9 +1204,14 @@ function AdminPasswordGate({ configured, onUnlocked, onError }) {
       onError('The passwords do not match.')
       return
     }
+    if (canReset && password !== confirmation) {
+      onError('The passwords do not match.')
+      return
+    }
     setBusy(true)
     try {
-      if (configured) await adminApi.unlock(password)
+      if (canReset) await adminApi.resetPassword(password)
+      else if (configured) await adminApi.unlock(password)
       else await adminApi.setupPassword(password)
       setPassword('')
       setConfirmation('')
@@ -1220,30 +1226,32 @@ function AdminPasswordGate({ configured, onUnlocked, onError }) {
   return (
     <section className="mx-auto max-w-lg border-2 border-teal-900 bg-[#fbfaf3] p-5 sm:p-8">
       <h2 className="text-xl font-bold text-teal-950">
-        {configured ? 'Unlock admin console' : 'Set your admin password'}
+        {canReset ? 'Reset admin password' : configured ? 'Unlock admin console' : 'Set your admin password'}
       </h2>
       <p className="mt-2 text-sm text-slate-700">
-        {configured
+        {canReset
+          ? 'Your email has been verified. Choose a new admin password to replace the forgotten one.'
+          : configured
           ? 'Your verified administrator account also needs its private admin password. The console locks again after 30 minutes.'
           : 'Create a separate password used only for admin actions. Use at least 14 characters with uppercase, lowercase, a number, and a symbol.'}
       </p>
       <form onSubmit={submit} className="mt-5 space-y-4">
         <label className="block space-y-1 text-sm font-semibold">
-          <span>{configured ? 'Admin password' : 'New admin password'}</span>
+          <span>{configured && !canReset ? 'Admin password' : 'New admin password'}</span>
           <input
             required
             type="password"
-            autoComplete={configured ? 'current-password' : 'new-password'}
-            minLength={configured ? 1 : 14}
+            autoComplete={configured && !canReset ? 'current-password' : 'new-password'}
+            minLength={configured && !canReset ? 1 : 14}
             maxLength={128}
-            pattern={configured ? undefined : ADMIN_PASSWORD_PATTERN}
-            title={configured ? undefined : 'Use at least 14 characters with uppercase, lowercase, a number, and a symbol.'}
+            pattern={configured && !canReset ? undefined : ADMIN_PASSWORD_PATTERN}
+            title={configured && !canReset ? undefined : 'Use at least 14 characters with uppercase, lowercase, a number, and a symbol.'}
             className={inputClass}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        {!configured && (
+        {(!configured || canReset) && (
           <label className="block space-y-1 text-sm font-semibold">
             <span>Confirm admin password</span>
             <input
@@ -1261,9 +1269,18 @@ function AdminPasswordGate({ configured, onUnlocked, onError }) {
           </label>
         )}
         <button disabled={busy} className="w-full border bg-teal-900 px-4 py-3 font-semibold text-white disabled:opacity-50">
-          {busy ? 'Please wait…' : configured ? 'Unlock admin console' : 'Set password and continue'}
+          {busy ? 'Please wait…' : canReset ? 'Reset password and continue' : configured ? 'Unlock admin console' : 'Set password and continue'}
         </button>
       </form>
+      {configured && !canReset && (
+        <button
+          type="button"
+          onClick={onRecover}
+          className="mt-4 text-sm font-semibold text-teal-900 underline underline-offset-2"
+        >
+          Forgot your admin password? Verify your email to reset it.
+        </button>
+      )}
     </section>
   )
 }
@@ -1311,7 +1328,9 @@ function ChangeAdminPassword({ onError, onSuccess }) {
 }
 
 export default function AdminDashboard() {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [tab, setTab] = useState('moderation')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -1385,6 +1404,9 @@ export default function AdminDashboard() {
     setSummary(null)
     setError('')
     setNotice('')
+    if (location.state?.adminPasswordReset) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
   }
 
   async function lockConsole() {
@@ -1393,6 +1415,19 @@ export default function AdminDashboard() {
       setAuthStatus((current) => ({ ...current, unlocked: false }))
       setSummary(null)
       setNotice('Admin console locked.')
+    } catch (requestError) {
+      showError(errorMessage(requestError))
+    }
+  }
+
+  async function recoverAdminPassword() {
+    try {
+      await adminApi.lock()
+      await signOut()
+      navigate('/login', {
+        replace: true,
+        state: { from: '/admin', adminPasswordReset: true },
+      })
     } catch (requestError) {
       showError(errorMessage(requestError))
     }
@@ -1461,6 +1496,8 @@ export default function AdminDashboard() {
           <div className="p-4 sm:p-8">
             <AdminPasswordGate
               configured={Boolean(authStatus?.password_configured)}
+              canReset={Boolean(location.state?.adminPasswordReset)}
+              onRecover={recoverAdminPassword}
               onUnlocked={unlockComplete}
               onError={showError}
             />
