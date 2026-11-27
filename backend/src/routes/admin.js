@@ -358,7 +358,7 @@ router.get('/reports', async (_req, res) => {
       photo_url: photoKey ? storage.urlFor(photoKey) : null,
     })),
     image_review_queue: [],
-    image_review_note: 'NSFWJS currently runs only in the submitter’s browser; its unverified client-side scores are not treated as an authoritative moderation signal.',
+    image_review_note: 'Marketplace, lost-and-found, and profile photos are screened on the server before storage. Uploads are rejected when the Porn, Hentai, or Sexy score reaches 0.6. If screening is unavailable, uploads fail closed and can be retried later; no flagged image is stored or queued for review.',
   });
 });
 

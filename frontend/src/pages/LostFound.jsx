@@ -5,7 +5,6 @@ import MarkerClusterGroup from 'react-leaflet-cluster';
 import { lostFoundApi, errorMessage } from '../services/api.js';
 import { Alert, useToast } from '../components/ui.jsx';
 import { processAndCompressImage } from '../utils/imageCompressor.js';
-import { checkImagesSafety } from '../utils/moderation.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import PageHero from '../components/PageHero.jsx';
 import BlockUserButton from '../components/BlockUserButton.jsx';
@@ -303,7 +302,6 @@ export default function LostFound() {
   const [photos, setPhotos] = useState([]);
   const [photoPreviews, setPhotoPreviews] = useState([]);
   const [processingPhotos, setProcessingPhotos] = useState(false);
-  const [moderationProgress, setModerationProgress] = useState('');
   const photoPreviewsRef = React.useRef([]);
 
   const [modalPin, setModalPin] = useState(null);
@@ -540,19 +538,6 @@ export default function LostFound() {
     setPostingItem(true);
     let embeddingWarning = '';
     try {
-      if (photos.length > 0) {
-        setModerationProgress('Loading the on-device image moderation model…');
-        const safety = await checkImagesSafety(
-          photos,
-          (current, total) => setModerationProgress(`Screening photo ${current} of ${total} on this device…`),
-        );
-        if (!safety.safe) {
-          setPostError(safety.reason);
-          return;
-        }
-      }
-
-      setModerationProgress('');
       let embedding = null;
       if (photoPreviews.length > 0) {
         try {
@@ -620,7 +605,6 @@ export default function LostFound() {
         : errorMessage(err));
     } finally {
       setPostingItem(false);
-      setModerationProgress('');
     }
   };
 
@@ -1545,7 +1529,6 @@ export default function LostFound() {
                   </button>
                 </section>
               )}
-              {moderationProgress && <p role="status" aria-live="polite" className="text-sm text-sky-800">{moderationProgress}</p>}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
                 <select
@@ -1743,7 +1726,7 @@ export default function LostFound() {
                       && (!allowDuplicatePost || postSkipReason.trim().length < 15))}
                   className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs py-2.5 rounded-xl disabled:cursor-wait disabled:opacity-60"
                 >
-                  {postingItem ? 'Analyzing photo & publishing…' : allowDuplicatePost ? 'Publish with explanation' : 'Publish Item'}
+                  {postingItem ? 'Uploading, screening & publishing…' : allowDuplicatePost ? 'Publish with explanation' : 'Publish Item'}
                 </button>
               </div>
             </form>

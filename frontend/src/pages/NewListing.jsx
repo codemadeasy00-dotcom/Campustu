@@ -5,7 +5,6 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { CONDITIONS } from '../lib/format.js'
 import { Alert, Button, Field, PageLoading, inputClass } from '../components/ui.jsx'
 import { processAndCompressImage } from '../utils/imageCompressor.js'
-import { checkImagesSafety } from '../utils/moderation.js'
 
 const MAX_PHOTOS = 5
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024 // same limit as the server
@@ -22,7 +21,6 @@ export default function NewListing() {
   })
   const [photos, setPhotos] = useState([]) // [{ file, url }]
   const [processingPhotos, setProcessingPhotos] = useState(false)
-  const [moderationProgress, setModerationProgress] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -106,24 +104,12 @@ export default function NewListing() {
 
     setBusy(true)
     try {
-      setModerationProgress('Loading the on-device image moderation model…')
-      const safety = await checkImagesSafety(
-        photos.map((photo) => photo.file),
-        (current, total) => setModerationProgress(`Screening photo ${current} of ${total} on this device…`),
-      )
-      if (!safety.safe) {
-        setError(safety.reason)
-        return
-      }
-
-      setModerationProgress('')
       const { item } = await itemsApi.create(data)
       navigate(`/items/${item.id}`)
     } catch (err) {
       setError(errorMessage(err))
     } finally {
       setBusy(false)
-      setModerationProgress('')
     }
   }
 
@@ -269,12 +255,11 @@ export default function NewListing() {
               </label>
             )}
           </div>
-          <p className="mt-1 text-xs text-slate-500">Photos are screened on this device before upload. The server validates image type, size, and file integrity.</p>
+          <p className="mt-1 text-xs text-slate-500">The server screens photos before storage. Uploads are rejected if screening is unavailable.</p>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button type="submit" disabled={busy || frozen || processingPhotos}>{processingPhotos ? 'Processing photos…' : moderationProgress || (busy ? 'Uploading…' : 'List item')}</Button>
-          {moderationProgress && <p role="status" aria-live="polite" className="text-xs text-sky-800">{moderationProgress}</p>}
+          <Button type="submit" disabled={busy || frozen || processingPhotos}>{processingPhotos ? 'Processing photos…' : busy ? 'Uploading and screening…' : 'List item'}</Button>
           <Link to="/" className="text-sm text-slate-500 underline">Cancel</Link>
         </div>
       </form>

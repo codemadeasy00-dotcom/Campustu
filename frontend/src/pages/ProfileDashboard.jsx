@@ -5,7 +5,6 @@ import { Alert, ConfirmDialog, PageLoading, useToast } from '../components/ui.js
 import { authApi, errorMessage, lostFoundApi, searchAlertsApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
-import { checkImageSafety } from '../utils/moderation.js'
 import PushNotifications from '../components/PushNotifications.jsx'
 import UserBadges from '../components/UserBadges.jsx'
 import BlockedUsersSettings from '../components/BlockedUsersSettings.jsx'
@@ -231,12 +230,6 @@ export default function ProfileDashboard() {
 
     setAvatarBusy(true)
     try {
-      const safety = await checkImageSafety(file)
-      if (!safety.safe) {
-        setAvatarError(safety.reason)
-        return
-      }
-
       const formData = new FormData()
       formData.append('avatar', file)
       const result = await authApi.updateAvatar(formData)
@@ -344,7 +337,7 @@ export default function ProfileDashboard() {
               <h3 className="font-semibold text-slate-900">Your profile photo</h3>
               <p className="mt-1 text-sm leading-6 text-slate-600">Add a clear photo so other students can recognize your profile. You can change or remove it any time.</p>
               <label className={`mt-4 inline-flex cursor-pointer items-center justify-center rounded-full bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 ${avatarBusy ? 'pointer-events-none opacity-60' : ''}`}>
-                {avatarBusy ? 'Screening & uploading…' : user?.avatar_url ? 'Change photo' : 'Add a profile photo'}
+                {avatarBusy ? 'Uploading & screening…' : user?.avatar_url ? 'Change photo' : 'Add a profile photo'}
                 <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={uploadAvatar} disabled={avatarBusy} />
               </label>
               {user?.avatar_url && (
@@ -495,7 +488,7 @@ export default function ProfileDashboard() {
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
             <label className={`inline-flex cursor-pointer items-center justify-center rounded-full border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20 ${avatarBusy ? 'pointer-events-none opacity-60' : ''}`}>
-              {avatarBusy ? 'Screening & uploading…' : 'Change photo'}
+              {avatarBusy ? 'Uploading & screening…' : 'Change photo'}
               <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={uploadAvatar} disabled={avatarBusy} />
             </label>
             {user?.avatar_url && (

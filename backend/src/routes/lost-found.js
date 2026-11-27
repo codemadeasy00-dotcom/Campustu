@@ -10,6 +10,7 @@ const { processPhoto } = require('../utils/images');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 const { buildUserBadges, ITEM_BADGES, applyBadgeOverrides } = require('../utils/user-badges');
 const { createImageUpload } = require('../utils/image-upload');
+const { screenUploadedImages } = require('../middleware/image-safety');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
 const { notifyUser: notifyUserPush } = require('../utils/web-push');
 const { publicLostFoundLocation, publicLostFoundDistance } = require('../utils/lost-found-location');
@@ -1021,7 +1022,7 @@ router.delete('/:id', requireActive, async (req, res, next) => {
 });
 
 // POST /lost-found - Create a new lost or found listing
-router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, upload.array('photos', config.maxPhotosPerItem), async (req, res) => {
+router.post('/', requireActive, requireCollege, requireImageUploadsEnabled, upload.array('photos', config.maxPhotosPerItem), screenUploadedImages, async (req, res) => {
   const data = createItemSchema.parse(req.body);
   assertUserTextIsAllowed([
     data.title,

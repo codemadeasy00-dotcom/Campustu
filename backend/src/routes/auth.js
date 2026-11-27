@@ -15,6 +15,7 @@ const { sendOtpEmail } = require('../email');
 
 const { processPhoto } = require('../utils/images');
 const { createImageUpload } = require('../utils/image-upload');
+const { screenUploadedImages } = require('../middleware/image-safety');
 const { assertUserTextIsAllowed } = require('../utils/text-moderation');
 const storage = require('../storage');
 const { enqueueCleanup, processQueuedMediaCleanup } = require('../utils/lost-found-media-cleanup');
@@ -526,7 +527,7 @@ router.patch('/profile/college', requireAuth, requireActive, async (req, res) =>
   res.json({ success: true, user: await publicProfile(req.user.id) });
 });
 
-router.patch('/profile/avatar', requireAuth, requireActive, requireImageUploadsEnabled, avatarUpload.single('avatar'), async (req, res) => {
+router.patch('/profile/avatar', requireAuth, requireActive, requireImageUploadsEnabled, avatarUpload.single('avatar'), screenUploadedImages, async (req, res) => {
   if (!req.file) throw new AppError(400, 'Choose an image to upload.');
 
   const image = await processPhoto(req.file.buffer);

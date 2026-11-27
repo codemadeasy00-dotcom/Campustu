@@ -4,7 +4,6 @@ import CampusMap from '../components/CampusMap.jsx'
 import { Alert, inputClass } from '../components/ui.jsx'
 import { lostFoundApi, errorMessage } from '../services/api.js'
 import { processAndCompressImage } from '../utils/imageCompressor.js'
-import { checkImagesSafety } from '../utils/moderation.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 import { getCollegeMapCenter } from '../lib/map.js'
@@ -21,9 +20,8 @@ const CATEGORIES = [
   'Other',
 ]
 const SUBMISSION_STEPS = [
-  { id: 'moderation', label: 'Screen photos on this device', detail: 'The first model download may take a little while.' },
   { id: 'matching', label: 'Compare item photos', detail: 'The visual-matching model may take a little while to load the first time.' },
-  { id: 'publishing', label: 'Upload and publish', detail: 'Uploading your photos and saving the report.' },
+  { id: 'publishing', label: 'Upload, screen, and publish', detail: 'The server screens photos before storage, then saves the report.' },
 ];
 
 function localDateTimeValue(date = new Date()) {
@@ -119,7 +117,6 @@ export default function LostFoundNew() {
   const [skipReason, setSkipReason] = useState('')
   const [showPreview, setShowPreview] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [moderationProgress, setModerationProgress] = useState('')
   const [modelLoading, setModelLoading] = useState(false)
   const [submitStep, setSubmitStep] = useState('')
   const [error, setError] = useState('')
@@ -245,19 +242,6 @@ export default function LostFoundNew() {
 
     setIsSubmitting(true)
     try {
-      if (photos.length > 0) {
-        setSubmitStep('moderation')
-        setModerationProgress('Loading the on-device image moderation model…')
-        const safety = await checkImagesSafety(
-          photos,
-          (current, total) => setModerationProgress(`Screening photo ${current} of ${total} on this device…`),
-        )
-        if (!safety.safe) {
-          setError(safety.reason)
-          return
-        }
-      }
-
       let embedding = null
       if (photoPreviews.length > 0) {
         setSubmitStep('matching')
@@ -614,11 +598,6 @@ export default function LostFoundNew() {
           )}
         </section>
 
-        {moderationProgress && (
-          <p role="status" aria-live="polite" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-800">
-            {moderationProgress}
-          </p>
-        )}
         {modelLoading && (
           <p role="status" aria-live="polite" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-800">
             Loading the on-device visual-matching model. The first download may take a little while.
@@ -630,8 +609,7 @@ export default function LostFoundNew() {
             <h2 className="font-bold text-brand-900">Publishing your report</h2>
             <ol className="mt-3 space-y-3">
               {SUBMISSION_STEPS.map((step, index) => {
-                const skipped = (step.id === 'moderation' && photos.length === 0)
-                  || (step.id === 'duplicates' && allowDuplicate)
+                const skipped = (step.id === 'duplicates' && allowDuplicate)
                   || (step.id === 'matching' && embeddingSkipped && currentSubmitStepIndex > index)
                 const complete = currentSubmitStepIndex > index && !skipped
                 const active = submitStep === step.id
@@ -648,9 +626,7 @@ export default function LostFoundNew() {
                         {active && <span className="ml-2 font-normal text-brand-700">In progress…</span>}
                       </span>
                       <span className="text-xs text-slate-600">
-                        {step.id === 'moderation' && skipped
-                          ? 'No photo selected.'
-                          : step.id === 'matching' && skipped && !photos.length
+                        {step.id === 'matching' && skipped && !photos.length
                             ? 'No photo selected.'
                             : step.id === 'matching' && skipped && embeddingWarning
                               ? 'Unavailable; publishing continues without visual matches.'

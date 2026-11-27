@@ -279,7 +279,7 @@ function ModerationQueue({ onError }) {
           </ul>
         )}
         <div className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-          Client-side NSFWJS scores are not trusted as moderation evidence. Image review is not available until screening can be verified server-side.
+          Photos are screened server-side before storage. Uploads are blocked at a 0.6 score for Porn, Hentai, or Sexy; if screening is unavailable, the upload is rejected. Blocked photos are not stored or added to this review queue.
         </div>
       </section>
     </div>
