@@ -307,6 +307,7 @@ export const adminApi = {
   authStatus: () => request('/api/admin/auth/status'),
   setupPassword: (password) => request('/api/admin/auth/setup-password', { method: 'POST', json: { password } }),
   unlock: (password) => request('/api/admin/auth/unlock', { method: 'POST', json: { password } }),
+  resetPassword: (password) => request('/api/admin/auth/reset-password', { method: 'POST', json: { password } }),
   lock: () => request('/api/admin/auth/lock', { method: 'POST' }),
   changePassword: (current_password, new_password) => request('/api/admin/auth/change-password', {
     method: 'POST',

@@ -98,7 +98,10 @@ export default function AuthPage({ mode }) {
         ({ user: me } = await authApi.setCollege(college.id))
       }
       signIn(me)
-      navigate(redirectTo, { replace: true })
+      navigate(redirectTo, {
+        replace: true,
+        state: location.state?.adminPasswordReset ? { adminPasswordReset: true } : undefined,
+      })
     })
   }
 

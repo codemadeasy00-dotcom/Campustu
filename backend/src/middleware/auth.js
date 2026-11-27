@@ -52,6 +52,7 @@ async function requireAuth(req, res, next) {
     throw new AppError(401, 'Please log in');
   }
   req.user = user;
+  req.authIssuedAt = payload.iat;
   next();
 }
 

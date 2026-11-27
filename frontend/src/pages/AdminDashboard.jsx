@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { adminApi, errorMessage, moderationApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
-import { Alert, inputClass } from '../components/ui.jsx'
+import { Alert, ConfirmDialog, inputClass, useToast } from '../components/ui.jsx'
 import ItemPhoto from '../components/ItemPhoto.jsx'
 import UserBadges from '../components/UserBadges.jsx'
 import CampusMap from '../components/CampusMap.jsx'
@@ -39,6 +40,66 @@ const ITEM_BADGE_OPTIONS = {
     { id: 'verified_match', label: 'Verified Match' },
     { id: 'claimed_resolved', label: 'Claimed / Resolved' },
   ],
+}
+
+function AdminNotifications({ summary, open, onToggle, onNavigate, onRefresh, refreshing }) {
+  const items = [
+    { id: 'colleges', tab: 'colleges', label: 'College approvals', count: Number(summary?.pending_colleges || 0) },
+    { id: 'reports', tab: 'moderation', label: 'Reports to review', count: Number(summary?.pending_reports || 0) },
+    { id: 'duplicates', tab: 'moderation', label: 'Duplicate reviews', count: Number(summary?.duplicate_overrides || 0) },
+    { id: 'support', tab: 'support', label: 'Support requests', count: Number(summary?.support_requests || 0) },
+  ]
+  const pendingCount = items.reduce((total, item) => total + item.count, 0)
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="admin-notification-panel"
+        onClick={onToggle}
+        className="inline-flex items-center gap-2 border border-teal-800 px-3 py-2 text-sm font-semibold text-teal-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+      >
+        Notifications
+        <span aria-label={`${pendingCount} pending`} className="min-w-6 rounded-full bg-teal-900 px-1.5 py-0.5 text-center text-xs text-white">
+          {pendingCount}
+        </span>
+      </button>
+      {open && (
+        <section
+          id="admin-notification-panel"
+          aria-label="Admin notifications"
+          className="absolute right-0 top-full z-40 mt-2 w-[min(22rem,calc(100vw-2rem))] border-2 border-teal-900 bg-[#fbfaf3] p-3 shadow-xl"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="font-bold text-teal-950">Needs your attention</h2>
+            <button type="button" disabled={refreshing} onClick={onRefresh} className="text-sm font-semibold text-teal-900 underline disabled:opacity-50">
+              {refreshing ? 'Checking…' : 'Refresh'}
+            </button>
+          </div>
+          <ul className="space-y-1">
+            {items.filter((item) => item.count > 0).map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => onNavigate(item.tab)}
+                  className="flex w-full items-center justify-between gap-3 border border-teal-100 bg-white px-3 py-2 text-left text-sm hover:bg-teal-50 focus-visible:outline-2 focus-visible:outline-teal-700"
+                >
+                  <span>{item.label}</span>
+                  <span className="font-bold text-teal-900">{item.count}</span>
+                </button>
+              </li>
+            ))}
+            {pendingCount === 0 && (
+              <li role="status" className="border border-teal-100 bg-white px-3 py-3 text-sm text-slate-600">
+                {summary ? 'You’re all caught up.' : 'Loading admin notifications…'}
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
+    </div>
+  )
 }
 
 function BadgeAssignment({ userId, targetType, itemId, badges, overrides, options, onError, onSuccess }) {
@@ -878,6 +939,9 @@ function AddCollege({ onError, onSuccess }) {
   const [savingCollege, setSavingCollege] = useState(false)
   const [processingCollegeId, setProcessingCollegeId] = useState(null)
   const [formError, setFormError] = useState('')
+  const [confirmation, setConfirmation] = useState(null)
+  const [confirmationReason, setConfirmationReason] = useState('')
+  const [confirmationError, setConfirmationError] = useState('')
 
   useEffect(() => {
     adminApi.colleges().then((result) => setColleges(result.colleges || [])).catch((error) => onError(errorMessage(error)))
@@ -920,17 +984,10 @@ function AddCollege({ onError, onSuccess }) {
     }
   }
 
-  async function setCollegeStatus(college, status) {
-    const reason = window.prompt(`${status === 'approved' ? 'Approval' : 'Rejection'} reason for ${college.name}?`)
-    if (reason === null) return
-    const trimmedReason = reason.trim()
-    if (trimmedReason.length < 5) {
-      onError('Enter a reason with at least 5 characters.')
-      return
-    }
+  async function setCollegeStatus(college, status, reason) {
     setProcessingCollegeId(college.id)
     try {
-      const result = await adminApi.setCollegeStatus(college.id, status, trimmedReason)
+      const result = await adminApi.setCollegeStatus(college.id, status, reason)
       setColleges((current) => current.map((entry) => entry.id === college.id ? result.college : entry))
       onSuccess(`${college.name} ${status}.`)
     } catch (error) {
@@ -955,7 +1012,7 @@ function AddCollege({ onError, onSuccess }) {
     })
   }
 
-  async function saveCollege(approve = false) {
+  async function saveCollege(approve = false, reason = '') {
     if (!editingCollege) return
     const validationError = collegeFormError(editingCollege)
     if (validationError) {
@@ -965,11 +1022,6 @@ function AddCollege({ onError, onSuccess }) {
 
     const latitude = editingCollege.latitude.trim() ? Number(editingCollege.latitude) : null
     const longitude = editingCollege.longitude.trim() ? Number(editingCollege.longitude) : null
-    const reason = approve
-      ? window.prompt(`Approval reason for ${editingCollege.name}?`)
-      : undefined
-    if (approve && (!reason || reason.trim().length < 5)) return
-
     setFormError('')
     setSavingCollege(true)
     try {
@@ -979,7 +1031,7 @@ function AddCollege({ onError, onSuccess }) {
         latitude,
         longitude,
         search_radius_meters: Number(editingCollege.search_radius_meters),
-        ...(approve ? { status: 'approved', reason: reason.trim() } : {}),
+        ...(approve ? { status: 'approved', reason } : {}),
       })
       setColleges((current) => current.map((entry) => entry.id === id ? result.college : entry))
       setEditingCollege(null)
@@ -990,6 +1042,23 @@ function AddCollege({ onError, onSuccess }) {
       onError(message)
     } finally {
       setSavingCollege(false)
+    }
+  }
+
+  async function confirmCollegeAction() {
+    const reason = confirmationReason.trim()
+    if (reason.length < 5) {
+      setConfirmationError('Enter a reason with at least 5 characters.')
+      return
+    }
+    const action = confirmation
+    setConfirmation(null)
+    setConfirmationReason('')
+    setConfirmationError('')
+    if (action.type === 'edit-approve') {
+      await saveCollege(true, reason)
+    } else {
+      await setCollegeStatus(action.college, action.status, reason)
     }
   }
 
@@ -1034,7 +1103,11 @@ function AddCollege({ onError, onSuccess }) {
           className="grid gap-4 border-2 border-teal-800 bg-teal-50 p-5 sm:grid-cols-2"
           onSubmit={(event) => {
             event.preventDefault()
-            saveCollege(event.nativeEvent.submitter?.value === 'approve')
+            if (event.nativeEvent.submitter?.value === 'approve') {
+              setConfirmation({ type: 'edit-approve' })
+            } else {
+              saveCollege()
+            }
           }}
         >
           <div className="sm:col-span-2">
@@ -1088,10 +1161,10 @@ function AddCollege({ onError, onSuccess }) {
               <span className="flex gap-2">
                 <button type="button" disabled={processingCollegeId !== null} onClick={() => editCollege(college)} className="border px-2 py-1 text-teal-900 disabled:opacity-50">Edit</button>
                 {college.status === 'pending' && <>
-                  <button type="button" disabled={processingCollegeId !== null} onClick={() => setCollegeStatus(college, 'approved')} className="border px-2 py-1 text-teal-900 disabled:opacity-50">
+                  <button type="button" disabled={processingCollegeId !== null} onClick={() => { setConfirmation({ type: 'status', college, status: 'approved' }); setConfirmationReason(''); setConfirmationError('') }} className="border px-2 py-1 text-teal-900 disabled:opacity-50">
                     {processingCollegeId === college.id ? 'Saving…' : 'Approve'}
                   </button>
-                  <button type="button" disabled={processingCollegeId !== null} onClick={() => setCollegeStatus(college, 'rejected')} className="border px-2 py-1 text-red-800 disabled:opacity-50">
+                  <button type="button" disabled={processingCollegeId !== null} onClick={() => { setConfirmation({ type: 'status', college, status: 'rejected' }); setConfirmationReason(''); setConfirmationError('') }} className="border px-2 py-1 text-red-800 disabled:opacity-50">
                     {processingCollegeId === college.id ? 'Saving…' : 'Reject'}
                   </button>
                 </>}
@@ -1100,6 +1173,41 @@ function AddCollege({ onError, onSuccess }) {
           ))}
         </ul>
       </section>
+      <ConfirmDialog
+        open={Boolean(confirmation)}
+        title={confirmation?.status === 'rejected' ? 'Confirm college rejection' : 'Confirm college approval'}
+        confirmLabel={confirmation?.status === 'rejected' ? 'Reject college' : 'Approve college'}
+        danger={confirmation?.status === 'rejected'}
+        onConfirm={confirmCollegeAction}
+        onCancel={() => {
+          setConfirmation(null)
+          setConfirmationReason('')
+          setConfirmationError('')
+        }}
+      >
+        <p>
+          {confirmation?.type === 'edit-approve'
+            ? `Approve the updated details for ${editingCollege?.name}?`
+            : `${confirmation?.status === 'rejected' ? 'Reject' : 'Approve'} ${confirmation?.college?.name}?`}
+          {' '}This action will be recorded in the admin audit log.
+        </p>
+        <label className="mt-3 block space-y-1 text-sm font-semibold text-slate-800">
+          <span>{confirmation?.status === 'rejected' ? 'Rejection reason' : 'Approval reason'}</span>
+          <textarea
+            required
+            minLength={5}
+            maxLength={1000}
+            rows={3}
+            className={inputClass}
+            value={confirmationReason}
+            onChange={(event) => {
+              setConfirmationReason(event.target.value)
+              setConfirmationError('')
+            }}
+          />
+        </label>
+        {confirmationError && <p role="alert" className="mt-2 text-sm text-red-700">{confirmationError}</p>}
+      </ConfirmDialog>
     </div>
   )
 }
@@ -1192,7 +1300,7 @@ function AuditLogs({ onError }) {
   )
 }
 
-function AdminPasswordGate({ configured, onUnlocked, onError }) {
+function AdminPasswordGate({ configured, canReset, onRecover, onUnlocked, onError }) {
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1203,9 +1311,14 @@ function AdminPasswordGate({ configured, onUnlocked, onError }) {
       onError('The passwords do not match.')
       return
     }
+    if (canReset && password !== confirmation) {
+      onError('The passwords do not match.')
+      return
+    }
     setBusy(true)
     try {
-      if (configured) await adminApi.unlock(password)
+      if (canReset) await adminApi.resetPassword(password)
+      else if (configured) await adminApi.unlock(password)
       else await adminApi.setupPassword(password)
       setPassword('')
       setConfirmation('')
@@ -1220,30 +1333,32 @@ function AdminPasswordGate({ configured, onUnlocked, onError }) {
   return (
     <section className="mx-auto max-w-lg border-2 border-teal-900 bg-[#fbfaf3] p-5 sm:p-8">
       <h2 className="text-xl font-bold text-teal-950">
-        {configured ? 'Unlock admin console' : 'Set your admin password'}
+        {canReset ? 'Reset admin password' : configured ? 'Unlock admin console' : 'Set your admin password'}
       </h2>
       <p className="mt-2 text-sm text-slate-700">
-        {configured
+        {canReset
+          ? 'Your email has been verified. Choose a new admin password to replace the forgotten one.'
+          : configured
           ? 'Your verified administrator account also needs its private admin password. The console locks again after 30 minutes.'
           : 'Create a separate password used only for admin actions. Use at least 14 characters with uppercase, lowercase, a number, and a symbol.'}
       </p>
       <form onSubmit={submit} className="mt-5 space-y-4">
         <label className="block space-y-1 text-sm font-semibold">
-          <span>{configured ? 'Admin password' : 'New admin password'}</span>
+          <span>{configured && !canReset ? 'Admin password' : 'New admin password'}</span>
           <input
             required
             type="password"
-            autoComplete={configured ? 'current-password' : 'new-password'}
-            minLength={configured ? 1 : 14}
+            autoComplete={configured && !canReset ? 'current-password' : 'new-password'}
+            minLength={configured && !canReset ? 1 : 14}
             maxLength={128}
-            pattern={configured ? undefined : ADMIN_PASSWORD_PATTERN}
-            title={configured ? undefined : 'Use at least 14 characters with uppercase, lowercase, a number, and a symbol.'}
+            pattern={configured && !canReset ? undefined : ADMIN_PASSWORD_PATTERN}
+            title={configured && !canReset ? undefined : 'Use at least 14 characters with uppercase, lowercase, a number, and a symbol.'}
             className={inputClass}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        {!configured && (
+        {(!configured || canReset) && (
           <label className="block space-y-1 text-sm font-semibold">
             <span>Confirm admin password</span>
             <input
@@ -1261,9 +1376,18 @@ function AdminPasswordGate({ configured, onUnlocked, onError }) {
           </label>
         )}
         <button disabled={busy} className="w-full border bg-teal-900 px-4 py-3 font-semibold text-white disabled:opacity-50">
-          {busy ? 'Please wait…' : configured ? 'Unlock admin console' : 'Set password and continue'}
+          {busy ? 'Please wait…' : canReset ? 'Reset password and continue' : configured ? 'Unlock admin console' : 'Set password and continue'}
         </button>
       </form>
+      {configured && !canReset && (
+        <button
+          type="button"
+          onClick={onRecover}
+          className="mt-4 text-sm font-semibold text-teal-900 underline underline-offset-2"
+        >
+          Forgot your admin password? Verify your email to reset it.
+        </button>
+      )}
     </section>
   )
 }
@@ -1311,13 +1435,33 @@ function ChangeAdminPassword({ onError, onSuccess }) {
 }
 
 export default function AdminDashboard() {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
+  const showToast = useToast()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [tab, setTab] = useState('moderation')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [summary, setSummary] = useState(null)
   const [authStatus, setAuthStatus] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [notificationOpen, setNotificationOpen] = useState(false)
+  const [summaryRefreshing, setSummaryRefreshing] = useState(false)
+
+  const refreshDashboardSummary = useCallback(async () => {
+    setSummaryRefreshing(true)
+    try {
+      const result = await adminApi.dashboard()
+      setSummary(result.summary)
+      return true
+    } catch (requestError) {
+      setNotice('')
+      setError(errorMessage(requestError))
+      return false
+    } finally {
+      setSummaryRefreshing(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (user?.role !== 'admin') return
@@ -1331,12 +1475,10 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!authStatus?.unlocked) return
-    let active = true
-    adminApi.dashboard()
-      .then((result) => { if (active) setSummary(result.summary) })
-      .catch((requestError) => { if (active) setError(errorMessage(requestError)) })
-    return () => { active = false }
-  }, [authStatus?.unlocked])
+    refreshDashboardSummary()
+    const interval = window.setInterval(refreshDashboardSummary, 30_000)
+    return () => window.clearInterval(interval)
+  }, [authStatus?.unlocked, refreshDashboardSummary])
 
   useEffect(() => {
     if (!authStatus?.unlocked) return undefined
@@ -1359,7 +1501,8 @@ export default function AdminDashboard() {
   const showSuccess = useCallback((message) => {
     setError('')
     setNotice(message)
-  }, [])
+    showToast(message)
+  }, [showToast])
 
   function selectTab(nextTab) {
     setTab(nextTab)
@@ -1385,6 +1528,9 @@ export default function AdminDashboard() {
     setSummary(null)
     setError('')
     setNotice('')
+    if (location.state?.adminPasswordReset) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
   }
 
   async function lockConsole() {
@@ -1393,6 +1539,19 @@ export default function AdminDashboard() {
       setAuthStatus((current) => ({ ...current, unlocked: false }))
       setSummary(null)
       setNotice('Admin console locked.')
+    } catch (requestError) {
+      showError(errorMessage(requestError))
+    }
+  }
+
+  async function recoverAdminPassword() {
+    try {
+      await adminApi.lock()
+      await signOut()
+      navigate('/login', {
+        replace: true,
+        state: { from: '/admin', adminPasswordReset: true },
+      })
     } catch (requestError) {
       showError(errorMessage(requestError))
     }
@@ -1421,11 +1580,26 @@ export default function AdminDashboard() {
               <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">Campustu Admin Console</h1>
               <p className="mt-1 text-sm text-slate-600">Administrative actions are permission-checked on the server and written to the audit log.</p>
             </div>
-            {authStatus?.unlocked && (
-              <button type="button" onClick={lockConsole} className="border border-teal-800 px-3 py-2 text-sm font-semibold text-teal-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
-                Lock console
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {authStatus?.unlocked && (
+                <>
+                  <AdminNotifications
+                    summary={summary}
+                    open={notificationOpen}
+                    onToggle={() => setNotificationOpen((current) => !current)}
+                    onNavigate={(destination) => {
+                      setNotificationOpen(false)
+                      selectTab(destination)
+                    }}
+                    onRefresh={refreshDashboardSummary}
+                    refreshing={summaryRefreshing}
+                  />
+                  <button type="button" onClick={lockConsole} className="border border-teal-800 px-3 py-2 text-sm font-semibold text-teal-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
+                    Lock console
+                  </button>
+                </>
+              )}
+            </div>
           </div>
           {authStatus?.unlocked && summary && (
             <div aria-label="Admin dashboard shortcuts" className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
@@ -1461,6 +1635,8 @@ export default function AdminDashboard() {
           <div className="p-4 sm:p-8">
             <AdminPasswordGate
               configured={Boolean(authStatus?.password_configured)}
+              canReset={Boolean(location.state?.adminPasswordReset)}
+              onRecover={recoverAdminPassword}
               onUnlocked={unlockComplete}
               onError={showError}
             />
@@ -1504,7 +1680,15 @@ export default function AdminDashboard() {
                 {tab === item.id && item.id === 'blocks' && <BlockRelationships onError={showError} onSuccess={showSuccess} />}
                 {tab === item.id && item.id === 'locations' && <PostLocations onError={showError} />}
                 {tab === item.id && item.id === 'support' && <SupportRequests onError={showError} onSuccess={showSuccess} />}
-                {tab === item.id && item.id === 'colleges' && <AddCollege onError={showError} onSuccess={showSuccess} />}
+                {tab === item.id && item.id === 'colleges' && (
+                  <AddCollege
+                    onError={showError}
+                    onSuccess={async (message) => {
+                      showSuccess(message)
+                      await refreshDashboardSummary()
+                    }}
+                  />
+                )}
                 {tab === item.id && item.id === 'controls' && <SystemSafety onError={showError} />}
                 {tab === item.id && item.id === 'audit' && <AuditLogs onError={showError} />}
               </div>
