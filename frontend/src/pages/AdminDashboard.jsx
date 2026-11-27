@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { adminApi, errorMessage, moderationApi } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { Alert, ConfirmDialog, inputClass, useToast } from '../components/ui.jsx'
@@ -1558,16 +1558,7 @@ export default function AdminDashboard() {
   }
 
   if (user?.role !== 'admin') {
-    return (
-      <main className="mx-auto max-w-2xl p-4 sm:p-8">
-        <h1 className="mb-3 text-2xl font-bold text-slate-900">Admin access unavailable</h1>
-        <Alert kind="warn">
-          The signed-in account ({user?.email || 'unknown email'}) does not have the admin role. Admin access
-          must be granted to a verified account by a database administrator. Sign in with an admin-enabled
-          account and reload this page.
-        </Alert>
-      </main>
-    )
+    return <Navigate to="/" replace />
   }
 
   return (
